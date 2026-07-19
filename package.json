@@ -1,0 +1,31 @@
+{
+  "name": "nortix-playtests",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "test:e2e": "pnpm --filter @nortix/web test:e2e",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @nortix/database generate",
+    "db:migrate": "pnpm --filter @nortix/database migrate",
+    "db:seed": "pnpm --filter @nortix/database seed",
+    "sites:build": "pnpm --filter @nortix/web build && node tooling/prepare-sites.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@types/node": "^24.0.15",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.5",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.38.0"
+  }
+}
