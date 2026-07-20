@@ -8,15 +8,22 @@ import {
   ServerInputSchema,
   WithdrawalInputSchema,
 } from "@nortix/shared";
-import { IntegrationEventSchema } from "@nortix/plugin-sdk";
+import {
+  CreateServerVerificationSchema,
+  IntegrationEventSchema,
+  PluginVerificationHandshakeSchema,
+  PluginVerificationStatusSchema,
+} from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
 import type { Env } from "../config/env.js";
 import { CampaignService } from "./campaigns/service.js";
 import { WithdrawalService } from "./withdrawals/service.js";
+import { ServerVerificationService } from "./server-verification/service.js";
 
 const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
+const serverVerificationService = new ServerVerificationService();
 
 const parsePagination = (query: Record<string, unknown>) => ({
   page: Math.max(1, Number(query.page) || 1),
@@ -113,53 +120,111 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   });
   app.post(
     "/v1/servers",
-    { preHandler: app.requirePermission("server:manage") },
+    { preHandler: app.authenticate },
     async (request, reply) => {
       const input = ServerInputSchema.parse(request.body);
       const slug = `${input.name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/(^-|-$)/g, "")}-${crypto.randomUUID().slice(0, 5)}`;
-      const server = await prisma.server.create({
-        data: {
-          ownerId: request.user!.id,
-          name: input.name,
-          slug,
-          description: input.description,
-          hostname: input.hostname,
-          port: input.port,
-          edition: input.edition,
-          versions: input.versions,
-          categories: input.categories,
-          tags: input.tags,
-          websiteUrl: input.websiteUrl,
-          discordUrl: input.discordUrl,
-          screenshotUrls: [],
-        },
+      const verificationParent = input.verificationParentId
+        ? await prisma.server.findFirst({
+            where: {
+              id: input.verificationParentId,
+              ownerId: request.user!.id,
+              claimed: true,
+              verificationStatus: "VERIFIED",
+              verificationScope: "PROXY_NETWORK",
+            },
+          })
+        : null;
+      if (input.verificationParentId && !verificationParent) {
+        throw new Error("A verified proxy network is required for inherited verification.");
+      }
+      const roles = Array.from(new Set([...request.user!.roles, "SERVER_OWNER" as const]));
+      const server = await prisma.$transaction(async (tx) => {
+        await tx.user.update({ where: { id: request.user!.id }, data: { roles } });
+        const created = await tx.server.create({
+          data: {
+            ownerId: request.user!.id,
+            name: input.name,
+            slug,
+            description: input.description,
+            hostname: input.hostname,
+            port: input.port,
+            edition: input.edition,
+            versions: input.versions,
+            categories: input.categories,
+            tags: input.tags,
+            verificationParentId: verificationParent?.id,
+            verificationScope: verificationParent ? "PROXY_CHILD" : "SERVER",
+            verificationStatus: verificationParent ? "VERIFIED" : "UNVERIFIED",
+            claimed: Boolean(verificationParent),
+            websiteUrl: input.websiteUrl,
+            discordUrl: input.discordUrl,
+            screenshotUrls: [],
+          },
+        });
+        if (verificationParent) {
+          await tx.serverVerification.create({
+            data: {
+              serverId: created.id,
+              provider: "PROXY_INHERITED",
+              status: "VERIFIED",
+              challenge: {
+                parentProxyId: verificationParent.id,
+                networkScope: "PROXY_CHILD",
+              },
+              evidence: {
+                inheritedAt: new Date().toISOString(),
+                parentProxyId: verificationParent.id,
+              },
+            },
+          });
+        }
+        return created;
       });
       return reply.code(201).send(server);
     },
   );
   app.post(
     "/v1/servers/:id/verification",
-    { preHandler: app.requirePermission("server:manage") },
+    { preHandler: app.authenticate },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const server = await prisma.server.findFirst({ where: { id, ownerId: request.user!.id } });
-      if (!server) return reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
-      const challenge = await prisma.serverVerification.create({
-        data: {
-          serverId: id,
-          provider: "MANUAL_REVIEW",
-          challenge: {
-            instructions: "Upload or describe ownership evidence for moderator review.",
-            token: crypto.randomUUID(),
-          },
-        },
-      });
-      return reply.code(201).send(challenge);
+      const { platform } = CreateServerVerificationSchema.parse(request.body);
+      return reply
+        .code(201)
+        .send(await serverVerificationService.create(id, request.user!.id, platform));
     },
   );
+  app.get(
+    "/v1/servers/:id/verification",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return serverVerificationService.getOwned(id, request.user!.id);
+    },
+  );
+  app.post(
+    "/v1/servers/:id/verification/check",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return serverVerificationService.verify(id, request.user!.id);
+    },
+  );
+  app.post("/v1/plugin/verifications/handshake", async (request) => {
+    const input = PluginVerificationHandshakeSchema.parse(request.body);
+    return serverVerificationService.pluginHandshake({
+      ...input,
+      code: input.code.toUpperCase(),
+    });
+  });
+  app.get("/v1/plugin/verifications/status", async (request) => {
+    const input = PluginVerificationStatusSchema.parse(request.query);
+    return serverVerificationService.pluginStatus(input.code.toUpperCase(), input.platform);
+  });
 
   app.get("/v1/campaigns", async (request) => {
     const { page, pageSize } = parsePagination(request.query as Record<string, unknown>);

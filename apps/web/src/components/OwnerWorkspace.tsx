@@ -35,8 +35,9 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { api } from "../lib/api";
 
 type ServerRecord = {
   id: string;
@@ -486,13 +487,14 @@ function PluginServers({
 
       <div className="owner-dashboard-grid">
         <section className="card owner-plugin-install">
-          <div className="owner-card-heading"><div><h2>Plugin installation</h2><p>Connect a Paper, Spigot, or compatible proxy server in a few minutes.</p></div><Plug /></div>
+          <div className="owner-card-heading"><div><h2>Ownership verification plugins</h2><p>Use Paper for a standalone server or Velocity for the public entry point to a network.</p></div><Plug /></div>
           <ol>
-            <li><b>1</b><span><strong>Download Nortix Plugin</strong><small>Compatible with Paper and Spigot 1.19–1.21.</small></span><button><Download /> Download .jar</button></li>
-            <li><b>2</b><span><strong>Add the server key</strong><small>Place this key in plugins/Nortix/config.yml.</small></span><code>ntx_live_skx_••••••••7h2k</code><button onClick={() => setCopied("key")}><Copy />{copied === "key" ? "Copied" : "Copy"}</button></li>
-            <li><b>3</b><span><strong>Restart and verify</strong><small>Nortix checks signed heartbeats and validates supported events.</small></span><button><RefreshCw /> Verify connection</button></li>
+            <li><b>1</b><span><strong>Paper 1.16 and newer</strong><small>For a normal server. Uses Java 8 bytecode and the Paper 1.16 API baseline.</small></span><a className="button" href="/downloads/nortix-paper-verification-0.1.0.jar" download><Download /> Paper .jar</a></li>
+            <li><b>2</b><span><strong>Velocity 3.x proxy</strong><small>For one public proxy and all backend servers behind it. Backend servers do not need individual claims.</small></span><a className="button" href="/downloads/nortix-velocity-verification-0.1.0.jar" download><Download /> Velocity .jar</a></li>
+            <li><b>3</b><span><strong>Generate a one-time code</strong><small>Register the public address, then copy the 15-minute code into the matching plugin command.</small></span><Link className="button" to="/owner/servers/new"><KeyRound /> Register server</Link></li>
+            <li><b>4</b><span><strong>Let Nortix read the MOTD</strong><small>The plugin publishes the code temporarily; an independent public status ping completes the claim.</small></span><button onClick={() => setCopied("flow")}><Copy />{copied === "flow" ? "Ready" : "View flow"}</button></li>
           </ol>
-          <p className="owner-security-note"><LockKeyhole /> Server keys can be rotated independently. A key may only send events for its assigned server.</p>
+          <p className="owner-security-note"><LockKeyhole /> These plugins only perform registration and ownership verification. They do not collect gameplay or player data.</p>
         </section>
         <section className="card">
           <div className="owner-card-heading"><div><h2>Live event stream</h2><p>Recent accepted plugin signals.</p></div><span className="live-pill">LIVE</span></div>
@@ -689,34 +691,165 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
 }
 
 function RegisterServer({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
-  const [connected, setConnected] = useState(false);
+  type Challenge = {
+    serverId: string;
+    code: string;
+    platform: "PAPER" | "VELOCITY";
+    networkScope: "SERVER" | "PROXY_NETWORK";
+    expiresAt: string;
+    motdText: string;
+    downstreamVerificationRequired: boolean;
+  };
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  type RegistrationPlatform = "PAPER" | "VELOCITY" | "DOWNSTREAM";
+  const [platform, setPlatform] = useState<RegistrationPlatform>("PAPER");
+  const [verifiedProxies, setVerifiedProxies] = useState<Array<{ id: string; name: string; hostname: string }>>([]);
+  const [verificationParentId, setVerificationParentId] = useState("");
+  const [inheritedComplete, setInheritedComplete] = useState(false);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [status, setStatus] = useState<"DETAILS" | "PENDING" | "CHECKING" | "VERIFIED">("DETAILS");
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    void api<Array<{ id: string; name: string; hostname: string; verificationScope: string; verificationStatus: string }>>("/owner/servers")
+      .then((items) => {
+        const proxies = items.filter((item) => item.verificationScope === "PROXY_NETWORK" && item.verificationStatus === "VERIFIED");
+        setVerifiedProxies(proxies);
+        if (proxies[0]) setVerificationParentId(proxies[0].id);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const parseAddress = () => {
+    const value = address.trim().replace(/^minecraft:\/\//i, "");
+    const match = value.match(/^\[([^\]]+)\](?::(\d+))?$/);
+    if (match) return { hostname: match[1]!, port: Number(match[2] ?? 25565) };
+    const lastColon = value.lastIndexOf(":");
+    if (lastColon > -1 && value.indexOf(":") === lastColon) {
+      const port = Number(value.slice(lastColon + 1));
+      if (Number.isInteger(port)) return { hostname: value.slice(0, lastColon), port };
+    }
+    return { hostname: value, port: 25565 };
+  };
+
+  const beginVerification = async () => {
+    setError("");
+    try {
+      const target = parseAddress();
+      const created = await api<{ id: string }>("/servers", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          hostname: target.hostname,
+          port: target.port,
+          description: `${name} is a Minecraft server registered through the Nortix owner portal.`,
+          edition: "JAVA",
+          versions: ["1.16+"],
+          categories: [platform === "VELOCITY" ? "Network" : "Minecraft"],
+          tags: [platform.toLowerCase()],
+          ...(platform === "DOWNSTREAM" ? { verificationParentId } : {}),
+        }),
+      });
+      if (platform === "DOWNSTREAM") {
+        setInheritedComplete(true);
+        setStatus("VERIFIED");
+        return;
+      }
+      const next = await api<Challenge>(`/servers/${created.id}/verification`, {
+        method: "POST",
+        body: JSON.stringify({ platform }),
+      });
+      setChallenge(next);
+      setStatus("PENDING");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Registration could not be started.");
+    }
+  };
+
+  const checkVerification = async (quiet = false) => {
+    if (!challenge || status === "VERIFIED") return;
+    if (!quiet) setStatus("CHECKING");
+    try {
+      await api(`/servers/${challenge.serverId}/verification/check`, { method: "POST" });
+      setStatus("VERIFIED");
+    } catch (reason) {
+      if (!quiet) {
+        setError(reason instanceof Error ? reason.message : "The code is not visible yet.");
+        setStatus("PENDING");
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!challenge || status === "VERIFIED") return;
+    const timer = window.setInterval(() => void checkVerification(true), 6_000);
+    return () => window.clearInterval(timer);
+  }, [challenge, status]);
+
+  const copyCode = async () => {
+    if (!challenge) return;
+    await navigator.clipboard.writeText(challenge.code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1_500);
+  };
+
   return (
     <div className="dashboard-page owner-platform">
-      <OwnerHeader eyebrow="SERVER REGISTRATION" title="Register another server" description="Connect another Minecraft server to this owner account and choose its discovery and data settings." server={server} setServer={setServer} action={<Link className="button button--secondary" to="/owner/integrations">Back to registry</Link>} />
+      <OwnerHeader eyebrow="SERVER REGISTRATION" title="Verify your Minecraft server" description="Prove control with a short-lived code in the public MOTD. Nortix reads the code through the normal Minecraft server-list ping." server={server} setServer={setServer} action={<Link className="button button--secondary" to="/owner/integrations">Back to registry</Link>} />
       <div className="owner-register-grid">
         <section className="card owner-builder-form">
-          <header><span>SERVER DETAILS</span><h2>Add a Minecraft server</h2><p>Each server receives its own key, health monitor, analytics scope, and discovery controls.</p></header>
-          <div className="form-grid form-grid--two">
-            <label>Server name<input placeholder="Example Network" /></label>
-            <label>Server address<input placeholder="play.example.net" /></label>
-            <label>Edition<select><option>Java</option><option>Bedrock</option><option>Java and Bedrock</option></select></label>
-            <label>Primary version<select><option>1.20.4</option><option>1.20.2</option><option>1.21</option></select></label>
-            <label>Primary category<select><option>Survival</option><option>Skyblock</option><option>Prison</option><option>Minigames</option></select></label>
-            <label>Owner role<select><option>Owner</option><option>Authorized administrator</option></select></label>
-          </div>
-          <SettingRow title="Enable discovery after verification" description="The listing may appear after ownership and safety review." checked={true} onChange={() => undefined} />
-          <SettingRow title="Enable aggregate product analytics" description="Collect supported privacy-conscious events after the plugin connects." checked={true} onChange={() => undefined} />
-          <button className="button button--primary" onClick={() => setConnected(true)}><Link2 />{connected ? "Registration started" : "Register and create key"}</button>
+          {inheritedComplete ? (
+            <div className="owner-verification">
+              <header><span>REGISTRATION COMPLETE</span><h2>Backend server linked</h2><p>This entry inherits ownership from your verified public proxy and does not need its own MOTD code.</p></header>
+              <div className="owner-verification-success"><CheckCircle2 /><div><strong>Covered by the proxy network claim</strong><p>The backend may stay private. If it later becomes a separate public entry point, register and verify that address independently.</p></div></div>
+            </div>
+          ) : !challenge ? (
+            <>
+              <header><span>STEP 1 OF 2</span><h2>Choose what players connect to</h2><p>Register a standalone Paper server or the public Velocity proxy for a network.</p></header>
+              <div className="owner-platform-choice">
+                <button className={platform === "PAPER" ? "selected" : ""} onClick={() => setPlatform("PAPER")}><Server /><span><strong>Paper server</strong><small>Verify this standalone server. Compatible with Paper from Minecraft 1.16 onward.</small></span><CheckCircle2 /></button>
+                <button className={platform === "VELOCITY" ? "selected" : ""} onClick={() => setPlatform("VELOCITY")}><Network /><span><strong>Velocity proxy</strong><small>Verify the public proxy once. Backend servers behind it do not need separate claims.</small></span><CheckCircle2 /></button>
+                <button className={platform === "DOWNSTREAM" ? "selected" : ""} disabled={verifiedProxies.length === 0} onClick={() => setPlatform("DOWNSTREAM")}><Link2 /><span><strong>Backend behind proxy</strong><small>{verifiedProxies.length ? "Link this server to an already verified proxy without another public MOTD check." : "Verify a Velocity proxy first to enable inherited registration."}</small></span><CheckCircle2 /></button>
+              </div>
+              <div className="form-grid form-grid--two owner-register-fields">
+                <label>Display name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Example Network" /></label>
+                <label>{platform === "DOWNSTREAM" ? "Backend address" : "Public address"}<input value={address} onChange={(event) => setAddress(event.target.value)} placeholder={platform === "DOWNSTREAM" ? "survival.internal:25565" : "play.example.net:25565"} /></label>
+                {platform === "DOWNSTREAM" && <label className="span-two">Verified proxy<select value={verificationParentId} onChange={(event) => setVerificationParentId(event.target.value)}>{verifiedProxies.map((proxy) => <option key={proxy.id} value={proxy.id}>{proxy.name} · {proxy.hostname}</option>)}</select></label>}
+              </div>
+              {error && <p className="owner-verification-error">{error}</p>}
+              <button className="button button--primary" disabled={name.trim().length < 3 || address.trim().length < 3 || (platform === "DOWNSTREAM" && !verificationParentId)} onClick={() => void beginVerification()}><Link2 />{platform === "DOWNSTREAM" ? "Link backend server" : "Generate verification code"}</button>
+            </>
+          ) : (
+            <div className="owner-verification">
+              <header><span>STEP 2 OF 2</span><h2>{status === "VERIFIED" ? "Server verified" : "Publish the code in your MOTD"}</h2><p>{status === "VERIFIED" ? "Ownership is confirmed. The code may now be removed automatically or manually." : "This code expires after 15 minutes. Keep the server reachable from the public internet while Nortix checks it."}</p></header>
+              {status === "VERIFIED" ? (
+                <div className="owner-verification-success"><CheckCircle2 /><div><strong>{platform === "VELOCITY" ? "Proxy network claimed" : "Paper server claimed"}</strong><p>{platform === "VELOCITY" ? "This claim covers the public proxy. Its registered backend servers inherit the network claim and do not need to expose their own MOTDs." : "This standalone server is now linked to your owner account."}</p></div></div>
+              ) : (
+                <>
+                  <div className="owner-verification-code"><small>ONE-TIME MOTD CODE</small><code>{challenge.code}</code><button onClick={() => void copyCode()}><Copy />{copied ? "Copied" : "Copy code"}</button><span>Expires {new Date(challenge.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+                  <div className="owner-verification-methods">
+                    <article><b>Plugin method</b><p>Install the {platform === "VELOCITY" ? "Nortix Velocity" : "Nortix Paper"} plugin, then run:</p><code>{platform === "VELOCITY" ? "/nortixproxy" : "/nortix"} verify {challenge.code}</code><small>The plugin temporarily appends the code to the ping MOTD and contacts the Nortix backend.</small></article>
+                    <article><b>Manual fallback</b><p>Add this exact token anywhere in the public MOTD:</p><code>[{challenge.code}]</code><small>Reload or restart the server so the public server-list ping returns it.</small></article>
+                  </div>
+                  {error && <p className="owner-verification-error">{error}</p>}
+                  <div className="owner-verification-actions"><button onClick={() => { setChallenge(null); setStatus("DETAILS"); setError(""); }}>Start over</button><button className="button button--primary" disabled={status === "CHECKING"} onClick={() => void checkVerification()}><RefreshCw />{status === "CHECKING" ? "Checking public MOTD..." : "Check verification"}</button></div>
+                </>
+              )}
+            </div>
+          )}
         </section>
         <aside className="card owner-registration-checklist">
-          <h2>What happens next</h2>
+          <h2>How ownership proof works</h2>
           {[
-            ["Ownership check", "Verify control of the server address or plugin key."],
-            ["Plugin connection", "Install Nortix and confirm a signed heartbeat."],
-            ["Safety review", "Nortix may review listing and campaign eligibility."],
-            ["Data readiness", "Supported events receive a quality and schema check."],
-            ["Discovery", "The server may appear after approval if discovery is enabled."],
+            ["Enter the public address", "Nortix creates a short-lived code for that exact host and port."],
+            ["Publish the code", "The plugin can add it to ping responses, or you may edit the MOTD yourself."],
+            ["Independent check", "The backend connects like a server-list client and reads the public MOTD."],
+            ["Claim recorded", "A matching code links the server to this signed-in owner account."],
+            ["Proxy-aware scope", "A verified Velocity entry covers its network; private backend servers are not each verified."],
           ].map(([title, note], index) => <div key={title}><b>{index + 1}</b><span><strong>{title}</strong><small>{note}</small></span></div>)}
+          <p className="owner-security-note"><LockKeyhole /> Plugin callbacks alone never claim a server. Nortix must independently observe the one-time code.</p>
         </aside>
       </div>
     </div>

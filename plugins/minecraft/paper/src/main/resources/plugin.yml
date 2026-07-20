@@ -1,0 +1,16 @@
+name: NortixVerification
+version: ${version}
+main: com.nortix.paper.NortixPaperPlugin
+api-version: "1.16"
+description: Publishes a short-lived Nortix ownership code in the server-list MOTD.
+author: Nortix
+commands:
+  nortix:
+    description: Manage Nortix server ownership verification.
+    usage: /nortix <verify CODE|status|clear>
+    permission: nortix.verify
+permissions:
+  nortix.verify:
+    description: Manage the Nortix ownership challenge.
+    default: op
+

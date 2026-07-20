@@ -31,3 +31,22 @@ export type CampaignIntegrationConfig = {
     config: Record<string, unknown>;
   }>;
 };
+
+export const VerificationPlatformSchema = z.enum(["PAPER", "VELOCITY"]);
+export type VerificationPlatform = z.infer<typeof VerificationPlatformSchema>;
+
+export const CreateServerVerificationSchema = z.object({
+  platform: VerificationPlatformSchema,
+});
+
+export const PluginVerificationHandshakeSchema = z.object({
+  code: z.string().regex(/^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$/i),
+  platform: VerificationPlatformSchema,
+  pluginVersion: z.string().min(1).max(40),
+  publicAddress: z.string().min(3).max(300).optional(),
+});
+
+export const PluginVerificationStatusSchema = z.object({
+  code: z.string().regex(/^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$/i),
+  platform: VerificationPlatformSchema,
+});

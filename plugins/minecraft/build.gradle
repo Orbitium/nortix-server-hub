@@ -1,0 +1,43 @@
+plugins {
+    id "base"
+}
+
+allprojects {
+    group = "com.nortix"
+    version = "0.1.0"
+
+    repositories {
+        mavenCentral()
+        maven { url = "https://repo.papermc.io/repository/maven-public/" }
+    }
+}
+
+subprojects {
+    apply plugin: "java"
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = "UTF-8"
+    }
+
+    tasks.withType(Jar).configureEach {
+        archiveBaseName = "nortix-${project.name}-verification"
+    }
+}
+
+tasks.register("copyPluginJars", Copy) {
+    dependsOn(":paper:jar", ":velocity:jar")
+    from(project(":paper").tasks.named("jar"))
+    from(project(":velocity").tasks.named("jar"))
+    into(layout.projectDirectory.dir("dist"))
+}
+
+tasks.register("copyWebPluginJars", Copy) {
+    dependsOn(":paper:jar", ":velocity:jar")
+    from(project(":paper").tasks.named("jar"))
+    from(project(":velocity").tasks.named("jar"))
+    into(layout.projectDirectory.dir("../../apps/web/public/downloads"))
+}
+
+tasks.named("build") {
+    dependsOn("copyPluginJars", "copyWebPluginJars")
+}

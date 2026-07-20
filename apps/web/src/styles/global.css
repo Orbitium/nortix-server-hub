@@ -8422,7 +8422,8 @@ td > small {
   font-size: 9px;
 }
 
-.owner-plugin-install li button {
+.owner-plugin-install li button,
+.owner-plugin-install li > a {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -8434,7 +8435,8 @@ td > small {
   font-size: 9px;
 }
 
-.owner-plugin-install li button svg {
+.owner-plugin-install li button svg,
+.owner-plugin-install li > a svg {
   width: 13px;
 }
 
@@ -8977,6 +8979,187 @@ td > small {
   align-items: start;
 }
 
+.owner-platform-choice {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.owner-platform-choice > button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  text-align: left;
+  background: #0b1822;
+}
+
+.owner-platform-choice > button > svg:first-child {
+  width: 21px;
+  color: #8fe95b;
+}
+
+.owner-platform-choice > button > svg:last-child {
+  width: 18px;
+  color: #50606b;
+}
+
+.owner-platform-choice > button.selected {
+  border-color: #62d936;
+  background: linear-gradient(145deg, rgba(71, 190, 47, .15), #0b1822 72%);
+  box-shadow: inset 0 0 0 1px rgba(98, 217, 54, .15);
+}
+
+.owner-platform-choice > button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.owner-platform-choice > button.selected > svg:last-child {
+  color: #7ee64c;
+}
+
+.owner-platform-choice span {
+  display: grid;
+  gap: 6px;
+}
+
+.owner-platform-choice strong,
+.owner-verification-methods b {
+  font-size: 12px;
+}
+
+.owner-platform-choice small,
+.owner-verification-methods small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.owner-register-fields {
+  margin-bottom: 18px;
+}
+
+.owner-verification {
+  display: grid;
+  gap: 18px;
+}
+
+.owner-verification-code {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 16px;
+  padding: 18px;
+  border: 1px solid rgba(113, 224, 64, .35);
+  border-radius: 10px;
+  background: rgba(32, 85, 34, .15);
+}
+
+.owner-verification-code small {
+  color: #8fe95b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.owner-verification-code code {
+  grid-column: 1;
+  font-size: clamp(18px, 2vw, 26px);
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.owner-verification-code button {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+.owner-verification-code span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.owner-verification-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.owner-verification-methods article {
+  display: grid;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0a1620;
+}
+
+.owner-verification-methods p {
+  margin: 0;
+  color: #bdc7ce;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.owner-verification-methods code {
+  overflow-x: auto;
+  padding: 10px;
+  border-radius: 6px;
+  color: #b88cff;
+  background: #151328;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.owner-verification-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owner-verification-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 113, 113, .35);
+  border-radius: 7px;
+  color: #ffaaaa;
+  background: rgba(121, 30, 30, .18);
+  font-size: 10px;
+}
+
+.owner-verification-success {
+  display: flex;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid rgba(113, 224, 64, .35);
+  border-radius: 10px;
+  background: rgba(32, 85, 34, .15);
+}
+
+.owner-verification-success > svg {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  color: #7ee64c;
+}
+
+.owner-verification-success strong {
+  font-size: 16px;
+}
+
+.owner-verification-success p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .owner-registration-checklist > div {
   display: flex;
   gap: 10px;
@@ -9049,6 +9232,11 @@ td > small {
 }
 
 @media (max-width: 780px) {
+  .owner-platform-choice,
+  .owner-verification-methods {
+    grid-template-columns: 1fr;
+  }
+
   .owner-platform {
     padding: 18px 14px 90px;
   }

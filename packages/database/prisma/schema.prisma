@@ -35,6 +35,12 @@ enum VerificationStatus {
   EXPIRED
 }
 
+enum VerificationScope {
+  SERVER
+  PROXY_NETWORK
+  PROXY_CHILD
+}
+
 enum ModerationStatus {
   PENDING
   APPROVED
@@ -222,6 +228,10 @@ model Server {
   discordUrl         String?
   websiteUrl         String?
   verificationStatus VerificationStatus @default(UNVERIFIED)
+  verificationScope  VerificationScope  @default(SERVER)
+  verificationParentId String?
+  verificationParent Server?            @relation("ProxyNetworkServers", fields: [verificationParentId], references: [id], onDelete: SetNull)
+  networkServers     Server[]            @relation("ProxyNetworkServers")
   moderationStatus   ModerationStatus    @default(PENDING)
   claimed            Boolean            @default(false)
   online             Boolean            @default(false)
@@ -237,6 +247,7 @@ model Server {
   integrationKeys    IntegrationApiKey[]
 
   @@index([ownerId])
+  @@index([verificationParentId])
   @@index([publicListing, moderationStatus])
 }
 

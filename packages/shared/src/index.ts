@@ -65,6 +65,7 @@ export const ServerInputSchema = z.object({
   versions: z.array(z.string()).min(1),
   categories: z.array(z.string()).min(1).max(6),
   tags: z.array(z.string()).max(12).default([]),
+  verificationParentId: z.string().min(1).optional(),
   websiteUrl: z.string().url().optional(),
   discordUrl: z.string().url().optional(),
 });

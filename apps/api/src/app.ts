@@ -65,6 +65,11 @@ export const buildApp = async (env: Env) => {
       "not available",
       "cannot transition",
       "draft campaigns",
+      "verification",
+      "publicly reachable",
+      "status ping",
+      "public server MOTD",
+      "verified proxy network",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),
