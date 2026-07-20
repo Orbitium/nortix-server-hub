@@ -34,6 +34,7 @@ import { Badge, Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
+import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
 import { campaigns, cosmetics, leaderboard, servers } from "../features/demo-data";
 
 const PageHeading = ({
@@ -58,6 +59,10 @@ const PageHeading = ({
 );
 
 export function DashboardHomePage() {
+  return <ReferenceDashboardHome />;
+}
+
+export function LegacyDashboardHomePage() {
   return (
     <div className="dashboard-page">
       <PageHeading

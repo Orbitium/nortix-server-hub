@@ -24,6 +24,17 @@ Both are represented by replaceable contracts and functional local mocks.
 
 Requirements: Node.js 22+, pnpm 10+, and Docker Desktop.
 
+For the lightweight frontend prototype:
+
+```bash
+pnpm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The prototype uses local fixtures when the API is unavailable.
+
+For the complete web, API, and database workflow:
+
 ```bash
 cp .env.example .env
 docker compose up -d postgres
@@ -31,7 +42,7 @@ pnpm install
 pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
-pnpm dev
+npm run dev:full
 ```
 
 Open `http://localhost:5173`. The API is at `http://localhost:4000`; health is

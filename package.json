@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "npm --prefix apps/web run dev --",
+    "dev:web": "npm --prefix apps/web run dev --",
+    "dev:api": "node tooling/dev-full.mjs --api-only",
+    "dev:full": "node tooling/dev-full.mjs",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",

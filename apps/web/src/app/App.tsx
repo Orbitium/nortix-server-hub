@@ -47,7 +47,8 @@ export function App() {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
-        <Route index element={<HomePage />} />
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="welcome" element={<HomePage />} />
         <Route path="servers" element={<BrowseServersPage />} />
         <Route path="servers/:slug" element={<ServerDetailPage />} />
         <Route path="campaigns" element={<BrowseCampaignsPage />} />
