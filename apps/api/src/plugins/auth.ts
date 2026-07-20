@@ -1,20 +1,26 @@
-import { getApps, cert, initializeApp } from "firebase-admin/app";
+import { applicationDefault, getApps, cert, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import fp from "fastify-plugin";
 import type { FastifyInstance } from "fastify";
 import { prisma } from "@nortix/database";
 import { rolePermissions, type Permission, type UserRole } from "@nortix/shared";
 import type { Env } from "../config/env.js";
+import { resolveMockUserId } from "./mock-auth.js";
 
 const hasPermission = (roles: readonly string[], permission: Permission) =>
   roles.some((role) => rolePermissions[role as UserRole]?.includes(permission));
 
 export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env }) => {
   const { env } = options;
-  const hasAdminCredential = Boolean(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
+  const hasInlineAdminCredential = Boolean(
+    env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY,
+  );
+  const hasAdminCredential = Boolean(
+    env.GOOGLE_APPLICATION_CREDENTIALS || hasInlineAdminCredential,
+  );
   if (env.AUTH_MODE === "firebase" && getApps().length === 0) {
     initializeApp(
-      hasAdminCredential
+      hasInlineAdminCredential
         ? {
             projectId: env.FIREBASE_PROJECT_ID!,
             credential: cert({
@@ -23,7 +29,12 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
               privateKey: env.FIREBASE_PRIVATE_KEY!.replaceAll("\\n", "\n"),
             }),
           }
-        : { projectId: env.FIREBASE_PROJECT_ID! },
+        : env.GOOGLE_APPLICATION_CREDENTIALS
+          ? {
+              projectId: env.FIREBASE_PROJECT_ID!,
+              credential: applicationDefault(),
+            }
+          : { projectId: env.FIREBASE_PROJECT_ID! },
     );
   }
 
@@ -36,7 +47,13 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
     let displayName: string;
 
     if (env.AUTH_MODE === "mock") {
-      const mockUid = request.headers["x-mock-user"]?.toString() ?? "seed-firebase-5";
+      const mockUid = resolveMockUserId(request.headers["x-mock-user"]);
+      if (!mockUid) {
+        await reply
+          .code(401)
+          .send({ code: "UNAUTHENTICATED", message: "An explicit local mock user is required." });
+        return;
+      }
       firebaseUid = mockUid;
       email = `${mockUid}@example.test`;
       displayName = "Local Tester";

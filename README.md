@@ -49,8 +49,8 @@ npm run dev:full
 Open `http://localhost:5173`. The API is at `http://localhost:4000`; health is
 `GET /health`.
 
-`AUTH_MODE=mock` uses seeded users during local development. The web app sends
-`x-mock-user: seed-firebase-5` by default. Change the header to:
+`AUTH_MODE=mock` can use seeded users during local development, but visitors stay
+anonymous unless a mock identity is explicitly selected. Set `VITE_MOCK_USER` to:
 
 - `seed-firebase-1` for a server owner
 - `seed-firebase-18` for a moderator
@@ -63,12 +63,11 @@ Read operations use realistic product fixtures; authenticated writes require the
 
 1. Create a Firebase project and enable Email/Password and Google providers.
 2. Add the public `VITE_FIREBASE_*` web values to `.env`.
-3. Set `FIREBASE_PROJECT_ID` for backend ID-token verification.
-4. Optionally create a Firebase Admin service account and set both
-   `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` to add immediate
-   Firebase-side revocation and disabled-user checks.
+3. Download a Firebase Admin service-account JSON file to `firebase.json` in the
+   repository root. This file is ignored by Git and excluded from Docker builds.
+4. Set `FIREBASE_PROJECT_ID` for backend ID-token verification.
 5. Change `AUTH_MODE=firebase`.
-5. Add the production web origin to Firebase authorized domains and `WEB_ORIGIN`.
+6. Add the production web origin to Firebase authorized domains and `WEB_ORIGIN`.
 
 The backend verifies ID tokens, resolves or creates a local user, then uses local roles,
 permissions, ownership, and status for authorization. Firebase custom claims are not trusted as
@@ -120,12 +119,14 @@ Copy the deployment environment and replace every production secret:
 cp .env.example .env
 ```
 
-For a production account, set `AUTH_MODE=firebase` and provide the Firebase browser
-values plus `FIREBASE_PROJECT_ID`. The API verifies token signature, issuer,
-audience, expiry, and project binding using Firebase's public keys. Supplying both
-optional Admin service-account values additionally enables immediate Firebase
-revocation and disabled-user checks. `AUTH_MODE=mock` is only intended for local
-evaluation.
+For a production account, set `AUTH_MODE=firebase`, provide the Firebase browser
+values and `FIREBASE_PROJECT_ID`, then place the downloaded Firebase Admin
+service-account file at `./firebase.json`. Compose mounts it read-only at
+`/run/secrets/firebase-service-account.json`; it is never copied into an image.
+Set `FIREBASE_SERVICE_ACCOUNT_FILE` when the host file lives elsewhere. The API
+uses the credential to verify token signature, issuer, audience, expiry, project
+binding, revocation, and disabled-user status. `AUTH_MODE=mock` is only intended
+for local evaluation.
 
 Create a remotely managed Cloudflare Tunnel in the Cloudflare dashboard, add a
 published application route for `hub.nortixlabs.com`, and set its service URL to

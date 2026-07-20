@@ -4,7 +4,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button } from "@nortix/ui";
 import { Brand } from "../components/Brand";
 import { firebaseActions, firebaseConfigured } from "../lib/firebase";
-import { markNortixAccountSession } from "../lib/auth-session";
 import { useI18n } from "../lib/i18n";
 
 export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
@@ -27,7 +26,6 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
     try {
       if (mode === "register") await firebaseActions.register(email, password);
       else await firebaseActions.signIn(email, password);
-      markNortixAccountSession();
       navigate(safeNext);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("auth.failed"));
@@ -83,9 +81,12 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             type="button"
             className="google-button"
             onClick={async () => {
-              await firebaseActions.google();
-              markNortixAccountSession();
-              navigate(safeNext);
+              try {
+                await firebaseActions.google();
+                navigate(safeNext);
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : t("auth.failed"));
+              }
             }}
           >
             <b>G</b> {t("auth.google")}

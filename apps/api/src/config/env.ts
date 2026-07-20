@@ -8,6 +8,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   AUTH_MODE: z.enum(["firebase", "mock"]).default("mock"),
   FIREBASE_PROJECT_ID: z.string().trim().optional(),
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().trim().optional(),
   FIREBASE_CLIENT_EMAIL: z.string().trim().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),
   INTEGRATION_SIGNING_SECRET: z.string().min(16).default("local-integration-secret"),
@@ -29,6 +30,20 @@ export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
   if (Boolean(result.data.FIREBASE_CLIENT_EMAIL) !== Boolean(result.data.FIREBASE_PRIVATE_KEY)) {
     throw new Error(
       "FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY must either both be configured or both be omitted.",
+    );
+  }
+  const hasFirebaseCredentialFile = Boolean(result.data.GOOGLE_APPLICATION_CREDENTIALS);
+  const hasInlineFirebaseCredential = Boolean(
+    result.data.FIREBASE_CLIENT_EMAIL && result.data.FIREBASE_PRIVATE_KEY,
+  );
+  if (
+    result.data.NODE_ENV === "production" &&
+    result.data.AUTH_MODE === "firebase" &&
+    !hasFirebaseCredentialFile &&
+    !hasInlineFirebaseCredential
+  ) {
+    throw new Error(
+      "Production Firebase authentication requires GOOGLE_APPLICATION_CREDENTIALS or a complete inline Firebase Admin credential.",
     );
   }
   if (result.data.NODE_ENV === "production" && result.data.AUTH_MODE !== "firebase") {

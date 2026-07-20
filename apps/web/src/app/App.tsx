@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { UnifiedInfoPage } from "../components/UnifiedPages";
 import { OwnerPlatform } from "../components/OwnerWorkspace";
-import { RequireAccount } from "../components/RequireAccount";
+import { RequireAccount, RequireSignIn } from "../components/RequireAccount";
 import { DashboardLayout } from "../layouts/DashboardLayout";
 import { CampaignDetailPage, ContactPage, ServerDetailPage } from "../routes/PublicPages";
 import {
@@ -85,17 +85,17 @@ export function App() {
         <Route path="dashboard" element={<DashboardHomePage />} />
         <Route path="dashboard/servers" element={<Navigate to="/servers" replace />} />
         <Route path="dashboard/campaigns" element={<Navigate to="/campaigns" replace />} />
-        <Route path="dashboard/progress" element={<ProgressPage />} />
+        <Route path="dashboard/progress" element={<RequireSignIn><ProgressPage /></RequireSignIn>} />
         <Route path="dashboard/earnings" element={<Navigate to="/dashboard/sparks-shop" replace />} />
-        <Route path="dashboard/quests" element={<QuestsPage />} />
-        <Route path="dashboard/sparks-shop" element={<SparksShopPage />} />
+        <Route path="dashboard/quests" element={<RequireSignIn><QuestsPage /></RequireSignIn>} />
+        <Route path="dashboard/sparks-shop" element={<RequireSignIn><SparksShopPage /></RequireSignIn>} />
         <Route path="dashboard/leaderboards" element={<LeaderboardsPage />} />
         <Route path="dashboard/community" element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard/referrals" element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard/profile" element={<ProfilePage />} />
-        <Route path="dashboard/inbox" element={<InboxPage />} />
-        <Route path="dashboard/settings" element={<NotificationSettingsPage />} />
-        <Route path="owner" element={<OwnerPlatform />} />
+        <Route path="dashboard/profile" element={<RequireSignIn><ProfilePage /></RequireSignIn>} />
+        <Route path="dashboard/inbox" element={<RequireSignIn><InboxPage /></RequireSignIn>} />
+        <Route path="dashboard/settings" element={<RequireSignIn><NotificationSettingsPage /></RequireSignIn>} />
+        <Route path="owner" element={<RequireSignIn><OwnerPlatform /></RequireSignIn>} />
         <Route
           path="owner/servers/new"
           element={
@@ -104,15 +104,15 @@ export function App() {
             </RequireAccount>
           }
         />
-        <Route path="owner/campaigns/new" element={<OwnerPlatform />} />
-        <Route path="owner/analytics" element={<OwnerPlatform />} />
-        <Route path="owner/balance" element={<OwnerPlatform />} />
-        <Route path="owner/integrations" element={<OwnerPlatform />} />
-        <Route path="owner/settings" element={<OwnerPlatform />} />
+        <Route path="owner/campaigns/new" element={<RequireSignIn><OwnerPlatform /></RequireSignIn>} />
+        <Route path="owner/analytics" element={<RequireSignIn><OwnerPlatform /></RequireSignIn>} />
+        <Route path="owner/balance" element={<RequireSignIn><OwnerPlatform /></RequireSignIn>} />
+        <Route path="owner/integrations" element={<RequireSignIn><OwnerPlatform /></RequireSignIn>} />
+        <Route path="owner/settings" element={<RequireSignIn><OwnerPlatform /></RequireSignIn>} />
       </Route>
       <Route path="sign-in" element={<AuthPage mode="sign-in" />} />
       <Route path="register" element={<AuthPage mode="register" />} />
-      <Route path="/admin/*" element={<AdminRoutes />} />
+      <Route path="/admin/*" element={<RequireSignIn><AdminRoutes /></RequireSignIn>} />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

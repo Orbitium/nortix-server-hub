@@ -41,6 +41,7 @@ import {
   useSparksSummary,
 } from "../features/api-data";
 import { api } from "../lib/api";
+import { useAuthSession } from "../lib/auth-session";
 import { useI18n, type TranslationKey } from "../lib/i18n";
 
 const playerNav = [
@@ -73,20 +74,21 @@ export function DashboardLayout() {
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { isAuthenticated, isInitializing } = useAuthSession();
   const showRightRail = location.pathname === "/dashboard";
   const { data: serverData } = usePublicServers();
   const { data: campaignData } = usePublicCampaigns();
-  const { data: currentUser } = useCurrentUser();
-  const { data: sparksSummary } = useSparksSummary();
+  const { data: currentUser } = useCurrentUser(isAuthenticated);
+  const { data: sparksSummary } = useSparksSummary(isAuthenticated);
   const { data: leaderboardData } = useLeaderboard();
-  const { data: dailyQuests = [] } = useDailyQuests();
+  const { data: dailyQuests = [] } = useDailyQuests(isAuthenticated);
   const servers = serverData?.items ?? [];
   const campaigns = campaignData?.items ?? [];
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
   const dailyQuest = dailyQuests[0];
-  const { data: inboxSummary } = useInboxSummary();
-  const { data: notificationItems = [] } = useNotifications(true);
-  const { data: messageItems = [] } = useInboxMessages(true);
+  const { data: inboxSummary } = useInboxSummary(isAuthenticated);
+  const { data: notificationItems = [] } = useNotifications(true, isAuthenticated);
+  const { data: messageItems = [] } = useInboxMessages(true, isAuthenticated);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -255,7 +257,7 @@ export function DashboardLayout() {
         </div>
         <div className="topbar__actions">
           <LanguageSwitcher compact />
-          <div className="message-center">
+          {isAuthenticated && <div className="message-center">
             <button
               className="icon-button"
               aria-label={`${inboxSummary?.unreadNotifications ?? 0} unread notifications`}
@@ -301,8 +303,8 @@ export function DashboardLayout() {
                 </NavLink>
               </div>
             )}
-          </div>
-          <div className="message-center">
+          </div>}
+          {isAuthenticated && <div className="message-center">
             <button
               className="icon-button desktop-only"
               aria-label={`${inboxSummary?.unreadMessages ?? 0} unread messages from Nortix`}
@@ -348,23 +350,36 @@ export function DashboardLayout() {
                 </NavLink>
               </div>
             )}
-          </div>
-          <button
+          </div>}
+          {isAuthenticated && <button
             className="icon-button desktop-only"
             aria-label={t("dashboard.openInbox")}
             onClick={() => navigate("/dashboard/inbox")}
           >
             <Inbox />
-          </button>
-          <NavLink to="/dashboard/profile" className="profile-trigger">
+          </button>}
+          <NavLink
+            to={isAuthenticated ? "/dashboard/profile" : "/sign-in?next=%2Fdashboard"}
+            className="profile-trigger"
+          >
             <span className="avatar avatar--pixel">
-              {(currentUser?.username ?? "NX").slice(0, 2).toUpperCase()}
+              {isAuthenticated
+                ? (currentUser?.username ?? "NX").slice(0, 2).toUpperCase()
+                : "G"}
             </span>
             <span>
               <strong>
-                {currentUser?.displayName ?? currentUser?.username ?? t("dashboard.account")}
+                {isInitializing
+                  ? t("dashboard.loadingAccount")
+                  : isAuthenticated
+                    ? currentUser?.displayName ?? currentUser?.username ?? t("dashboard.account")
+                    : t("dashboard.guest")}
               </strong>
-              <small>{t("dashboard.level", { level: currentUser?.testerLevel ?? "—" })}</small>
+              <small>
+                {isAuthenticated
+                  ? t("dashboard.level", { level: currentUser?.testerLevel ?? "—" })
+                  : t("nav.signIn")}
+              </small>
             </span>
             <ChevronDown size={14} />
           </NavLink>
@@ -377,7 +392,7 @@ export function DashboardLayout() {
 
       {showRightRail && (
         <aside className="right-rail">
-          <div className="rail-balances rail-balances--sparks-only">
+          {isAuthenticated ? <div className="rail-balances rail-balances--sparks-only">
             <div className="rail-balance rail-balance--sparks">
               <span>
                 <Sparkles size={15} /> Sparks
@@ -385,9 +400,17 @@ export function DashboardLayout() {
               <strong>{sparksSummary ? formatNumber(sparksSummary.balance) : "—"}</strong>
               <NavLink to="/dashboard/sparks-shop">{t("dashboard.exploreShop")}</NavLink>
             </div>
-          </div>
+          </div> : (
+            <div className="rail-card">
+              <strong>{t("dashboard.guest")}</strong>
+              <p>{t("dashboard.guestDescription")}</p>
+              <NavLink className="rail-action" to="/sign-in?next=%2Fdashboard">
+                {t("nav.signIn")}
+              </NavLink>
+            </div>
+          )}
 
-          <div className="rail-card rail-card--quest">
+          {isAuthenticated && <div className="rail-card rail-card--quest">
             <div className="rail-card__heading">
               <span>
                 <Zap size={17} /> {t("dashboard.dailyQuest")}
@@ -411,9 +434,9 @@ export function DashboardLayout() {
             <NavLink className="rail-action" to="/dashboard/quests">
               {t("dashboard.questDetails")}
             </NavLink>
-          </div>
+          </div>}
 
-          <div className="rail-card streak-card">
+          {isAuthenticated && <div className="rail-card streak-card">
             <div className="rail-card__heading">
               <span>
                 <Crown size={18} /> {t("dashboard.streak")}
@@ -429,7 +452,7 @@ export function DashboardLayout() {
             <button className="rail-action" disabled>
               {t("dashboard.endpointRequired")}
             </button>
-          </div>
+          </div>}
 
           <div className="rail-card rail-leaderboard">
             <div className="rail-card__heading">

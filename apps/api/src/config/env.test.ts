@@ -14,13 +14,24 @@ const production = {
 };
 
 describe("production environment policy", () => {
-  it("allows Firebase public-key token verification with only a project ID", () => {
+  it("rejects project-ID-only Firebase verification in production", () => {
+    expect(() => parseEnv({
+      ...production,
+      FIREBASE_CLIENT_EMAIL: undefined,
+      FIREBASE_PRIVATE_KEY: undefined,
+    })).toThrow(/requires GOOGLE_APPLICATION_CREDENTIALS/i);
+  });
+
+  it("accepts a Firebase service-account credential file", () => {
     const parsed = parseEnv({
       ...production,
       FIREBASE_CLIENT_EMAIL: undefined,
       FIREBASE_PRIVATE_KEY: undefined,
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/firebase-service-account.json",
     });
-    expect(parsed.FIREBASE_PROJECT_ID).toBe("project");
+    expect(parsed.GOOGLE_APPLICATION_CREDENTIALS).toBe(
+      "/run/secrets/firebase-service-account.json",
+    );
   });
 
   it("rejects a partial Firebase Admin credential", () => {

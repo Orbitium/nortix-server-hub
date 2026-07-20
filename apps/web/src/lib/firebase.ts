@@ -31,21 +31,21 @@ export const analytics = app
 
 export const firebaseActions = {
   async signIn(email: string, password: string) {
-    if (!auth) return { demo: true, user: { email } };
+    if (!auth) throw new Error("Sign-in is unavailable because Firebase is not configured.");
     return signInWithEmailAndPassword(auth, email, password);
   },
   async register(email: string, password: string) {
-    if (!auth) return { demo: true, user: { email } };
+    if (!auth) throw new Error("Registration is unavailable because Firebase is not configured.");
     const result = await createUserWithEmailAndPassword(auth, email, password);
     await sendEmailVerification(result.user);
     return result;
   },
   async google() {
-    if (!auth) return { demo: true };
+    if (!auth) throw new Error("Google sign-in is unavailable because Firebase is not configured.");
     return signInWithPopup(auth, new GoogleAuthProvider());
   },
   async reset(email: string) {
-    if (!auth) return { demo: true };
+    if (!auth) throw new Error("Password reset is unavailable because Firebase is not configured.");
     return sendPasswordResetEmail(auth, email);
   },
 };

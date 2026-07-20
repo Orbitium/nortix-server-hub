@@ -333,17 +333,19 @@ export const useCosmetics = () =>
     queryFn: () => api<CosmeticItem[]>("/sparks/shop"),
   });
 
-export const useSparksSummary = () =>
+export const useSparksSummary = (enabled = true) =>
   useQuery({
     queryKey: ["sparks-summary"],
     queryFn: () =>
       api<{ balance: number; cashValue: null; withdrawable: false }>("/sparks/summary"),
+    enabled,
   });
 
-export const useCurrentUser = () =>
+export const useCurrentUser = (enabled = true) =>
   useQuery({
     queryKey: ["current-user"],
     queryFn: () => api<CurrentUser>("/users/me"),
+    enabled,
   });
 
 export const useParticipations = () =>
@@ -365,10 +367,11 @@ export const useAdminReviewCampaigns = () =>
     queryFn: () => api<AdminReviewCampaign[]>("/admin/campaigns"),
   });
 
-export const useDailyQuests = () =>
+export const useDailyQuests = (enabled = true) =>
   useQuery({
     queryKey: ["daily-quests"],
     queryFn: () => api<DailyQuest[]>("/quests"),
+    enabled,
   });
 
 export const useAdminOverview = () =>
@@ -383,24 +386,27 @@ export const useAuditLogs = () =>
     queryFn: () => api<AuditLogEntry[]>("/admin/audit-logs"),
   });
 
-export const useInboxSummary = () =>
+export const useInboxSummary = (enabled = true) =>
   useQuery({
     queryKey: ["inbox-summary"],
     queryFn: () => api<InboxSummary>("/notifications/summary"),
+    enabled,
     refetchInterval: 30_000,
   });
 
-export const useNotifications = (unreadOnly = false) =>
+export const useNotifications = (unreadOnly = false, enabled = true) =>
   useQuery({
     queryKey: ["notifications", unreadOnly],
     queryFn: () => api<UserNotification[]>(`/notifications?unread=${unreadOnly}`),
+    enabled,
     refetchInterval: 30_000,
   });
 
-export const useInboxMessages = (unreadOnly = false) =>
+export const useInboxMessages = (unreadOnly = false, enabled = true) =>
   useQuery({
     queryKey: ["inbox-messages", unreadOnly],
     queryFn: () => api<InboxMessage[]>(`/messages?unread=${unreadOnly}`),
+    enabled,
     refetchInterval: 30_000,
   });
 
