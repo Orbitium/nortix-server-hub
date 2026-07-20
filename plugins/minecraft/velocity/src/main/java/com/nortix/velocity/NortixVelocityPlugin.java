@@ -121,7 +121,7 @@ public final class NortixVelocityPlugin {
                     config.load(input);
                 }
             }
-            config.putIfAbsent("api-base-url", "http://localhost:4000/v1");
+            config.putIfAbsent("api-base-url", "https://hub.nortixlabs.com/api/v1");
             config.putIfAbsent("public-address", "");
             config.putIfAbsent("verification-code", "");
             config.putIfAbsent("plugin-motd", "true");
@@ -188,7 +188,7 @@ public final class NortixVelocityPlugin {
     }
 
     private String request(String method, String path, String body) throws Exception {
-        String base = config.getProperty("api-base-url", "http://localhost:4000/v1").replaceAll("/$", "");
+        String base = config.getProperty("api-base-url", "https://hub.nortixlabs.com/api/v1").replaceAll("/$", "");
         HttpURLConnection connection = (HttpURLConnection) new URL(base + path).openConnection();
         connection.setRequestMethod(method);
         connection.setConnectTimeout(5000);

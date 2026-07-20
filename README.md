@@ -3,8 +3,9 @@
 A production-minded modular monolith for Minecraft server discovery, moderated playtesting
 campaigns, verified player rewards, Sparks progression, owner analytics, and internal operations.
 
-The prototype deliberately avoids real payment providers and automatic Minecraft verification.
-Both are represented by replaceable contracts and functional local mocks.
+The prototype deliberately avoids real payment providers. Payments are represented by
+replaceable contracts and functional local mocks. Minecraft ownership verification is
+implemented through short-lived public MOTD challenges.
 
 ## What is included
 
@@ -13,12 +14,12 @@ Both are represented by replaceable contracts and functional local mocks.
 - Fastify REST API with server-side permissions, ownership checks, rate limits, and safe errors
 - PostgreSQL + Prisma model for the full product domain
 - Append-only Earnings, Sparks, and Campaign Credit ledgers
-- Manual server ownership, campaign moderation, milestone submission, and reward approval
+- Paper and Velocity ownership verification through independently checked public MOTD codes
 - Mock payment and payout providers with signed, idempotent webhook handling
 - Signed Minecraft integration event contracts, replay protection, and an event simulator
 - Realistic deterministic seed data: 20 users, 12 servers, 8 active campaigns
 - Vitest financial/authorization/idempotency coverage and three Playwright product flows
-- Docker Compose for PostgreSQL, API, and web containers
+- Docker Compose for PostgreSQL, API, Nginx web, and Cloudflare Tunnel containers
 
 ## Local setup
 
@@ -100,14 +101,62 @@ Playwright starts the Vite preview automatically. The three critical flows cover
 
 ## Docker
 
-After generating `pnpm-lock.yaml`, run:
+The Docker deployment uses a single public origin:
+
+- Website: `https://hub.nortixlabs.com`
+- API: `https://hub.nortixlabs.com/api/v1`
+- Cloudflare Tunnel origin service: `http://web:80`
+
+PostgreSQL and Fastify stay on a private Docker network. Nginx is the only origin
+reachable by `cloudflared`; it serves the React application and proxies `/api/` to
+Fastify. The API applies committed Prisma migrations before it starts.
+
+Copy the deployment environment and replace every production secret:
 
 ```bash
-docker compose up --build
+cp .env.example .env
 ```
 
-The static frontend is served at `http://localhost:8080`, Fastify at
-`http://localhost:4000`, and PostgreSQL at `localhost:5432`.
+For a production account, set `AUTH_MODE=firebase` and provide both the Firebase
+browser values and Admin service-account values. `AUTH_MODE=mock` is only intended
+for local evaluation.
+
+Create a remotely managed Cloudflare Tunnel in the Cloudflare dashboard, add a
+published application route for `hub.nortixlabs.com`, and set its service URL to
+`http://web:80`. Copy the tunnel token into `CLOUDFLARE_TUNNEL_TOKEN` in `.env`.
+No public A record, API port, or database port is required.
+
+Start the complete public stack:
+
+```bash
+docker compose --profile tunnel up -d --build
+```
+
+For local Docker testing without Cloudflare:
+
+```bash
+# Set AUTH_MODE=mock in .env for local-only evaluation.
+docker compose up -d --build
+```
+
+Open `http://localhost:8080`. The browser still uses `/api/v1`, so the same-origin
+proxy path is exercised locally. Check container readiness with:
+
+```bash
+docker compose ps
+curl http://localhost:8080/healthz
+curl http://localhost:8080/api/health
+```
+
+To apply seed data to a fresh local database:
+
+```bash
+docker compose exec api pnpm --filter @nortix/database seed
+```
+
+Do not expose ports 4000 or 5432 in production. Rotate the database password,
+integration secret, payment webhook secret, Firebase credentials, and tunnel token
+if an environment file is ever disclosed.
 
 ## Documentation
 

@@ -124,7 +124,7 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
     }
 
     private String request(String method, String path, String body) throws Exception {
-        String base = getConfig().getString("api-base-url", "http://localhost:4000/v1");
+        String base = getConfig().getString("api-base-url", "https://hub.nortixlabs.com/api/v1");
         HttpURLConnection connection = (HttpURLConnection) new URL(base.replaceAll("/$", "") + path).openConnection();
         connection.setRequestMethod(method);
         connection.setConnectTimeout(5000);
@@ -166,4 +166,3 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
         return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
-

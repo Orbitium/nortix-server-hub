@@ -1,5 +1,4 @@
-api-base-url: "http://localhost:4000/v1"
+api-base-url: "https://hub.nortixlabs.com/api/v1"
 public-address: ""
 verification-code: ""
 plugin-motd: true
-
