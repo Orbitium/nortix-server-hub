@@ -71,6 +71,13 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
         roles: ["PLAYER"],
       },
     });
+    if (request.user.status === "SUSPENDED" || request.user.status === "BANNED") {
+      await reply.code(403).send({
+        code: "ACCOUNT_RESTRICTED",
+        message: "This account cannot access Nortix.",
+      });
+      request.user = null;
+    }
   });
 
   app.decorate("requirePermission", (permission: Permission) => async (request, reply) => {

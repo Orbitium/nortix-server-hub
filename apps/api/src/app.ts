@@ -15,6 +15,8 @@ export const buildApp = async (env: Env) => {
         "req.headers.authorization",
         "req.headers.x-nortix-signature",
         "body.payoutDestinationReference",
+        "body.token",
+        "body.code",
       ],
     },
     genReqId: () => crypto.randomUUID(),
@@ -53,6 +55,10 @@ export const buildApp = async (env: Env) => {
         });
     }
     const message = error instanceof Error ? error.message : "Unexpected error";
+    const explicitStatus =
+      typeof (error as { statusCode?: unknown }).statusCode === "number"
+        ? (error as { statusCode: number }).statusCode
+        : undefined;
     const safeMessages = [
       "not found",
       "only create",
@@ -79,12 +85,24 @@ export const buildApp = async (env: Env) => {
       "plugin token",
       "milestone tracking",
       "plugin capabilities",
+      "integration evidence",
+      "integration events",
+      "instance verification",
+      "delivery window",
+      "victim UUID",
+      "advertised capability",
+      "inactive campaign",
+      "calculated by the backend",
+      "server access",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),
     );
-    return reply.code(expose ? 400 : 500).send({
-      code: expose ? "DOMAIN_ERROR" : "INTERNAL_ERROR",
+    const statusCode = explicitStatus && explicitStatus >= 400 && explicitStatus < 500
+      ? explicitStatus
+      : expose ? 400 : 500;
+    return reply.code(statusCode).send({
+      code: statusCode === 500 ? "INTERNAL_ERROR" : "DOMAIN_ERROR",
       message: expose ? message : "The request could not be completed.",
       requestId: request.id,
     });

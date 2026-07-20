@@ -1,5 +1,6 @@
 import { prisma, type Prisma } from "@nortix/database";
 import type { CampaignInput } from "@nortix/shared";
+import { allowsPlayerMilestoneSubmission } from "../../security/policies.js";
 
 export class CampaignService {
   async create(ownerId: string, input: CampaignInput) {
@@ -79,32 +80,89 @@ export class CampaignService {
   }
 
   async join(playerId: string, campaignId: string, minecraftIdentityId?: string) {
-    const campaign = await prisma.campaign.findFirst({
-      where: {
-        id: campaignId,
-        status: "ACTIVE",
-        startsAt: { lte: new Date() },
-        endsAt: { gt: new Date() },
-      },
-      include: { _count: { select: { participations: true } } },
-    });
-    if (!campaign) throw new Error("This campaign is not currently available.");
-    if (campaign._count.participations >= campaign.maxParticipants)
-      throw new Error("This campaign is full.");
-
     return prisma.$transaction(async (tx) => {
+      const campaign = await tx.campaign.findFirst({
+        where: {
+          id: campaignId,
+          status: "ACTIVE",
+          startsAt: { lte: new Date() },
+          endsAt: { gt: new Date() },
+          server: { publicListing: true, moderationStatus: "APPROVED" },
+        },
+        include: {
+          _count: { select: { participations: true } },
+          milestones: { select: { verificationMethod: true } },
+        },
+      });
+      if (!campaign) throw new Error("This campaign is not currently available.");
+      if (campaign._count.participations >= campaign.maxParticipants) {
+        throw new Error("This campaign is full.");
+      }
+      const needsVerifiedIdentity = campaign.milestones.some(
+        (milestone) =>
+          milestone.verificationMethod === "SERVER_PLUGIN" ||
+          milestone.verificationMethod === "API",
+      );
+      const identity = minecraftIdentityId
+        ? await tx.minecraftIdentity.findFirst({
+            where: { id: minecraftIdentityId, userId: playerId, verified: true },
+            select: { id: true },
+          })
+        : null;
+      if (minecraftIdentityId && !identity) {
+        throw new Error("The selected verified Minecraft identity does not belong to this account.");
+      }
+      if (needsVerifiedIdentity && !identity) {
+        throw new Error("A verified Minecraft identity is required for this campaign.");
+      }
       const participation = await tx.campaignParticipation.upsert({
         where: { playerId_campaignId: { playerId, campaignId } },
         update: { lastActivityAt: new Date() },
         create: {
           playerId,
           campaignId,
-          minecraftIdentityId,
+          minecraftIdentityId: identity?.id,
           eligibilitySnapshot: { capturedAt: new Date().toISOString() },
         },
-        include: {
+        select: {
+          id: true,
+          playerId: true,
+          campaignId: true,
+          minecraftIdentityId: true,
+          status: true,
+          joinedAt: true,
+          lastActivityAt: true,
           campaign: {
-            include: { server: true, milestones: { orderBy: { order: "asc" } } },
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              status: true,
+              category: true,
+              startsAt: true,
+              endsAt: true,
+              server: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  logoUrl: true,
+                  online: true,
+                },
+              },
+              milestones: {
+                select: {
+                  id: true,
+                  templateType: true,
+                  title: true,
+                  publicInstructions: true,
+                  order: true,
+                  sparksReward: true,
+                  verificationMethod: true,
+                },
+                orderBy: { order: "asc" },
+              },
+            },
           },
         },
       });
@@ -124,7 +182,7 @@ export class CampaignService {
         },
       });
       return participation;
-    });
+    }, { isolationLevel: "Serializable" });
   }
 
   async submitMilestone(
@@ -138,8 +196,16 @@ export class CampaignService {
       include: { campaign: { include: { milestones: true } } },
     });
     if (!participation) throw new Error("Participation not found.");
-    if (!participation.campaign.milestones.some((milestone) => milestone.id === milestoneId)) {
+    const milestone = participation.campaign.milestones.find(
+      (item) => item.id === milestoneId,
+    );
+    if (!milestone) {
       throw new Error("Milestone does not belong to this campaign.");
+    }
+    if (!allowsPlayerMilestoneSubmission(milestone.verificationMethod)) {
+      throw new Error(
+        "This milestone can only be progressed by backend-validated integration evidence.",
+      );
     }
     return prisma.milestoneCompletion.upsert({
       where: { participationId_milestoneId: { participationId, milestoneId } },
@@ -163,12 +229,24 @@ export class CampaignService {
     return prisma.$transaction(async (tx) => {
       const completion = await tx.milestoneCompletion.findUnique({
         where: { id: completionId },
-        include: { participation: true, milestone: true },
+        include: {
+          participation: true,
+          milestone: { include: { campaign: { select: { status: true } } } },
+        },
       });
       if (!completion) throw new Error("Completion not found.");
       if (completion.status === "VERIFIED") return completion;
       if (completion.status === "REJECTED")
         throw new Error("Rejected completions require a dispute workflow.");
+      if (!["ACTIVE", "COMPLETED"].includes(completion.milestone.campaign.status)) {
+        throw new Error("Rewards cannot be approved for an inactive campaign.");
+      }
+      if (completion.verificationSource === "SERVER_PLUGIN") {
+        const evidence = completion.evidence as Record<string, unknown>;
+        if (evidence.backendCalculated !== true) {
+          throw new Error("Plugin evidence must be calculated by the backend before review.");
+        }
+      }
 
       if (!approved) {
         return tx.milestoneCompletion.update({

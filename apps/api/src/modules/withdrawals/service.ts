@@ -37,7 +37,7 @@ export class WithdrawalService {
         },
       });
       return withdrawal;
-    });
+    }, { isolationLevel: "Serializable" });
   }
 
   async transition(actorId: string, withdrawalId: string, nextStatus: string, reason?: string) {

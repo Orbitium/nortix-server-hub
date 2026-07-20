@@ -1,7 +1,6 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { prisma } from "@nortix/database";
+import { createHash, randomBytes } from "node:crypto";
+import { prisma, type Prisma } from "@nortix/database";
 import {
-  AnalyticsEventSchema,
   CampaignInputSchema,
   JoinCampaignSchema,
   MilestoneSubmissionSchema,
@@ -10,11 +9,9 @@ import {
   TeamInviteResponseSchema,
   TeamMemberRoleInputSchema,
   WithdrawalInputSchema,
-  type ServerTeamRole,
 } from "@nortix/shared";
 import {
   CreateServerVerificationSchema,
-  IntegrationEventSchema,
   PluginCapabilitiesHandshakeSchema,
   PluginVerificationHandshakeSchema,
   PluginVerificationStatusSchema,
@@ -22,7 +19,14 @@ import {
 } from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import type { Env } from "../config/env.js";
+import {
+  canAccessServer,
+  teamPermissions,
+  validatePluginEvent,
+  type ServerPermission,
+} from "../security/policies.js";
 import { CampaignService } from "./campaigns/service.js";
 import { WithdrawalService } from "./withdrawals/service.js";
 import { ServerVerificationService } from "./server-verification/service.js";
@@ -31,16 +35,25 @@ const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
 const serverVerificationService = new ServerVerificationService();
 
-const teamPermissions: Record<ServerTeamRole, string[]> = {
-  ADMIN: ["analytics", "campaigns", "integrations", "settings", "team"],
-  MANAGER: ["analytics", "campaigns"],
-  OPERATOR: ["integrations", "settings"],
-  ANALYST: ["analytics"],
-};
-
 const requireOwnedServer = async (serverId: string, userId: string) => {
   const server = await prisma.server.findFirst({ where: { id: serverId, ownerId: userId } });
   if (!server) throw new Error("Only the server owner can manage team access.");
+  return server;
+};
+
+const requireServerPermission = async (
+  serverId: string,
+  userId: string,
+  permission: ServerPermission,
+) => {
+  const server = await prisma.server.findUnique({
+    where: { id: serverId },
+    include: { teamMembers: { where: { userId }, select: { role: true } } },
+  });
+  const role = server?.teamMembers[0]?.role;
+  if (!server || !canAccessServer(server.ownerId, userId, role, permission)) {
+    throw new Error("Server access not found.");
+  }
   return server;
 };
 
@@ -51,11 +64,91 @@ const authenticateServerPlugin = async (authorization: string | undefined, serve
   if (!token.startsWith("npx_")) throw new Error("A valid server plugin token is required.");
   const credential = await prisma.integrationApiKey.findFirst({
     where: { serverId, keyHash: hashPluginToken(token), revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+    include: { server: true },
   });
   if (!credential || !credential.scopes.includes("plugin:events")) throw new Error("The server plugin token is invalid or revoked.");
+  if (!credential.server.claimed || credential.server.verificationStatus !== "VERIFIED") {
+    throw new Error("Server verification is required before accepting plugin evidence.");
+  }
   await prisma.integrationApiKey.update({ where: { id: credential.id }, data: { lastUsedAt: new Date() } });
   return credential;
 };
+
+const selfUserSelect = {
+  id: true,
+  username: true,
+  displayName: true,
+  email: true,
+  avatarUrl: true,
+  roles: true,
+  status: true,
+  countryCode: true,
+  preferredCurrency: true,
+  publicProfile: true,
+  reputationScore: true,
+  reputationTier: true,
+  testerLevel: true,
+  createdAt: true,
+  lastActiveAt: true,
+} as const;
+
+const publicServerSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  description: true,
+  versions: true,
+  edition: true,
+  categories: true,
+  tags: true,
+  logoUrl: true,
+  bannerUrl: true,
+  screenshotUrls: true,
+  discordUrl: true,
+  websiteUrl: true,
+  verificationStatus: true,
+  online: true,
+  playerCount: true,
+  maxPlayers: true,
+} as const;
+
+const publicMilestoneSelect = {
+  id: true,
+  templateType: true,
+  title: true,
+  publicInstructions: true,
+  order: true,
+  sparksReward: true,
+  verificationMethod: true,
+} as const;
+
+const profileInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(80).optional(),
+  avatarUrl: z.string().url().max(2_000).nullable().optional(),
+  publicProfile: z.record(z.string(), z.unknown()).refine(
+    (value) => JSON.stringify(value).length <= 8_000,
+    "Public profile is too large.",
+  ).optional(),
+}).strict();
+
+const campaignReviewSchema = z.object({
+  action: z.enum(["APPROVE", "REQUEST_CHANGES", "REJECT", "PAUSE", "ARCHIVE"]),
+  note: z.string().trim().max(2_000).optional(),
+}).strict();
+
+const withdrawalTransitionSchema = z.object({
+  status: z.enum(["UNDER_REVIEW", "APPROVED", "PROCESSING", "PAID", "FAILED", "CANCELLED"]),
+  reason: z.string().trim().max(2_000).optional(),
+}).strict();
+
+const completionReviewSchema = z.object({
+  approved: z.boolean(),
+  reason: z.string().trim().max(2_000).optional(),
+}).strict();
+
+const sparksPurchaseSchema = z.object({
+  itemId: z.string().min(1).max(120),
+}).strict();
 
 const parsePagination = (query: Record<string, unknown>) => ({
   page: Math.max(1, Number(query.page) || 1),
@@ -67,21 +160,22 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   const payoutProvider = new MockPayoutProvider();
   app.get("/health", async () => ({ status: "ok", service: "nortix-api" }));
 
-  app.get("/v1/auth/me", { preHandler: app.authenticate }, async (request) => request.user);
-  app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) => request.user);
+  app.get("/v1/auth/me", { preHandler: app.authenticate }, async (request) =>
+    prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }),
+  );
+  app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) =>
+    prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }),
+  );
   app.patch("/v1/users/me/profile", { preHandler: app.authenticate }, async (request) => {
-    const input = request.body as {
-      displayName?: string;
-      avatarUrl?: string;
-      publicProfile?: object;
-    };
+    const input = profileInputSchema.parse(request.body);
     return prisma.user.update({
       where: { id: request.user!.id },
       data: {
         displayName: input.displayName,
         avatarUrl: input.avatarUrl,
-        publicProfile: input.publicProfile,
+        publicProfile: input.publicProfile as Prisma.InputJsonValue | undefined,
       },
+      select: selfUserSelect,
     });
   });
   app.get("/v1/users/:username", async (request, reply) => {
@@ -96,7 +190,6 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         reputationTier: true,
         testerLevel: true,
         publicProfile: true,
-        badgeAwards: { include: { badge: true } },
       },
     });
     return user ?? reply.code(404).send({ code: "NOT_FOUND", message: "Profile not found." });
@@ -121,7 +214,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const [items, total] = await prisma.$transaction([
       prisma.server.findMany({
         where,
-        include: {
+        select: {
+          ...publicServerSelect,
           _count: { select: { campaigns: true, reviews: true } },
           reviews: { select: { rating: true } },
         },
@@ -136,15 +230,37 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/servers/:slug", async (request, reply) => {
     const { slug } = request.params as { slug: string };
     const server = await prisma.server.findFirst({
-      where: { slug, publicListing: true },
-      include: {
+      where: { slug, publicListing: true, moderationStatus: "APPROVED" },
+      select: {
+        ...publicServerSelect,
         campaigns: {
           where: { status: "ACTIVE" },
-          include: { milestones: { orderBy: { order: "asc" } } },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            category: true,
+            startsAt: true,
+            endsAt: true,
+            maxParticipants: true,
+            versionRequirements: true,
+            regionRestrictions: true,
+            milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
+          },
         },
         reviews: {
           where: { moderationStatus: "APPROVED" },
-          include: { player: { select: { username: true, displayName: true } } },
+          select: {
+            id: true,
+            rating: true,
+            text: true,
+            campaignLinked: true,
+            helpfulCount: true,
+            createdAt: true,
+            player: {
+              select: { username: true, displayName: true, avatarUrl: true },
+            },
+          },
         },
       },
     });
@@ -276,17 +392,19 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
 
   app.get("/v1/owner/servers/:id/plugin-capabilities", { preHandler: app.authenticate }, async (request) => {
     const { id } = request.params as { id: string };
-    const server = await prisma.server.findFirst({
-      where: { id, OR: [{ ownerId: request.user!.id }, { teamMembers: { some: { userId: request.user!.id } } }] },
+    await requireServerPermission(id, request.user!.id, "integrations");
+    return prisma.server.findUniqueOrThrow({
+      where: { id },
       select: { id: true, name: true, verificationParentId: true, pluginCapabilities: true, pluginLastSeenAt: true, pluginInstanceId: true },
     });
-    if (!server) throw new Error("Server plugin capabilities not found.");
-    return server;
   });
 
   app.post("/v1/plugin/capabilities", async (request) => {
     const input = PluginCapabilitiesHandshakeSchema.parse(request.body);
-    await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    if (!credential.scopes.includes("plugin:capabilities")) {
+      throw new Error("The plugin token does not allow capability registration.");
+    }
     const server = await prisma.server.update({
       where: { id: input.serverId },
       data: { pluginCapabilities: input.capabilities, pluginLastSeenAt: new Date(), pluginInstanceId: input.instanceId },
@@ -297,18 +415,41 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
 
   app.post("/v1/plugin/events", { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } }, async (request, reply) => {
     const input = ServerPluginEventSchema.parse(request.body);
-    await authenticateServerPlugin(request.headers.authorization, input.serverId);
-    const server = await prisma.server.findUniqueOrThrow({ where: { id: input.serverId }, select: { id: true, verificationParentId: true } });
-    const stored = await prisma.analyticsEvent.upsert({
+    const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    const capabilities = Array.isArray(credential.server.pluginCapabilities)
+      ? credential.server.pluginCapabilities
+      : [];
+    const advertisedMetrics = capabilities.flatMap((capability) => {
+      if (!capability || typeof capability !== "object" || !("metrics" in capability)) return [];
+      const metrics = (capability as { metrics?: unknown }).metrics;
+      return Array.isArray(metrics) ? metrics.filter((metric): metric is string => typeof metric === "string") : [];
+    });
+    const validated = validatePluginEvent(input, {
+      boundInstanceId: credential.server.pluginInstanceId,
+      advertisedMetrics,
+    });
+    const existing = await prisma.analyticsEvent.findUnique({
       where: { id: input.id },
-      update: {},
-      create: {
+      select: { id: true, serverId: true },
+    });
+    if (existing) {
+      if (existing.serverId !== input.serverId) throw new Error("Plugin event identifier is already in use.");
+      return reply.code(202).send({ accepted: true, eventId: existing.id, duplicate: true });
+    }
+    const server = credential.server;
+    const stored = await prisma.analyticsEvent.create({
+      data: {
         id: input.id,
         serverId: input.serverId,
         source: "SERVER_PLUGIN",
         type: input.type,
-        occurredAt: new Date(input.occurredAt),
-        metadata: { ...input.metadata, minecraftUuid: input.minecraftUuid, instanceId: input.instanceId },
+        occurredAt: validated.occurredAt,
+        metadata: {
+          ...validated.metadata,
+          minecraftUuid: input.minecraftUuid,
+          instanceId: input.instanceId,
+          attestation: "UNTRUSTED_SERVER_PLUGIN",
+        },
       },
     });
 
@@ -357,8 +498,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         if (value >= target) {
           await prisma.milestoneCompletion.upsert({
             where: { participationId_milestoneId: { participationId: participation.id, milestoneId: milestone.id } },
-            update: { evidence: { metric, target, observed: value, serverIds: scopedIds }, verificationSource: "SERVER_PLUGIN" },
-            create: { participationId: participation.id, milestoneId: milestone.id, evidence: { metric, target, observed: value, serverIds: scopedIds }, verificationSource: "SERVER_PLUGIN", status: "PENDING" },
+            update: { evidence: { metric, target, observed: value, serverIds: scopedIds, backendCalculated: true, attestation: "UNTRUSTED_SERVER_PLUGIN" }, verificationSource: "SERVER_PLUGIN" },
+            create: { participationId: participation.id, milestoneId: milestone.id, evidence: { metric, target, observed: value, serverIds: scopedIds, backendCalculated: true, attestation: "UNTRUSTED_SERVER_PLUGIN" }, verificationSource: "SERVER_PLUGIN", status: "PENDING" },
           });
           completed++;
         }
@@ -375,13 +516,24 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       status: "ACTIVE" as const,
       startsAt: { lte: new Date() },
       endsAt: { gt: new Date() },
+      server: { publicListing: true, moderationStatus: "APPROVED" as const },
     };
     const [items, total] = await prisma.$transaction([
       prisma.campaign.findMany({
         where,
-        include: {
-          server: true,
-          milestones: { orderBy: { order: "asc" } },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          category: true,
+          startsAt: true,
+          endsAt: true,
+          maxParticipants: true,
+          versionRequirements: true,
+          regionRestrictions: true,
+          server: { select: publicServerSelect },
+          milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
           _count: { select: { participations: true } },
         },
         orderBy: [{ publishedAt: "desc" }],
@@ -395,22 +547,24 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/campaigns/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     const campaign = await prisma.campaign.findFirst({
-      where: { id, status: { in: ["ACTIVE", "SCHEDULED", "COMPLETED"] } },
+      where: {
+        id,
+        status: { in: ["ACTIVE", "SCHEDULED", "COMPLETED"] },
+        server: { publicListing: true, moderationStatus: "APPROVED" },
+      },
       select: {
         id: true,
         title: true,
         description: true,
         status: true,
         category: true,
-        publicRewardCents: true,
         startsAt: true,
         endsAt: true,
         maxParticipants: true,
         versionRequirements: true,
         regionRestrictions: true,
-        eligibilityRules: true,
-        server: true,
-        milestones: { orderBy: { order: "asc" } },
+        server: { select: publicServerSelect },
+        milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
         _count: { select: { participations: true } },
       },
     });
@@ -428,7 +582,19 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       where: { playerId_campaignId: { playerId: request.user!.id, campaignId: id } },
       include: {
         completions: true,
-        campaign: { include: { milestones: { orderBy: { order: "asc" } } } },
+        campaign: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            category: true,
+            startsAt: true,
+            endsAt: true,
+            server: { select: publicServerSelect },
+            milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
+          },
+        },
       },
     });
   });
@@ -436,7 +602,22 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/participations", { preHandler: app.authenticate }, async (request) =>
     prisma.campaignParticipation.findMany({
       where: { playerId: request.user!.id },
-      include: { campaign: { include: { server: true, milestones: true } }, completions: true },
+      include: {
+        campaign: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            category: true,
+            startsAt: true,
+            endsAt: true,
+            server: { select: publicServerSelect },
+            milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
+          },
+        },
+        completions: true,
+      },
       orderBy: { lastActivityAt: "desc" },
     }),
   );
@@ -514,7 +695,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     prisma.cosmeticItem.findMany({ where: { available: true }, orderBy: { sparksPrice: "asc" } }),
   );
   app.post("/v1/sparks/purchases", { preHandler: app.authenticate }, async (request, reply) => {
-    const { itemId } = request.body as { itemId: string };
+    const { itemId } = sparksPurchaseSchema.parse(request.body);
     const purchase = await prisma.$transaction(async (tx) => {
       const [item, entries] = await Promise.all([
         tx.cosmeticItem.findUnique({ where: { id: itemId } }),
@@ -540,7 +721,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       return tx.cosmeticPurchase.create({
         data: { userId: request.user!.id, itemId: item.id, sparksLedgerEntryId: ledger.id },
       });
-    });
+    }, { isolationLevel: "Serializable" });
     return reply.code(201).send(purchase);
   });
 
@@ -551,8 +732,35 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       const userId = request.user!.id;
       const servers = await prisma.server.findMany({
         where: { OR: [{ ownerId: userId }, { teamMembers: { some: { userId } } }] },
-        include: {
-          campaigns: true,
+        select: {
+          id: true,
+          ownerId: true,
+          name: true,
+          slug: true,
+          description: true,
+          hostname: true,
+          port: true,
+          versions: true,
+          edition: true,
+          categories: true,
+          tags: true,
+          logoUrl: true,
+          bannerUrl: true,
+          screenshotUrls: true,
+          discordUrl: true,
+          websiteUrl: true,
+          verificationStatus: true,
+          verificationScope: true,
+          verificationParentId: true,
+          moderationStatus: true,
+          claimed: true,
+          online: true,
+          publicListing: true,
+          playerCount: true,
+          maxPlayers: true,
+          pluginLastSeenAt: true,
+          createdAt: true,
+          updatedAt: true,
           owner: { select: { id: true, username: true, displayName: true } },
           teamMembers: { where: { userId }, select: { role: true } },
         },
@@ -642,7 +850,17 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       prisma.serverTeamMember.findMany({ where: { serverId }, include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.serverTeamInvite.findMany({ where: { serverId, status: "PENDING", expiresAt: { gt: new Date() } }, include: { invitee: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: "desc" } }),
     ]);
-    return { server: { id: server.id, name: server.name }, owner: request.user, members, invites };
+    return {
+      server: { id: server.id, name: server.name },
+      owner: {
+        id: request.user!.id,
+        username: request.user!.username,
+        displayName: request.user!.displayName,
+        avatarUrl: request.user!.avatarUrl,
+      },
+      members,
+      invites,
+    };
   });
   app.patch("/v1/owner/servers/:serverId/team/members/:memberId", { preHandler: app.authenticate }, async (request) => {
     const { serverId, memberId } = request.params as { serverId: string; memberId: string };
@@ -712,6 +930,12 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     "/v1/owner/campaign-balance/checkout",
     { preHandler: app.requirePermission("campaign:create") },
     async (request, reply) => {
+      if (env.NODE_ENV === "production") {
+        return reply.code(503).send({
+          code: "PAYMENTS_NOT_CONFIGURED",
+          message: "Campaign balance checkout is unavailable until a production payment provider is configured.",
+        });
+      }
       const { amountCents } = request.body as { amountCents: number };
       if (!Number.isInteger(amountCents) || amountCents < 1000 || amountCents > 1_000_000) {
         return reply
@@ -729,6 +953,9 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     },
   );
   app.post("/v1/payments/webhooks/mock", async (request, reply) => {
+    if (env.NODE_ENV === "production") {
+      return reply.code(404).send({ code: "NOT_FOUND", message: "Endpoint not found." });
+    }
     const signature = String(request.headers["x-payment-signature"] ?? "");
     const event = await paymentProvider.verifyWebhook(request.body, signature);
     const stored = await prisma.$transaction(async (tx) => {
@@ -806,7 +1033,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     async () =>
       prisma.campaign.findMany({
         where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUESTED"] } },
-        include: { server: true, owner: true, milestones: true },
+        include: {
+          server: { select: { id: true, name: true, slug: true, verificationStatus: true, moderationStatus: true } },
+          owner: { select: { id: true, username: true, displayName: true, email: true, status: true } },
+          milestones: true,
+        },
         orderBy: { createdAt: "asc" },
       }),
   );
@@ -815,10 +1046,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.requirePermission("campaign:review") },
     async (request) => {
       const { id } = request.params as { id: string };
-      const body = request.body as {
-        action: "APPROVE" | "REQUEST_CHANGES" | "REJECT" | "PAUSE" | "ARCHIVE";
-        note?: string;
-      };
+      const body = campaignReviewSchema.parse(request.body);
       const status = {
         APPROVE: "APPROVED",
         REQUEST_CHANGES: "CHANGES_REQUESTED",
@@ -856,7 +1084,19 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.requirePermission("withdrawal:review") },
     async () =>
       prisma.withdrawalRequest.findMany({
-        include: { player: true },
+        include: {
+          player: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              email: true,
+              status: true,
+              reputationScore: true,
+              reputationTier: true,
+            },
+          },
+        },
         orderBy: { createdAt: "asc" },
       }),
   );
@@ -865,7 +1105,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.requirePermission("withdrawal:review") },
     async (request) => {
       const { id } = request.params as { id: string };
-      const { status, reason } = request.body as { status: string; reason?: string };
+      const { status, reason } = withdrawalTransitionSchema.parse(request.body);
       const updated = await withdrawalService.transition(request.user!.id, id, status, reason);
       if (status === "PROCESSING") {
         const recipient = await payoutProvider.createRecipient({
@@ -895,17 +1135,17 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.requirePermission("ledger:view_internal") },
     async () => ({
       earnings: await prisma.earningsLedgerEntry.findMany({
-        include: { user: true },
+        include: { user: { select: { id: true, username: true, displayName: true, status: true } } },
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
       sparks: await prisma.sparksLedgerEntry.findMany({
-        include: { user: true },
+        include: { user: { select: { id: true, username: true, displayName: true, status: true } } },
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
       campaignCredits: await prisma.campaignCreditLedgerEntry.findMany({
-        include: { owner: true },
+        include: { owner: { select: { id: true, username: true, displayName: true, status: true } } },
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
@@ -913,10 +1153,10 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   );
   app.get(
     "/v1/admin/audit-logs",
-    { preHandler: app.requirePermission("campaign:review") },
+    { preHandler: app.requirePermission("ledger:view_internal") },
     async () =>
       prisma.auditLog.findMany({
-        include: { actor: true },
+        include: { actor: { select: { id: true, username: true, displayName: true, roles: true } } },
         orderBy: { createdAt: "desc" },
         take: 200,
       }),
@@ -926,63 +1166,38 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.requirePermission("reward:approve") },
     async (request) => {
       const { id } = request.params as { id: string };
-      const { approved, reason } = request.body as { approved: boolean; reason?: string };
+      const { approved, reason } = completionReviewSchema.parse(request.body);
       return campaignService.reviewCompletion(request.user!.id, id, approved, reason);
     },
   );
 
-  const integrationHandler = async (
-    request: any,
-    reply: any,
-    source: "SERVER_PLUGIN" | "CLIENT_MOD",
-  ) => {
-    const timestamp = String(request.headers["x-nortix-timestamp"] ?? "");
-    const signature = String(request.headers["x-nortix-signature"] ?? "");
-    const idempotencyKey = String(request.headers["idempotency-key"] ?? "");
-    if (!timestamp || Math.abs(Date.now() - Date.parse(timestamp)) > 5 * 60_000) {
-      return reply
-        .code(401)
-        .send({
-          code: "REPLAY_REJECTED",
-          message: "Event timestamp is outside the allowed window.",
-        });
-    }
-    const raw = JSON.stringify(request.body);
-    const expected = createHmac("sha256", env.INTEGRATION_SIGNING_SECRET)
-      .update(`${timestamp}.${raw}`)
-      .digest("hex");
-    if (
-      expected.length !== signature.length ||
-      !timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
-    ) {
-      return reply
-        .code(401)
-        .send({ code: "INVALID_SIGNATURE", message: "Integration signature is invalid." });
-    }
-    const input = IntegrationEventSchema.parse(request.body);
-    const event = AnalyticsEventSchema.parse({ ...input, source });
-    const stored = await prisma.analyticsEvent.upsert({
-      where: { id: event.id },
-      update: {},
-      create: { ...event, metadata: event.metadata as any },
-    });
-    return reply.code(202).send({ accepted: true, eventId: stored.id, idempotencyKey });
-  };
   app.post(
     "/v1/integrations/server/events",
     { config: { rateLimit: { max: 200, timeWindow: "1 minute" } } },
-    (request, reply) => integrationHandler(request, reply, "SERVER_PLUGIN"),
+    (_request, reply) => reply.code(410).send({
+      code: "ENDPOINT_RETIRED",
+      message: "Use a server-scoped plugin token with /v1/plugin/events.",
+    }),
   );
   app.post(
     "/v1/integrations/client/events",
     { config: { rateLimit: { max: 100, timeWindow: "1 minute" } } },
-    (request, reply) => integrationHandler(request, reply, "CLIENT_MOD"),
+    (_request, reply) => reply.code(410).send({
+      code: "ENDPOINT_RETIRED",
+      message: "Client-submitted integration events are not authoritative.",
+    }),
   );
   app.get(
     "/v1/integrations/campaigns/:campaignId/config",
     { preHandler: app.authenticate },
     async (request) => {
       const { campaignId } = request.params as { campaignId: string };
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { serverId: true },
+      });
+      if (!campaign) throw new Error("Campaign not found.");
+      await requireServerPermission(campaign.serverId, request.user!.id, "campaigns");
       return prisma.campaign.findUnique({
         where: { id: campaignId },
         select: {

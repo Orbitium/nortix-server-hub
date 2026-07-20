@@ -17,8 +17,8 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
-export const loadEnv = (): Env => {
-  const result = EnvSchema.safeParse(process.env);
+export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
+  const result = EnvSchema.safeParse(input);
   if (!result.success) {
     throw new Error(`Invalid environment configuration: ${z.prettifyError(result.error)}`);
   }
@@ -30,5 +30,17 @@ export const loadEnv = (): Env => {
   ) {
     throw new Error("Firebase Admin credentials are required when AUTH_MODE=firebase.");
   }
+  if (result.data.NODE_ENV === "production" && result.data.AUTH_MODE !== "firebase") {
+    throw new Error("Production requires AUTH_MODE=firebase; mock authentication is development-only.");
+  }
+  if (
+    result.data.NODE_ENV === "production" &&
+    (result.data.INTEGRATION_SIGNING_SECRET === "local-integration-secret" ||
+      result.data.PAYMENT_WEBHOOK_SECRET === "local-payment-secret")
+  ) {
+    throw new Error("Production signing and webhook secrets must be explicitly configured.");
+  }
   return result.data;
 };
+
+export const loadEnv = (): Env => parseEnv(process.env);
