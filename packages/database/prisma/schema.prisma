@@ -176,55 +176,55 @@ enum CrackedLinkStatus {
 }
 
 model User {
-  id                     String                    @id @default(cuid())
-  firebaseUid            String                    @unique
-  username               String                    @unique
-  displayName            String
-  email                  String                    @unique
-  avatarUrl              String?
-  roles                  UserRole[]                @default([PLAYER])
-  status                 UserStatus                @default(ACTIVE)
-  countryCode            String?
-  preferredCurrency      String                    @default("USD")
-  publicProfile          Json                      @default("{}")
-  moderationState        Json                      @default("{}")
-  reputationScore        Int                       @default(0)
-  reputationTier         String                    @default("New Tester")
-  testerLevel            Int                       @default(1)
-  sparksBalanceCache     Int                       @default(0)
-  earningsBalanceCache   Int                       @default(0)
-  pendingEarningsCache   Int                       @default(0)
-  createdAt              DateTime                  @default(now())
-  lastActiveAt           DateTime                  @default(now())
-  minecraftIdentities    MinecraftIdentity[]
-  ownedServers           Server[]                  @relation("ServerOwner")
-  serverMemberships      ServerTeamMember[]        @relation("ServerTeamUser")
-  invitedServerMembers   ServerTeamMember[]        @relation("ServerTeamInviter")
-  sentServerInvites      ServerTeamInvite[]        @relation("ServerInviteSender")
-  receivedServerInvites  ServerTeamInvite[]        @relation("ServerInviteRecipient")
-  ownedCampaigns         Campaign[]                @relation("CampaignOwner")
-  participations         CampaignParticipation[]
-  reviews                Review[]
-  withdrawals            WithdrawalRequest[]       @relation("WithdrawalPlayer")
-  reviewedWithdrawals    WithdrawalRequest[]       @relation("WithdrawalReviewer")
-  earningsLedger         EarningsLedgerEntry[]     @relation("EarningsUser")
-  createdEarningsEntries EarningsLedgerEntry[]     @relation("EarningsCreator")
-  sparksLedger           SparksLedgerEntry[]       @relation("SparksUser")
-  createdSparksEntries   SparksLedgerEntry[]       @relation("SparksCreator")
-  campaignCreditLedger   CampaignCreditLedgerEntry[] @relation("CampaignCreditOwner")
-  createdCreditEntries   CampaignCreditLedgerEntry[] @relation("CampaignCreditCreator")
-  reviewedCompletions    MilestoneCompletion[]     @relation("CompletionReviewer")
-  cosmeticPurchases      CosmeticPurchase[]
-  analyticsEvents        AnalyticsEvent[]
-  fraudFlags             FraudFlag[]               @relation("FraudSubjectUser")
-  createdFraudFlags      FraudFlag[]               @relation("FraudFlagCreator")
-  moderationCases        ModerationCase[]          @relation("ModerationSubjectUser")
-  assignedCases          ModerationCase[]          @relation("ModerationAssignee")
-  auditLogs              AuditLog[]                @relation("AuditActor")
-  userQuests             UserQuest[]
-  badgeAwards            BadgeAward[]
-  premiumIdentityClaims  PremiumIdentityClaim[]
-  crackedAccountLinks    CrackedAccountLink[]
+  id                        String                      @id @default(cuid())
+  firebaseUid               String                      @unique
+  username                  String                      @unique
+  displayName               String
+  email                     String                      @unique
+  avatarUrl                 String?
+  roles                     UserRole[]                  @default([PLAYER])
+  status                    UserStatus                  @default(ACTIVE)
+  countryCode               String?
+  preferredCurrency         String                      @default("USD")
+  publicProfile             Json                        @default("{}")
+  moderationState           Json                        @default("{}")
+  reputationScore           Int                         @default(0)
+  reputationTier            String                      @default("New Tester")
+  testerLevel               Int                         @default(1)
+  sparksBalanceCache        Int                         @default(0)
+  earningsBalanceCache      Int                         @default(0)
+  pendingEarningsCache      Int                         @default(0)
+  createdAt                 DateTime                    @default(now())
+  lastActiveAt              DateTime                    @default(now())
+  minecraftIdentities       MinecraftIdentity[]
+  ownedServers              Server[]                    @relation("ServerOwner")
+  serverMemberships         ServerTeamMember[]          @relation("ServerTeamUser")
+  invitedServerMembers      ServerTeamMember[]          @relation("ServerTeamInviter")
+  sentServerInvites         ServerTeamInvite[]          @relation("ServerInviteSender")
+  receivedServerInvites     ServerTeamInvite[]          @relation("ServerInviteRecipient")
+  ownedCampaigns            Campaign[]                  @relation("CampaignOwner")
+  participations            CampaignParticipation[]
+  reviews                   Review[]
+  withdrawals               WithdrawalRequest[]         @relation("WithdrawalPlayer")
+  reviewedWithdrawals       WithdrawalRequest[]         @relation("WithdrawalReviewer")
+  earningsLedger            EarningsLedgerEntry[]       @relation("EarningsUser")
+  createdEarningsEntries    EarningsLedgerEntry[]       @relation("EarningsCreator")
+  sparksLedger              SparksLedgerEntry[]         @relation("SparksUser")
+  createdSparksEntries      SparksLedgerEntry[]         @relation("SparksCreator")
+  campaignCreditLedger      CampaignCreditLedgerEntry[] @relation("CampaignCreditOwner")
+  createdCreditEntries      CampaignCreditLedgerEntry[] @relation("CampaignCreditCreator")
+  reviewedCompletions       MilestoneCompletion[]       @relation("CompletionReviewer")
+  cosmeticPurchases         CosmeticPurchase[]
+  analyticsEvents           AnalyticsEvent[]
+  fraudFlags                FraudFlag[]                 @relation("FraudSubjectUser")
+  createdFraudFlags         FraudFlag[]                 @relation("FraudFlagCreator")
+  moderationCases           ModerationCase[]            @relation("ModerationSubjectUser")
+  assignedCases             ModerationCase[]            @relation("ModerationAssignee")
+  auditLogs                 AuditLog[]                  @relation("AuditActor")
+  userQuests                UserQuest[]
+  badgeAwards               BadgeAward[]
+  premiumIdentityClaims     PremiumIdentityClaim[]
+  crackedAccountLinks       CrackedAccountLink[]
   minecraftIdentityActivity MinecraftIdentityActivity[]
 
   @@index([status])
@@ -232,16 +232,16 @@ model User {
 }
 
 model MinecraftIdentity {
-  id                String             @id @default(cuid())
-  uuid              String             @unique
-  username          String
-  lastKnownUsername String
-  verified          Boolean            @default(false)
+  id                 String                  @id @default(cuid())
+  uuid               String                  @unique
+  username           String
+  lastKnownUsername  String
+  verified           Boolean                 @default(false)
   verificationMethod String?
-  userId            String
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt         DateTime            @default(now())
-  participations    CampaignParticipation[]
+  userId             String
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                @default(now())
+  participations     CampaignParticipation[]
 
   @@index([userId])
 }
@@ -278,54 +278,72 @@ model MinecraftIdentityActivity {
 }
 
 model Server {
-  id                 String             @id @default(cuid())
-  ownerId            String
-  owner              User               @relation("ServerOwner", fields: [ownerId], references: [id])
-  name               String
-  slug               String             @unique
-  description        String
-  hostname           String
-  port               Int                @default(25565)
-  versions           String[]
-  edition            ServerEdition
-  categories         String[]
-  tags               String[]
-  logoUrl            String?
-  bannerUrl          String?
-  screenshotUrls     String[]
-  discordUrl         String?
-  websiteUrl         String?
-  verificationStatus VerificationStatus @default(UNVERIFIED)
-  verificationScope  VerificationScope  @default(SERVER)
-  verificationParentId String?
-  verificationParent Server?            @relation("ProxyNetworkServers", fields: [verificationParentId], references: [id], onDelete: SetNull)
-  networkServers     Server[]            @relation("ProxyNetworkServers")
-  moderationStatus   ModerationStatus    @default(PENDING)
-  claimed            Boolean            @default(false)
-  online             Boolean            @default(false)
-  publicListing      Boolean             @default(false)
-  playerCount        Int?
-  maxPlayers         Int?
-  pluginCapabilities Json               @default("[]")
-  pluginLastSeenAt   DateTime?
-  pluginInstanceId   String?
-  playerHistorySyncedAt DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  verifications      ServerVerification[]
-  campaigns          Campaign[]
-  reviews            Review[]
-  analyticsEvents    AnalyticsEvent[]
-  integrationKeys    IntegrationApiKey[]
-  teamMembers        ServerTeamMember[]
-  teamInvites        ServerTeamInvite[]
-  crackedAccountLinks CrackedAccountLink[]
-  playerPresences    ServerPlayerPresence[]
+  id                        String                      @id @default(cuid())
+  ownerId                   String
+  owner                     User                        @relation("ServerOwner", fields: [ownerId], references: [id])
+  name                      String
+  slug                      String                      @unique
+  description               String
+  hostname                  String
+  port                      Int                         @default(25565)
+  versions                  String[]
+  edition                   ServerEdition
+  categories                String[]
+  tags                      String[]
+  logoUrl                   String?
+  bannerUrl                 String?
+  screenshotUrls            String[]
+  discordUrl                String?
+  websiteUrl                String?
+  verificationStatus        VerificationStatus          @default(UNVERIFIED)
+  verificationScope         VerificationScope           @default(SERVER)
+  verificationParentId      String?
+  verificationParent        Server?                     @relation("ProxyNetworkServers", fields: [verificationParentId], references: [id], onDelete: SetNull)
+  networkServers            Server[]                    @relation("ProxyNetworkServers")
+  moderationStatus          ModerationStatus            @default(PENDING)
+  claimed                   Boolean                     @default(false)
+  online                    Boolean                     @default(false)
+  publicListing             Boolean                     @default(false)
+  playerCount               Int?
+  maxPlayers                Int?
+  pluginCapabilities        Json                        @default("[]")
+  pluginLastSeenAt          DateTime?
+  pluginInstanceId          String?
+  playerHistorySyncedAt     DateTime?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+  verifications             ServerVerification[]
+  campaigns                 Campaign[]
+  reviews                   Review[]
+  analyticsEvents           AnalyticsEvent[]
+  integrationKeys           IntegrationApiKey[]
+  teamMembers               ServerTeamMember[]
+  teamInvites               ServerTeamInvite[]
+  crackedAccountLinks       CrackedAccountLink[]
+  playerPresences           ServerPlayerPresence[]
+  activitySamples           ServerActivitySample[]
   minecraftIdentityActivity MinecraftIdentityActivity[]
 
   @@index([ownerId])
   @@index([verificationParentId])
   @@index([publicListing, moderationStatus])
+}
+
+model ServerActivitySample {
+  id             String   @id
+  serverId       String
+  server         Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  observedAt     DateTime
+  receivedAt     DateTime @default(now())
+  onlinePlayers  Int
+  maxPlayers     Int?
+  platform       String
+  pluginVersion  String
+  serverVersion  String?
+  backendCounts  Json     @default("{}")
+  playerHashes   String[]
+
+  @@index([serverId, observedAt])
 }
 
 model ServerPlayerPresence {
@@ -342,15 +360,15 @@ model ServerPlayerPresence {
 }
 
 model CrackedAccountLink {
-  id                 String            @id @default(cuid())
+  id                 String                  @id @default(cuid())
   userId             String
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   serverId           String
-  server             Server            @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  server             Server                  @relation(fields: [serverId], references: [id], onDelete: Cascade)
   minecraftUsername  String
   normalizedUsername String
-  status             CrackedLinkStatus @default(PENDING)
-  reservedAt         DateTime          @default(now())
+  status             CrackedLinkStatus       @default(PENDING)
+  reservedAt         DateTime                @default(now())
   expiresAt          DateTime
   activatedAt        DateTime?
   releasedAt         DateTime?
@@ -399,47 +417,53 @@ model ServerTeamInvite {
 }
 
 model ServerVerification {
-  id          String             @id @default(cuid())
-  serverId    String
-  server      Server             @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  provider    String
-  challenge   Json
-  evidence    Json?
-  status      VerificationStatus @default(PENDING)
-  reviewedBy  String?
-  reviewNote  String?
-  expiresAt   DateTime?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id         String             @id @default(cuid())
+  serverId   String
+  server     Server             @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  provider   String
+  challenge  Json
+  evidence   Json?
+  status     VerificationStatus @default(PENDING)
+  reviewedBy String?
+  reviewNote String?
+  expiresAt  DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
 
   @@index([serverId, status])
 }
 
 model Campaign {
-  id                    String                 @id @default(cuid())
+  id                    String                  @id @default(cuid())
   serverId              String
-  server                Server                 @relation(fields: [serverId], references: [id])
+  server                Server                  @relation(fields: [serverId], references: [id])
   ownerId               String
-  owner                 User                   @relation("CampaignOwner", fields: [ownerId], references: [id])
+  owner                 User                    @relation("CampaignOwner", fields: [ownerId], references: [id])
   title                 String
   description           String
-  status                CampaignStatus         @default(DRAFT)
+  status                CampaignStatus          @default(DRAFT)
   category              String
   internalBudgetCents   Int
+  campaignBudgetCredits Int                    @default(0)
   publicRewardCents     Int
   startsAt              DateTime
   endsAt                DateTime
   maxParticipants       Int
   completionLimit       Int
-  eligibilityRules      Json                   @default("{}")
+  minimumSparksReward   Int                     @default(0)
+  maximumSparksReward   Int                     @default(0)
+  potentialExposureMin  Int                     @default(0)
+  potentialExposureMax  Int                     @default(0)
+  automaticVerification Boolean                 @default(true)
+  eligibilityRules      Json                    @default("{}")
   versionRequirements   String[]
   regionRestrictions    String[]
   moderationNotes       String?
   rejectionReason       String?
-  internalRiskScore     Int                    @default(0)
+  internalRiskScore     Int                     @default(0)
   publishedAt           DateTime?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
   milestones            CampaignMilestone[]
   participations        CampaignParticipation[]
   analyticsEvents       AnalyticsEvent[]
@@ -452,64 +476,64 @@ model Campaign {
 }
 
 model MilestoneTemplate {
-  id                       String   @id @default(cuid())
-  type                     String   @unique
-  title                    String
-  description              String
-  verificationMethods      String[]
-  requiredConfiguration    Json
-  expectedDurationMinutes  Int
-  minimumRewardCents       Int
-  maximumRewardCents       Int
-  abuseRisk                Int
-  manualReviewRequired     Boolean  @default(false)
-  enabled                  Boolean  @default(true)
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  type                    String   @unique
+  title                   String
+  description             String
+  verificationMethods     String[]
+  requiredConfiguration   Json
+  expectedDurationMinutes Int
+  minimumRewardCents      Int
+  maximumRewardCents      Int
+  abuseRisk               Int
+  manualReviewRequired    Boolean  @default(false)
+  enabled                 Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model CampaignMilestone {
-  id                   String                @id @default(cuid())
-  campaignId           String
-  campaign             Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  templateType         String
-  title                String
-  publicInstructions   String
-  verificationConfig   Json
-  order                Int
-  publicRewardCents    Int
-  sparksReward         Int
+  id                     String                @id @default(cuid())
+  campaignId             String
+  campaign               Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  templateType           String
+  title                  String
+  publicInstructions     String
+  verificationConfig     Json
+  order                  Int
+  publicRewardCents      Int
+  sparksReward           Int
   completionRequirements Json
-  verificationMethod   String
-  reviewRequired       Boolean               @default(false)
+  verificationMethod     String
+  reviewRequired         Boolean               @default(false)
   maximumCompletionCount Int?
-  completions          MilestoneCompletion[]
+  completions            MilestoneCompletion[]
 
   @@unique([campaignId, order])
   @@index([campaignId])
 }
 
 model CampaignParticipation {
-  id                  String                 @id @default(cuid())
-  playerId            String
-  player              User                   @relation(fields: [playerId], references: [id])
-  campaignId          String
-  campaign            Campaign               @relation(fields: [campaignId], references: [id])
-  minecraftIdentityId String?
-  minecraftIdentity   MinecraftIdentity?     @relation(fields: [minecraftIdentityId], references: [id])
-  crackedAccountLinkId String?
-  crackedAccountLink  CrackedAccountLink?    @relation(fields: [crackedAccountLinkId], references: [id])
-  status              ParticipationStatus    @default(JOINED)
-  currentMilestone    Int                    @default(0)
-  eligibilitySnapshot Json
+  id                     String                @id @default(cuid())
+  playerId               String
+  player                 User                  @relation(fields: [playerId], references: [id])
+  campaignId             String
+  campaign               Campaign              @relation(fields: [campaignId], references: [id])
+  minecraftIdentityId    String?
+  minecraftIdentity      MinecraftIdentity?    @relation(fields: [minecraftIdentityId], references: [id])
+  crackedAccountLinkId   String?
+  crackedAccountLink     CrackedAccountLink?   @relation(fields: [crackedAccountLinkId], references: [id])
+  status                 ParticipationStatus   @default(JOINED)
+  currentMilestone       Int                   @default(0)
+  eligibilitySnapshot    Json
   disqualificationReason String?
-  fraudReviewState    RiskState              @default(CLEAR)
-  joinedAt            DateTime               @default(now())
-  lastActivityAt      DateTime               @default(now())
-  completedAt         DateTime?
-  completions         MilestoneCompletion[]
-  feedback            FeedbackResponse?
-  analyticsEvents     AnalyticsEvent[]
+  fraudReviewState       RiskState             @default(CLEAR)
+  joinedAt               DateTime              @default(now())
+  lastActivityAt         DateTime              @default(now())
+  completedAt            DateTime?
+  completions            MilestoneCompletion[]
+  feedback               FeedbackResponse?
+  analyticsEvents        AnalyticsEvent[]
 
   @@unique([playerId, campaignId])
   @@index([campaignId, status])
@@ -518,32 +542,32 @@ model CampaignParticipation {
 }
 
 model MilestoneCompletion {
-  id                      String               @id @default(cuid())
-  participationId         String
-  participation           CampaignParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
-  milestoneId             String
-  milestone               CampaignMilestone    @relation(fields: [milestoneId], references: [id])
-  submittedAt             DateTime              @default(now())
-  evidence                Json
-  verificationSource      String
-  status                  CompletionStatus      @default(PENDING)
-  reviewedById            String?
-  reviewedBy              User?                 @relation("CompletionReviewer", fields: [reviewedById], references: [id])
-  reviewedAt              DateTime?
-  rejectionReason         String?
-  rewardTransactionId     String?               @unique
-  sparksTransactionId     String?               @unique
-  rewardTransaction       EarningsLedgerEntry?  @relation("CompletionEarnings", fields: [rewardTransactionId], references: [id])
-  sparksTransaction       SparksLedgerEntry?    @relation("CompletionSparks", fields: [sparksTransactionId], references: [id])
+  id                  String                @id @default(cuid())
+  participationId     String
+  participation       CampaignParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  milestoneId         String
+  milestone           CampaignMilestone     @relation(fields: [milestoneId], references: [id])
+  submittedAt         DateTime              @default(now())
+  evidence            Json
+  verificationSource  String
+  status              CompletionStatus      @default(PENDING)
+  reviewedById        String?
+  reviewedBy          User?                 @relation("CompletionReviewer", fields: [reviewedById], references: [id])
+  reviewedAt          DateTime?
+  rejectionReason     String?
+  rewardTransactionId String?               @unique
+  sparksTransactionId String?               @unique
+  rewardTransaction   EarningsLedgerEntry?  @relation("CompletionEarnings", fields: [rewardTransactionId], references: [id])
+  sparksTransaction   SparksLedgerEntry?    @relation("CompletionSparks", fields: [sparksTransactionId], references: [id])
 
   @@unique([participationId, milestoneId])
   @@index([status, submittedAt])
 }
 
 model FeedbackResponse {
-  id                 String                  @id @default(cuid())
-  participationId    String                  @unique
-  participation      CampaignParticipation   @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  id                 String                @id @default(cuid())
+  participationId    String                @unique
+  participation      CampaignParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
   overallRating      Int
   onboardingClarity  Int
   gameplayClarity    Int
@@ -551,8 +575,8 @@ model FeedbackResponse {
   difficulty         Int
   likelihoodToReturn Int
   comments           String
-  bugReports         Json                    @default("[]")
-  createdAt          DateTime                @default(now())
+  bugReports         Json                  @default("[]")
+  createdAt          DateTime              @default(now())
 }
 
 model Review {
@@ -572,46 +596,46 @@ model Review {
 }
 
 model WithdrawalRequest {
-  id                         String           @id @default(cuid())
-  playerId                   String
-  player                     User             @relation("WithdrawalPlayer", fields: [playerId], references: [id])
-  requestedAmountCents       Int
-  currency                   String
-  payoutProvider             String
-  payoutDestinationReference String
-  status                     WithdrawalStatus @default(REQUESTED)
-  feesCents                  Int              @default(0)
-  finalPaidAmountCents       Int?
-  reviewState                RiskState        @default(CLEAR)
-  fraudState                 RiskState        @default(CLEAR)
+  id                           String           @id @default(cuid())
+  playerId                     String
+  player                       User             @relation("WithdrawalPlayer", fields: [playerId], references: [id])
+  requestedAmountCents         Int
+  currency                     String
+  payoutProvider               String
+  payoutDestinationReference   String
+  status                       WithdrawalStatus @default(REQUESTED)
+  feesCents                    Int              @default(0)
+  finalPaidAmountCents         Int?
+  reviewState                  RiskState        @default(CLEAR)
+  fraudState                   RiskState        @default(CLEAR)
   providerTransactionReference String?
-  reviewedById               String?
-  reviewedBy                 User?            @relation("WithdrawalReviewer", fields: [reviewedById], references: [id])
-  internalNote               String?
-  createdAt                  DateTime         @default(now())
-  updatedAt                  DateTime         @updatedAt
-  completedAt                DateTime?
+  reviewedById                 String?
+  reviewedBy                   User?            @relation("WithdrawalReviewer", fields: [reviewedById], references: [id])
+  internalNote                 String?
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
+  completedAt                  DateTime?
 
   @@index([status, createdAt])
   @@index([playerId])
 }
 
 model EarningsLedgerEntry {
-  id              String                   @id @default(cuid())
+  id              String                  @id @default(cuid())
   userId          String
-  user            User                     @relation("EarningsUser", fields: [userId], references: [id])
+  user            User                    @relation("EarningsUser", fields: [userId], references: [id])
   direction       LedgerDirection
   amountCents     Int
   currency        String
   transactionType EarningsTransactionType
   referenceType   String
   referenceId     String
-  idempotencyKey  String                   @unique
+  idempotencyKey  String                  @unique
   createdById     String?
-  createdBy       User?                    @relation("EarningsCreator", fields: [createdById], references: [id])
+  createdBy       User?                   @relation("EarningsCreator", fields: [createdById], references: [id])
   internalNote    String?
-  createdAt       DateTime                 @default(now())
-  completion      MilestoneCompletion?     @relation("CompletionEarnings")
+  createdAt       DateTime                @default(now())
+  completion      MilestoneCompletion?    @relation("CompletionEarnings")
 
   @@index([userId, currency, createdAt])
   @@index([referenceType, referenceId])
@@ -637,50 +661,50 @@ model SparksLedgerEntry {
 }
 
 model CampaignCreditLedgerEntry {
-  id              String                        @id @default(cuid())
-  ownerId         String
-  owner           User                          @relation("CampaignCreditOwner", fields: [ownerId], references: [id])
-  direction       LedgerDirection
-  amountCents     Int
-  purchasedCents  Int                           @default(0)
-  promotionalCents Int                          @default(0)
-  transactionType CampaignCreditTransactionType
-  referenceType   String
-  referenceId     String
-  idempotencyKey  String                        @unique
-  expiresAt       DateTime?
-  createdById     String?
-  createdBy       User?                         @relation("CampaignCreditCreator", fields: [createdById], references: [id])
-  internalNote    String?
-  createdAt       DateTime                      @default(now())
+  id               String                        @id @default(cuid())
+  ownerId          String
+  owner            User                          @relation("CampaignCreditOwner", fields: [ownerId], references: [id])
+  direction        LedgerDirection
+  amountCents      Int
+  purchasedCents   Int                           @default(0)
+  promotionalCents Int                           @default(0)
+  transactionType  CampaignCreditTransactionType
+  referenceType    String
+  referenceId      String
+  idempotencyKey   String                        @unique
+  expiresAt        DateTime?
+  createdById      String?
+  createdBy        User?                         @relation("CampaignCreditCreator", fields: [createdById], references: [id])
+  internalNote     String?
+  createdAt        DateTime                      @default(now())
 
   @@index([ownerId, createdAt])
   @@index([expiresAt])
 }
 
 model CosmeticItem {
-  id            String             @id @default(cuid())
-  slug          String             @unique
-  name          String
-  description   String
-  type          String
-  sparksPrice   Int
-  rarity        String
-  season        String?
-  preview       Json
-  available     Boolean            @default(true)
-  purchases     CosmeticPurchase[]
-  createdAt     DateTime           @default(now())
+  id          String             @id @default(cuid())
+  slug        String             @unique
+  name        String
+  description String
+  type        String
+  sparksPrice Int
+  rarity      String
+  season      String?
+  preview     Json
+  available   Boolean            @default(true)
+  purchases   CosmeticPurchase[]
+  createdAt   DateTime           @default(now())
 }
 
 model CosmeticPurchase {
-  id                   String       @id @default(cuid())
-  userId               String
-  user                 User         @relation(fields: [userId], references: [id])
-  itemId               String
-  item                 CosmeticItem @relation(fields: [itemId], references: [id])
-  sparksLedgerEntryId  String       @unique
-  createdAt            DateTime     @default(now())
+  id                  String       @id @default(cuid())
+  userId              String
+  user                User         @relation(fields: [userId], references: [id])
+  itemId              String
+  item                CosmeticItem @relation(fields: [itemId], references: [id])
+  sparksLedgerEntryId String       @unique
+  createdAt           DateTime     @default(now())
 
   @@unique([userId, itemId])
 }
@@ -706,71 +730,71 @@ model AnalyticsEvent {
 }
 
 model IntegrationApiKey {
-  id           String   @id @default(cuid())
-  serverId     String
-  server       Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  name         String
-  keyHash      String
-  scopes       String[]
-  lastFour     String
-  expiresAt    DateTime?
-  revokedAt    DateTime?
-  lastUsedAt   DateTime?
-  createdAt    DateTime @default(now())
+  id         String    @id @default(cuid())
+  serverId   String
+  server     Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String
+  scopes     String[]
+  lastFour   String
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([serverId])
   @@index([keyHash])
 }
 
 model PaymentEvent {
-  id                String   @id @default(cuid())
-  providerEventId   String   @unique
-  type              String
-  referenceId       String
-  amountCents       Int
-  currency          String
-  payload           Json
-  status            String
-  idempotencyKey    String   @unique
-  processedAt       DateTime?
-  error             String?
-  createdAt         DateTime @default(now())
+  id              String    @id @default(cuid())
+  providerEventId String    @unique
+  type            String
+  referenceId     String
+  amountCents     Int
+  currency        String
+  payload         Json
+  status          String
+  idempotencyKey  String    @unique
+  processedAt     DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
 }
 
 model FraudFlag {
-  id             String    @id @default(cuid())
-  userId         String?
-  user           User?     @relation("FraudSubjectUser", fields: [userId], references: [id])
-  campaignId     String?
-  campaign       Campaign? @relation(fields: [campaignId], references: [id])
-  type           String
-  severity       Int
-  state          RiskState @default(FLAGGED)
+  id              String    @id @default(cuid())
+  userId          String?
+  user            User?     @relation("FraudSubjectUser", fields: [userId], references: [id])
+  campaignId      String?
+  campaign        Campaign? @relation(fields: [campaignId], references: [id])
+  type            String
+  severity        Int
+  state           RiskState @default(FLAGGED)
   privacySafeData Json
-  createdById    String?
-  createdBy      User?     @relation("FraudFlagCreator", fields: [createdById], references: [id])
-  createdAt      DateTime  @default(now())
-  resolvedAt     DateTime?
+  createdById     String?
+  createdBy       User?     @relation("FraudFlagCreator", fields: [createdById], references: [id])
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
 
   @@index([state, severity])
 }
 
 model ModerationCase {
-  id           String    @id @default(cuid())
-  type         String
-  status       String
-  priority     String
+  id            String    @id @default(cuid())
+  type          String
+  status        String
+  priority      String
   subjectUserId String?
-  subjectUser  User?     @relation("ModerationSubjectUser", fields: [subjectUserId], references: [id])
-  campaignId   String?
-  campaign     Campaign? @relation(fields: [campaignId], references: [id])
-  assignedToId String?
-  assignedTo   User?     @relation("ModerationAssignee", fields: [assignedToId], references: [id])
-  summary      String
-  evidence     Json
-  resolution   String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  subjectUser   User?     @relation("ModerationSubjectUser", fields: [subjectUserId], references: [id])
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id])
+  assignedToId  String?
+  assignedTo    User?     @relation("ModerationAssignee", fields: [assignedToId], references: [id])
+  summary       String
+  evidence      Json
+  resolution    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([status, priority])
 }

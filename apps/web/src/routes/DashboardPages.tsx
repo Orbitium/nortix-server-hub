@@ -35,7 +35,18 @@ import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
 import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
-import { campaigns, cosmetics, leaderboard, servers } from "../features/demo-data";
+import { SeededProgressPage } from "../components/SeededProgressPage";
+import {
+  type CosmeticItem,
+  useCosmetics,
+  useCurrentUser,
+  useDailyQuests,
+  useLeaderboard,
+  useParticipations,
+  usePublicCampaigns,
+  usePublicServers,
+  useSparksSummary,
+} from "../features/api-data";
 import { api } from "../lib/api";
 
 const PageHeading = ({
@@ -64,6 +75,8 @@ export function DashboardHomePage() {
 }
 
 export function LegacyDashboardHomePage() {
+  const { data } = usePublicCampaigns();
+  const campaigns = data?.items ?? [];
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -228,6 +241,8 @@ export function LegacyDashboardHomePage() {
 
 export function DashboardServersPage() {
   const [search, setSearch] = useState("");
+  const { data, isLoading, isError, refetch } = usePublicServers();
+  const servers = data?.items ?? [];
   const filtered = servers.filter((server) =>
     `${server.name} ${server.categories.join(" ")}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -250,16 +265,29 @@ export function DashboardServersPage() {
         <button className="button button--secondary">All editions</button>
       </div>
       <div className="server-grid">
-        {filtered.map((server) => (
-          <ServerCard server={server} key={server.id} />
-        ))}
+        {isLoading ? <Card><p>Loading seeded servers…</p></Card> : null}
+        {isError ? <Card><p>Seeded servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {!isLoading && !isError && filtered.length === 0 ? <Card><p>No seeded servers match this search.</p></Card> : null}
+        {filtered.map((server) => <ServerCard server={server} key={server.id} />)}
       </div>
     </div>
   );
 }
 
 export function DashboardCampaignsPage() {
-  const [tab, setTab] = useState("Recommended");
+  const [tab, setTab] = useState("Newest");
+  const { data, isLoading, isError, refetch } = usePublicCampaigns();
+  const visibleCampaigns = [...(data?.items ?? [])];
+  if (tab === "Highest Sparks limit") {
+    visibleCampaigns.sort(
+      (left, right) => right.maximumSparksReward - left.maximumSparksReward,
+    );
+  }
+  if (tab === "Ending soon") {
+    visibleCampaigns.sort(
+      (left, right) => new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime(),
+    );
+  }
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -267,14 +295,17 @@ export function DashboardCampaignsPage() {
         description="Explore optional playtests that may provide Sparks after verification."
       />
       <div className="tabs">
-        {["Recommended", "Newest", "Highest Sparks limit", "Short sessions"].map((item) => (
+        {["Newest", "Highest Sparks limit", "Ending soon"].map((item) => (
           <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>
             {item}
           </button>
         ))}
       </div>
       <div className="campaign-grid">
-        {campaigns.map((campaign) => (
+        {isLoading ? <Card><p>Loading seeded campaigns…</p></Card> : null}
+        {isError ? <Card><p>Seeded campaigns could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {!isLoading && !isError && visibleCampaigns.length === 0 ? <Card><p>No active seeded campaigns are available.</p></Card> : null}
+        {visibleCampaigns.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
       </div>
@@ -282,7 +313,7 @@ export function DashboardCampaignsPage() {
   );
 }
 
-export function ProgressPage() {
+function _LegacyProgressPage() {
   const [tab, setTab] = useState("Active");
   return (
     <div className="dashboard-page">
@@ -406,6 +437,10 @@ export function ProgressPage() {
       </div>
     </div>
   );
+}
+
+export function ProgressPage() {
+  return <SeededProgressPage />;
 }
 
 export function EarningsPage() {
@@ -546,11 +581,15 @@ export function EarningsPage() {
 }
 
 export function QuestsPage() {
-  const quests = [
-    ["Curious Explorer", "View two new server pages.", 1, 2, 120, Compass],
-    ["Thoughtful Tester", "Submit one structured feedback response.", 0, 1, 300, MessageSquareText],
-    ["Keep the Momentum", "Complete one campaign milestone.", 0, 1, 180, Target],
-  ] as const;
+  const { data, isLoading, isError, refetch } = useDailyQuests();
+  const quests = data ?? [];
+  const questIcons = {
+    SERVER_VIEWS: Compass,
+    FEEDBACK: MessageSquareText,
+    MILESTONE: Target,
+  } as const;
+  const totalPotentialSparks = quests.reduce((total, quest) => total + quest.sparksReward, 0);
+  const completedQuests = quests.filter((quest) => quest.completedAt).length;
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -560,35 +599,44 @@ export function QuestsPage() {
       <Card className="quest-hero">
         <div>
           <Badge tone="purple">DAILY SET</Badge>
-          <h2>3 quests · up to 60 Sparks may be available</h2>
-          <p>Daily quests reset in 2h 18m. Completion could require verification.</p>
+          <h2>{quests.length} quests · up to {totalPotentialSparks} Sparks may be available</h2>
+          <p>Quest progress comes from the current seeded account and may require verification.</p>
         </div>
         <div className="streak-large">
           <Flame />
-          <strong>6</strong>
-          <span>day streak</span>
+          <strong>{completedQuests}</strong>
+          <span>completed today</span>
         </div>
       </Card>
       <div className="quest-grid">
-        {quests.map(([title, description, progress, target, reward, Icon]) => (
-          <Card key={title}>
+        {isLoading ? <Card><p>Loading seeded quests…</p></Card> : null}
+        {isError ? <Card><p>Seeded quests could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {quests.map((quest) => {
+          const Icon = questIcons[quest.type as keyof typeof questIcons] ?? Target;
+          return (
+          <Card key={quest.id}>
             <span className="quest-icon">
               <Icon />
             </span>
-            <Badge tone="purple">Up to {Math.min(reward, 25)} Sparks</Badge>
-            <h3>{title}</h3>
-            <p>{description}</p>
-            <ProgressBar value={(progress / target) * 100} label={`${progress} of ${target}`} />
+            <Badge tone="purple">Up to {quest.sparksReward} Sparks</Badge>
+            <h3>{quest.title}</h3>
+            <p>{quest.description}</p>
+            <ProgressBar value={(quest.progress / quest.target) * 100} label={`${quest.progress} of ${quest.target}`} />
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 export function SparksShopPage() {
-  const [balance, setBalance] = useState(12430);
-  const [selected, setSelected] = useState<(typeof cosmetics)[number] | null>(null);
+  const { data: cosmeticItems, isLoading, isError, refetch } = useCosmetics();
+  const { data: sparksSummary, refetch: refetchSparks } = useSparksSummary();
+  const cosmetics = cosmeticItems ?? [];
+  const balance = sparksSummary?.balance ?? 0;
+  const [selected, setSelected] = useState<CosmeticItem | null>(null);
+  const [purchaseMessage, setPurchaseMessage] = useState("");
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -618,17 +666,22 @@ export function SparksShopPage() {
         <button>Seasonal</button>
       </div>
       <div className="cosmetic-grid">
-        {cosmetics.filter((item) => item.type !== "Badge").map((item) => (
+        {isLoading ? <Card><p>Loading seeded cosmetics…</p></Card> : null}
+        {isError ? <Card><p>Seeded cosmetics could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {cosmetics.filter((item) => item.type !== "BADGE").map((item) => (
           <Card key={item.id} className="cosmetic-card">
-            <div className={`cosmetic-preview ${item.className}`}>
+            <div
+              className="cosmetic-preview"
+              style={{ backgroundColor: String(item.preview.color ?? "") || undefined }}
+            >
               <Palette />
-              <Badge tone={item.rarity === "Epic" ? "purple" : "neutral"}>{item.rarity}</Badge>
+              <Badge tone={item.rarity === "EPIC" ? "purple" : "neutral"}>{item.rarity}</Badge>
             </div>
             <div>
-              <small>{item.type}</small>
+              <small>{item.type.replaceAll("_", " ")}</small>
               <h3>{item.name}</h3>
-              <button disabled={balance < item.price} onClick={() => setSelected(item)}>
-                <Sparks value={item.price.toLocaleString()} />
+              <button disabled={balance < item.sparksPrice} onClick={() => setSelected(item)}>
+                <Sparks value={item.sparksPrice.toLocaleString()} />
               </button>
             </div>
           </Card>
@@ -637,11 +690,14 @@ export function SparksShopPage() {
       {selected && (
         <Modal title={`Unlock ${selected.name}`} onClose={() => setSelected(null)}>
           <div className="modal__body">
-            <div className={`cosmetic-preview cosmetic-preview--modal ${selected.className}`}>
+            <div
+              className="cosmetic-preview cosmetic-preview--modal"
+              style={{ backgroundColor: String(selected.preview.color ?? "") || undefined }}
+            >
               <Palette />
             </div>
             <p>
-              This cosmetic costs <strong>{selected.price.toLocaleString()} Sparks</strong>. Your
+              This cosmetic costs <strong>{selected.sparksPrice.toLocaleString()} Sparks</strong>. Your
               Your remaining Sparks balance will update after confirmation.
             </p>
             <div className="withdraw-summary">
@@ -649,18 +705,30 @@ export function SparksShopPage() {
                 Current Sparks<b>{balance.toLocaleString()}</b>
               </span>
               <span>
-                After purchase<strong>{(balance - selected.price).toLocaleString()}</strong>
+                After purchase<strong>{(balance - selected.sparksPrice).toLocaleString()}</strong>
               </span>
             </div>
+            {purchaseMessage ? <p role="status">{purchaseMessage}</p> : null}
           </div>
           <div className="modal__footer">
             <Button variant="ghost" onClick={() => setSelected(null)}>
               Cancel
             </Button>
             <Button
-              onClick={() => {
-                setBalance(balance - selected.price);
-                setSelected(null);
+              onClick={async () => {
+                setPurchaseMessage("");
+                try {
+                  await api("/sparks/purchases", {
+                    method: "POST",
+                    body: JSON.stringify({ itemId: selected.id }),
+                  });
+                  await refetchSparks();
+                  setSelected(null);
+                } catch (error) {
+                  setPurchaseMessage(
+                    error instanceof Error ? error.message : "The cosmetic could not be unlocked.",
+                  );
+                }
               }}
             >
               Unlock cosmetic
@@ -673,6 +741,8 @@ export function SparksShopPage() {
 }
 
 export function LeaderboardsPage() {
+  const { data, isLoading, isError, refetch } = useLeaderboard();
+  const leaderboard = data ?? [];
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -680,14 +750,16 @@ export function LeaderboardsPage() {
         description="Recognition for reputation and consistent, useful participation—not spending."
       />
       <div className="leaderboard-podium">
-        {leaderboard.slice(0, 3).map(([name, tier, score, completions], index) => (
-          <Card className={`podium podium--${index + 1}`} key={name}>
+        {isLoading ? <Card><p>Loading seeded leaderboard…</p></Card> : null}
+        {isError ? <Card><p>The seeded leaderboard could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {leaderboard.slice(0, 3).map((entry, index) => (
+          <Card className={`podium podium--${index + 1}`} key={entry.username}>
             <span className="podium-rank">{index + 1}</span>
-            <span className="avatar avatar--large">{name.slice(0, 2)}</span>
-            <h2>{name}</h2>
-            <Badge tone={index === 0 ? "gold" : "purple"}>{tier}</Badge>
-            <strong>{score} reputation</strong>
-            <small>{completions} verified playtests</small>
+            <span className="avatar avatar--large">{entry.username.slice(0, 2)}</span>
+            <h2>{entry.displayName ?? entry.username}</h2>
+            <Badge tone={index === 0 ? "gold" : "purple"}>{entry.reputationTier}</Badge>
+            <strong>{entry.reputationScore} reputation</strong>
+            <small>Tester level {entry.testerLevel}</small>
           </Card>
         ))}
       </div>
@@ -709,26 +781,26 @@ export function LeaderboardsPage() {
                 <th>Rank</th>
                 <th>Tester</th>
                 <th>Tier</th>
-                <th>Completions</th>
+                <th>Level</th>
                 <th>Reputation</th>
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map(([name, tier, score, completions], index) => (
-                <tr key={name}>
+              {leaderboard.map((entry, index) => (
+                <tr key={entry.username}>
                   <td>
                     <strong>#{index + 1}</strong>
                   </td>
                   <td>
                     <span className="table-user">
-                      <span className="avatar avatar--small">{name.slice(0, 2)}</span>
-                      <strong>{name}</strong>
+                      <span className="avatar avatar--small">{entry.username.slice(0, 2)}</span>
+                      <strong>{entry.displayName ?? entry.username}</strong>
                     </span>
                   </td>
-                  <td>{tier}</td>
-                  <td>{completions}</td>
+                  <td>{entry.reputationTier}</td>
+                  <td>{entry.testerLevel}</td>
                   <td>
-                    <strong>{score}</strong>
+                    <strong>{entry.reputationScore}</strong>
                   </td>
                 </tr>
               ))}
@@ -959,6 +1031,12 @@ export function ProfilePage() {
   const [crackedName, setCrackedName] = useState("");
   const [identityMessage, setIdentityMessage] = useState("");
   const [identityBusy, setIdentityBusy] = useState(false);
+  const { data: currentUser } = useCurrentUser();
+  const { data: participations = [] } = useParticipations();
+  const approvedMilestones = participations.reduce(
+    (total, participation) => total + participation.completions.filter((item) => item.status === "APPROVED").length,
+    0,
+  );
 
   const refreshIdentities = async () => {
     const result = await api<IdentityData>("/minecraft-identities");
@@ -1023,48 +1101,46 @@ export function ProfilePage() {
         title="Profile"
         description="Your public tester identity, reputation, and cosmetic loadout."
         action={
-          <button className="button button--secondary">
-            <Settings /> Edit profile
+          <button className="button button--secondary" disabled title="Profile editing endpoint not enabled">
+            <Settings /> Editing unavailable
           </button>
         }
       />
       <Card className="profile-card">
         <div className="profile-banner">
-          <span className="profile-avatar">QT</span>
+          <span className="profile-avatar">{currentUser?.username.slice(0, 2).toUpperCase() ?? "—"}</span>
         </div>
         <div className="profile-card__body">
           <div>
             <h1>
-              QuartzTester <ShieldCheck />
+              {currentUser?.displayName ?? currentUser?.username ?? "Loading profile…"} <ShieldCheck />
             </h1>
-            <p>@quartztester · Joined February 2026</p>
+            <p>@{currentUser?.username ?? "loading"}</p>
             <div className="chip-row">
-              <Badge tone="purple">Trusted Tester</Badge>
-              <Badge>Level 18</Badge>
-              <Badge>854 reputation</Badge>
+              <Badge tone="purple">{currentUser?.reputationTier ?? "Unranked"}</Badge>
+              <Badge>Level {currentUser?.testerLevel ?? 0}</Badge>
+              <Badge>{currentUser?.reputationScore ?? 0} reputation</Badge>
             </div>
           </div>
-          <button className="button button--secondary">Customize profile</button>
+          <button className="button button--secondary" disabled>Customization unavailable</button>
         </div>
-        <p className="profile-bio">
-          Minecraft explorer, onboarding nerd, and collector of suspiciously specific bug reports.
-        </p>
+        <p className="profile-bio">Profile details are loaded from the Nortix account record.</p>
         <div className="profile-stats">
           <span>
-            <strong>37</strong>
+            <strong>{approvedMilestones}</strong>
             <small>Verified playtests</small>
           </span>
           <span>
-            <strong>21</strong>
-            <small>Useful feedback ratings</small>
+            <strong>{participations.length}</strong>
+            <small>Participation records</small>
           </span>
           <span>
-            <strong>4.9</strong>
-            <small>Owner rating</small>
+            <strong>{identityData.premium.length}</strong>
+            <small>Premium identities</small>
           </span>
           <span>
-            <strong>2%</strong>
-            <small>Rejection rate</small>
+            <strong>{identityData.cracked.length}</strong>
+            <small>Server-scoped identities</small>
           </span>
         </div>
       </Card>
@@ -1073,18 +1149,18 @@ export function ProfilePage() {
           <h2>Participation summary</h2>
           <p>Verified activity may contribute to reputation and future campaign matching.</p>
           <div className="profile-stats">
-            <span><strong>14</strong><small>Campaigns reviewed</small></span>
-            <span><strong>92%</strong><small>Useful responses</small></span>
+            <span><strong>{participations.length}</strong><small>Campaign records</small></span>
+            <span><strong>{approvedMilestones}</strong><small>Verified milestones</small></span>
           </div>
         </Card>
         <Card>
           <h2>Reputation</h2>
           <div className="reputation-meter">
-            <span style={{ width: "72%" }} />
+            <span style={{ width: `${Math.min(100, (currentUser?.reputationScore ?? 0) / 10)}%` }} />
           </div>
           <div className="reputation-labels">
-            <strong>Trusted Tester</strong>
-            <span>146 rep to Veteran Tester</span>
+            <strong>{currentUser?.reputationTier ?? "Unranked"}</strong>
+            <span>{currentUser?.reputationScore ?? 0} reputation</span>
           </div>
           <p>Reputation reflects verified work and cannot be purchased with Sparks.</p>
         </Card>

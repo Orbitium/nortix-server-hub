@@ -103,4 +103,34 @@ export const PluginPlayerHistorySchema = z.object({
   })).max(500),
 });
 
+export const PluginPresenceSnapshotSchema = z
+  .object({
+    id: z.string().min(8).max(100),
+    serverId: z.string().min(1),
+    instanceId: z.string().min(8).max(100),
+    platform: z.enum(["PAPER", "VELOCITY"]),
+    pluginVersion: z.string().min(1).max(40),
+    serverVersion: z.string().min(1).max(80).optional(),
+    observedAt: z.string().datetime(),
+    onlinePlayers: z.number().int().min(0).max(100_000),
+    maxPlayers: z.number().int().min(0).max(100_000).optional(),
+    players: z
+      .array(
+        z.object({
+          minecraftUuid: z.string().uuid(),
+          backend: z.string().min(1).max(80).optional(),
+        }),
+      )
+      .max(10_000),
+  })
+  .superRefine((value, context) => {
+    if (value.players.length !== value.onlinePlayers) {
+      context.addIssue({
+        code: "custom",
+        path: ["players"],
+        message: "The privacy-minimized roster must match the reported online player count.",
+      });
+    }
+  });
+
 export type PluginCapability = z.infer<typeof PluginCapabilitySchema>;

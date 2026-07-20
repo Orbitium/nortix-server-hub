@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Nortix logo</title>
+  <rect width="512" height="512" rx="112" fill="#101d2b"/>
+  <path d="M136 384V128h68l112 144V128h68v256h-68L204 240v144z" fill="#68e34b"/>
+</svg>

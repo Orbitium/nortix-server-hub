@@ -1,35 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma, type Prisma } from "@nortix/database";
-import {
-  CampaignInputSchema,
-  JoinCampaignSchema,
-  MilestoneSubmissionSchema,
-  ServerInputSchema,
-  ServerTeamInviteInputSchema,
-  TeamInviteResponseSchema,
-  TeamMemberRoleInputSchema,
-  WithdrawalInputSchema,
-  CrackedAccountClaimSchema,
-} from "@nortix/shared";
-import {
-  CreateServerVerificationSchema,
-  PluginCapabilitiesHandshakeSchema,
-  PluginVerificationHandshakeSchema,
-  PluginVerificationStatusSchema,
-  ServerPluginEventSchema,
-  PluginPlayerHistorySchema,
-} from "@nortix/plugin-sdk";
+import { CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, WithdrawalInputSchema, CrackedAccountClaimSchema } from "@nortix/shared";
+import { CreateServerVerificationSchema, PluginCapabilitiesHandshakeSchema, PluginPresenceSnapshotSchema, PluginVerificationHandshakeSchema, PluginVerificationStatusSchema, ServerPluginEventSchema, PluginPlayerHistorySchema } from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Env } from "../config/env.js";
-import {
-  canAccessServer,
-  teamPermissions,
-  validatePluginEvent,
-  type ServerPermission,
-} from "../security/policies.js";
+import { canAccessServer, teamPermissions, validatePluginEvent, type ServerPermission } from "../security/policies.js";
 import { verifyPremiumIdentityProof } from "../security/identity-proof.js";
+import { CAMPAIGN_ACTIVITY_WINDOW_DAYS, calculateCampaignCreditBalance, canAutomaticallyApprovePluginMilestone, deriveCampaignCapacity, estimatePotentialExposure, evaluateCampaignEligibility, suggestCampaignMilestones } from "./campaigns/policy.js";
 import { CampaignService } from "./campaigns/service.js";
 import { WithdrawalService } from "./withdrawals/service.js";
 import { ServerVerificationService } from "./server-verification/service.js";
@@ -46,11 +25,7 @@ const requireOwnedServer = async (serverId: string, userId: string) => {
   return server;
 };
 
-const requireServerPermission = async (
-  serverId: string,
-  userId: string,
-  permission: ServerPermission,
-) => {
+const requireServerPermission = async (serverId: string, userId: string, permission: ServerPermission) => {
   const server = await prisma.server.findUnique({
     where: { id: serverId },
     include: { teamMembers: { where: { userId }, select: { role: true } } },
@@ -68,14 +43,22 @@ const authenticateServerPlugin = async (authorization: string | undefined, serve
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   if (!token.startsWith("npx_")) throw new Error("A valid server plugin token is required.");
   const credential = await prisma.integrationApiKey.findFirst({
-    where: { serverId, keyHash: hashPluginToken(token), revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+    where: {
+      serverId,
+      keyHash: hashPluginToken(token),
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
     include: { server: true },
   });
   if (!credential || !credential.scopes.includes("plugin:events")) throw new Error("The server plugin token is invalid or revoked.");
   if (!credential.server.claimed || credential.server.verificationStatus !== "VERIFIED") {
     throw new Error("Server verification is required before accepting plugin evidence.");
   }
-  await prisma.integrationApiKey.update({ where: { id: credential.id }, data: { lastUsedAt: new Date() } });
+  await prisma.integrationApiKey.update({
+    where: { id: credential.id },
+    data: { lastUsedAt: new Date() },
+  });
   return credential;
 };
 
@@ -127,39 +110,51 @@ const publicMilestoneSelect = {
   verificationMethod: true,
 } as const;
 
-const profileInputSchema = z.object({
-  displayName: z.string().trim().min(1).max(80).optional(),
-  avatarUrl: z.string().url().max(2_000).nullable().optional(),
-  publicProfile: z.record(z.string(), z.unknown()).refine(
-    (value) => JSON.stringify(value).length <= 8_000,
-    "Public profile is too large.",
-  ).optional(),
-}).strict();
+const profileInputSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(80).optional(),
+    avatarUrl: z.string().url().max(2_000).nullable().optional(),
+    publicProfile: z
+      .record(z.string(), z.unknown())
+      .refine((value) => JSON.stringify(value).length <= 8_000, "Public profile is too large.")
+      .optional(),
+  })
+  .strict();
 
-const campaignReviewSchema = z.object({
-  action: z.enum(["APPROVE", "REQUEST_CHANGES", "REJECT", "PAUSE", "ARCHIVE"]),
-  note: z.string().trim().max(2_000).optional(),
-}).strict();
+const campaignReviewSchema = z
+  .object({
+    action: z.enum(["APPROVE", "REQUEST_CHANGES", "REJECT", "PAUSE", "ARCHIVE"]),
+    note: z.string().trim().max(2_000).optional(),
+  })
+  .strict();
 
-const withdrawalTransitionSchema = z.object({
-  status: z.enum(["UNDER_REVIEW", "APPROVED", "PROCESSING", "PAID", "FAILED", "CANCELLED"]),
-  reason: z.string().trim().max(2_000).optional(),
-}).strict();
+const withdrawalTransitionSchema = z
+  .object({
+    status: z.enum(["UNDER_REVIEW", "APPROVED", "PROCESSING", "PAID", "FAILED", "CANCELLED"]),
+    reason: z.string().trim().max(2_000).optional(),
+  })
+  .strict();
 
-const completionReviewSchema = z.object({
-  approved: z.boolean(),
-  reason: z.string().trim().max(2_000).optional(),
-}).strict();
+const completionReviewSchema = z
+  .object({
+    approved: z.boolean(),
+    reason: z.string().trim().max(2_000).optional(),
+  })
+  .strict();
 
-const sparksPurchaseSchema = z.object({
-  itemId: z.string().min(1).max(120),
-}).strict();
+const sparksPurchaseSchema = z
+  .object({
+    itemId: z.string().min(1).max(120),
+  })
+  .strict();
 
-const premiumIdentityCompletionSchema = z.object({
-  code: z.string().regex(/^NX-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/),
-  uuid: z.string().uuid(),
-  username: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
-}).strict();
+const premiumIdentityCompletionSchema = z
+  .object({
+    code: z.string().regex(/^NX-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/),
+    uuid: z.string().uuid(),
+    username: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
+  })
+  .strict();
 
 const parsePagination = (query: Record<string, unknown>) => ({
   page: Math.max(1, Number(query.page) || 1),
@@ -169,23 +164,62 @@ const parsePagination = (query: Record<string, unknown>) => ({
 export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   const paymentProvider = new MockPaymentProvider(env.PAYMENT_WEBHOOK_SECRET);
   const payoutProvider = new MockPayoutProvider();
-  const identityCleanupTimer = setInterval(
-    () => minecraftIdentityService.cleanup().catch((error) => app.log.error(
-      { err: error },
-      "minecraft identity cleanup failed",
-    )),
-    5 * 60_000,
-  );
+  const identityCleanupTimer = setInterval(() => minecraftIdentityService.cleanup().catch((error) => app.log.error({ err: error }, "minecraft identity cleanup failed")), 5 * 60_000);
   identityCleanupTimer.unref();
   app.addHook("onClose", async () => clearInterval(identityCleanupTimer));
   app.get("/health", async () => ({ status: "ok", service: "nortix-api" }));
+  app.get("/sitemap.xml", async (_request, reply) => {
+    const now = new Date();
+    const [servers, campaigns] = await prisma.$transaction([
+      prisma.server.findMany({
+        where: { publicListing: true, moderationStatus: "APPROVED" },
+        select: { slug: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.campaign.findMany({
+        where: {
+          status: "ACTIVE",
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+          server: { publicListing: true, moderationStatus: "APPROVED" },
+        },
+        select: { id: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+    ]);
+    const origin = "https://hub.nortixlabs.com";
+    const staticEntries = [
+      ["/servers", "daily", "1.0"],
+      ["/campaigns", "daily", "1.0"],
+      ["/how-it-works", "monthly", "0.8"],
+      ["/for-server-owners", "monthly", "0.8"],
+      ["/safety", "monthly", "0.7"],
+      ["/guidelines", "monthly", "0.5"],
+      ["/privacy", "monthly", "0.4"],
+      ["/terms", "monthly", "0.4"],
+      ["/contact", "yearly", "0.5"],
+    ] as const;
+    const urls = [
+      ...staticEntries.map(
+        ([path, changefreq, priority]) =>
+          `<url><loc>${origin}${path}</loc><changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`,
+      ),
+      ...servers.map(
+        (server) =>
+          `<url><loc>${origin}/servers/${encodeURIComponent(server.slug)}</loc><lastmod>${server.updatedAt.toISOString()}</lastmod><changefreq>daily</changefreq><priority>0.9</priority></url>`,
+      ),
+      ...campaigns.map(
+        (campaign) =>
+          `<url><loc>${origin}/campaigns/${encodeURIComponent(campaign.id)}</loc><lastmod>${campaign.updatedAt.toISOString()}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>`,
+      ),
+    ];
+    return reply
+      .type("application/xml; charset=utf-8")
+      .send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`);
+  });
 
-  app.get("/v1/auth/me", { preHandler: app.authenticate }, async (request) =>
-    prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }),
-  );
-  app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) =>
-    prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }),
-  );
+  app.get("/v1/auth/me", { preHandler: app.authenticate }, async (request) => prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }));
+  app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) => prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }));
   app.patch("/v1/users/me/profile", { preHandler: app.authenticate }, async (request) => {
     const input = profileInputSchema.parse(request.body);
     return prisma.user.update({
@@ -198,73 +232,42 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       select: selfUserSelect,
     });
   });
-  app.get("/v1/minecraft-identities", { preHandler: app.authenticate }, async (request) =>
-    minecraftIdentityService.list(request.user!.id),
-  );
-  app.post(
-    "/v1/minecraft-identities/premium/claims",
-    { preHandler: app.authenticate, config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
-    async (request, reply) =>
-      reply.code(201).send(await minecraftIdentityService.createPremiumClaim(request.user!.id)),
-  );
-  app.delete(
-    "/v1/minecraft-identities/premium/:identityId",
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const { identityId } = request.params as { identityId: string };
-      await minecraftIdentityService.unlinkPremium(request.user!.id, identityId);
-      return reply.code(204).send();
-    },
-  );
-  app.post(
-    "/v1/minecraft-identities/cracked/claims",
-    { preHandler: app.authenticate, config: { rateLimit: { max: 6, timeWindow: "1 hour" } } },
-    async (request, reply) => {
-      const input = CrackedAccountClaimSchema.parse(request.body);
-      return reply.code(201).send(
-        await minecraftIdentityService.reserveCracked(
-          request.user!.id,
-          input.serverId,
-          input.minecraftUsername,
-        ),
-      );
-    },
-  );
-  app.delete(
-    "/v1/minecraft-identities/cracked/:linkId",
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const { linkId } = request.params as { linkId: string };
-      await minecraftIdentityService.releaseCracked(request.user!.id, linkId);
-      return reply.code(204).send();
-    },
-  );
-  app.post(
-    "/v1/plugin/identity/premium/complete",
-    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
-    async (request, reply) => {
-      const input = premiumIdentityCompletionSchema.parse(request.body);
-      const timestamp = String(request.headers["x-nortix-timestamp"] ?? "");
-      const nonce = String(request.headers["x-nortix-nonce"] ?? "");
-      const signature = String(request.headers["x-nortix-signature"] ?? "").toLowerCase();
-      if (!verifyPremiumIdentityProof(
-        env.IDENTITY_VERIFICATION_SECRET,
-        input,
-        { timestamp, nonce, signature },
-      )) {
-        return reply.code(401).send({
-          code: "INVALID_VERIFICATION_PROOF",
-          message: "The identity verification proof is invalid or expired.",
-        });
-      }
-      const identity = await minecraftIdentityService.completePremiumClaim(
-        input.code,
-        input.uuid,
-        input.username,
-      );
-      return reply.code(201).send({ linked: true, identityId: identity.id });
-    },
-  );
+  app.get("/v1/minecraft-identities", { preHandler: app.authenticate }, async (request) => minecraftIdentityService.list(request.user!.id));
+  app.post("/v1/minecraft-identities/premium/claims", { preHandler: app.authenticate, config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => reply.code(201).send(await minecraftIdentityService.createPremiumClaim(request.user!.id)));
+  app.delete("/v1/minecraft-identities/premium/:identityId", { preHandler: app.authenticate }, async (request, reply) => {
+    const { identityId } = request.params as { identityId: string };
+    await minecraftIdentityService.unlinkPremium(request.user!.id, identityId);
+    return reply.code(204).send();
+  });
+  app.post("/v1/minecraft-identities/cracked/claims", { preHandler: app.authenticate, config: { rateLimit: { max: 6, timeWindow: "1 hour" } } }, async (request, reply) => {
+    const input = CrackedAccountClaimSchema.parse(request.body);
+    return reply.code(201).send(await minecraftIdentityService.reserveCracked(request.user!.id, input.serverId, input.minecraftUsername));
+  });
+  app.delete("/v1/minecraft-identities/cracked/:linkId", { preHandler: app.authenticate }, async (request, reply) => {
+    const { linkId } = request.params as { linkId: string };
+    await minecraftIdentityService.releaseCracked(request.user!.id, linkId);
+    return reply.code(204).send();
+  });
+  app.post("/v1/plugin/identity/premium/complete", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const input = premiumIdentityCompletionSchema.parse(request.body);
+    const timestamp = String(request.headers["x-nortix-timestamp"] ?? "");
+    const nonce = String(request.headers["x-nortix-nonce"] ?? "");
+    const signature = String(request.headers["x-nortix-signature"] ?? "").toLowerCase();
+    if (
+      !verifyPremiumIdentityProof(env.IDENTITY_VERIFICATION_SECRET, input, {
+        timestamp,
+        nonce,
+        signature,
+      })
+    ) {
+      return reply.code(401).send({
+        code: "INVALID_VERIFICATION_PROOF",
+        message: "The identity verification proof is invalid or expired.",
+      });
+    }
+    const identity = await minecraftIdentityService.completePremiumClaim(input.code, input.uuid, input.username);
+    return reply.code(201).send({ linked: true, identityId: identity.id });
+  });
   app.get("/v1/users/:username", async (request, reply) => {
     const { username } = request.params as { username: string };
     const user = await prisma.user.findUnique({
@@ -281,6 +284,21 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     });
     return user ?? reply.code(404).send({ code: "NOT_FOUND", message: "Profile not found." });
   });
+  app.get("/v1/leaderboard", async () =>
+    prisma.user.findMany({
+      where: { status: "ACTIVE" },
+      select: {
+        username: true,
+        displayName: true,
+        avatarUrl: true,
+        reputationScore: true,
+        reputationTier: true,
+        testerLevel: true,
+      },
+      orderBy: [{ reputationScore: "desc" }, { testerLevel: "desc" }],
+      take: 50,
+    }),
+  );
 
   app.get("/v1/servers", async (request) => {
     const query = request.query as Record<string, unknown>;
@@ -291,10 +309,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       moderationStatus: "APPROVED" as const,
       ...(search
         ? {
-            OR: [
-              { name: { contains: search, mode: "insensitive" as const } },
-              { description: { contains: search, mode: "insensitive" as const } },
-            ],
+            OR: [{ name: { contains: search, mode: "insensitive" as const } }, { description: { contains: search, mode: "insensitive" as const } }],
           }
         : {}),
     };
@@ -314,8 +329,18 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       prisma.server.count({ where }),
     ]);
     return {
-      items: items.map(({ playerHistorySyncedAt, ...server }) => ({
+      items: items.map(({ playerHistorySyncedAt, reviews, _count, ...server }) => ({
         ...server,
+        rating:
+          reviews.length > 0
+            ? Number(
+                (
+                  reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+                ).toFixed(1),
+              )
+            : null,
+        reviewCount: _count.reviews,
+        activeCampaignCount: _count.campaigns,
         crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
       })),
       page,
@@ -339,6 +364,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             startsAt: true,
             endsAt: true,
             maxParticipants: true,
+            minimumSparksReward: true,
+            maximumSparksReward: true,
+            potentialExposureMin: true,
+            potentialExposureMax: true,
+            automaticVerification: true,
             versionRequirements: true,
             regionRestrictions: true,
             milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
@@ -360,104 +390,101 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         },
       },
     });
-    return server ?? reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
+    if (!server) {
+      return reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
+    }
+    return {
+      ...server,
+      rating:
+        server.reviews.length > 0
+          ? Number(
+              (
+                server.reviews.reduce((sum, review) => sum + review.rating, 0) /
+                server.reviews.length
+              ).toFixed(1),
+            )
+          : null,
+      reviewCount: server.reviews.length,
+    };
   });
-  app.post(
-    "/v1/servers",
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const input = ServerInputSchema.parse(request.body);
-      const slug = `${input.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "")}-${crypto.randomUUID().slice(0, 5)}`;
-      const verificationParent = input.verificationParentId
-        ? await prisma.server.findFirst({
-            where: {
-              id: input.verificationParentId,
-              ownerId: request.user!.id,
-              claimed: true,
-              verificationStatus: "VERIFIED",
-              verificationScope: "PROXY_NETWORK",
-            },
-          })
-        : null;
-      if (input.verificationParentId && !verificationParent) {
-        throw new Error("A verified proxy network is required for inherited verification.");
-      }
-      const roles = Array.from(new Set([...request.user!.roles, "SERVER_OWNER" as const]));
-      const server = await prisma.$transaction(async (tx) => {
-        await tx.user.update({ where: { id: request.user!.id }, data: { roles } });
-        const created = await tx.server.create({
-          data: {
+  app.post("/v1/servers", { preHandler: app.authenticate }, async (request, reply) => {
+    const input = ServerInputSchema.parse(request.body);
+    const slug = `${input.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")}-${crypto.randomUUID().slice(0, 5)}`;
+    const verificationParent = input.verificationParentId
+      ? await prisma.server.findFirst({
+          where: {
+            id: input.verificationParentId,
             ownerId: request.user!.id,
-            name: input.name,
-            slug,
-            description: input.description,
-            hostname: input.hostname,
-            port: input.port,
-            edition: input.edition,
-            versions: input.versions,
-            categories: input.categories,
-            tags: input.tags,
-            verificationParentId: verificationParent?.id,
-            verificationScope: verificationParent ? "PROXY_CHILD" : "SERVER",
-            verificationStatus: verificationParent ? "VERIFIED" : "UNVERIFIED",
-            claimed: Boolean(verificationParent),
-            websiteUrl: input.websiteUrl,
-            discordUrl: input.discordUrl,
-            screenshotUrls: [],
+            claimed: true,
+            verificationStatus: "VERIFIED",
+            verificationScope: "PROXY_NETWORK",
+          },
+        })
+      : null;
+    if (input.verificationParentId && !verificationParent) {
+      throw new Error("A verified proxy network is required for inherited verification.");
+    }
+    const roles = Array.from(new Set([...request.user!.roles, "SERVER_OWNER" as const]));
+    const server = await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: request.user!.id }, data: { roles } });
+      const created = await tx.server.create({
+        data: {
+          ownerId: request.user!.id,
+          name: input.name,
+          slug,
+          description: input.description,
+          hostname: input.hostname,
+          port: input.port,
+          edition: input.edition,
+          versions: input.versions,
+          categories: input.categories,
+          tags: input.tags,
+          verificationParentId: verificationParent?.id,
+          verificationScope: verificationParent ? "PROXY_CHILD" : "SERVER",
+          verificationStatus: verificationParent ? "VERIFIED" : "UNVERIFIED",
+          claimed: Boolean(verificationParent),
+          websiteUrl: input.websiteUrl,
+          discordUrl: input.discordUrl,
+          screenshotUrls: [],
+        },
+      });
+      if (verificationParent) {
+        await tx.serverVerification.create({
+          data: {
+            serverId: created.id,
+            provider: "PROXY_INHERITED",
+            status: "VERIFIED",
+            challenge: {
+              parentProxyId: verificationParent.id,
+              networkScope: "PROXY_CHILD",
+            },
+            evidence: {
+              inheritedAt: new Date().toISOString(),
+              parentProxyId: verificationParent.id,
+            },
           },
         });
-        if (verificationParent) {
-          await tx.serverVerification.create({
-            data: {
-              serverId: created.id,
-              provider: "PROXY_INHERITED",
-              status: "VERIFIED",
-              challenge: {
-                parentProxyId: verificationParent.id,
-                networkScope: "PROXY_CHILD",
-              },
-              evidence: {
-                inheritedAt: new Date().toISOString(),
-                parentProxyId: verificationParent.id,
-              },
-            },
-          });
-        }
-        return created;
-      });
-      return reply.code(201).send(server);
-    },
-  );
-  app.post(
-    "/v1/servers/:id/verification",
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const { platform } = CreateServerVerificationSchema.parse(request.body);
-      return reply
-        .code(201)
-        .send(await serverVerificationService.create(id, request.user!.id, platform));
-    },
-  );
-  app.get(
-    "/v1/servers/:id/verification",
-    { preHandler: app.authenticate },
-    async (request) => {
-      const { id } = request.params as { id: string };
-      return serverVerificationService.getOwned(id, request.user!.id);
-    },
-  );
-  app.post(
-    "/v1/servers/:id/verification/check",
-    { preHandler: app.authenticate },
-    async (request) => {
-      const { id } = request.params as { id: string };
-      return serverVerificationService.verify(id, request.user!.id);
-    },
-  );
+      }
+      return created;
+    });
+    return reply.code(201).send(server);
+  });
+  app.post("/v1/servers/:id/verification", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { platform } = CreateServerVerificationSchema.parse(request.body);
+    return reply.code(201).send(await serverVerificationService.create(id, request.user!.id, platform));
+  });
+  app.get("/v1/servers/:id/verification", { preHandler: app.authenticate }, async (request) => {
+    const { id } = request.params as { id: string };
+    return serverVerificationService.getOwned(id, request.user!.id);
+  });
+  app.post("/v1/servers/:id/verification/check", { preHandler: app.authenticate }, async (request) => {
+    const { id } = request.params as { id: string };
+    return serverVerificationService.verify(id, request.user!.id);
+  });
   app.post("/v1/plugin/verifications/handshake", async (request) => {
     const input = PluginVerificationHandshakeSchema.parse(request.body);
     return serverVerificationService.pluginHandshake({
@@ -478,9 +505,22 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     }
     const token = `npx_${randomBytes(32).toString("base64url")}`;
     await prisma.$transaction([
-      prisma.integrationApiKey.updateMany({ where: { serverId: id, name: "Nortix Paper milestone plugin", revokedAt: null }, data: { revokedAt: new Date() } }),
+      prisma.integrationApiKey.updateMany({
+        where: { serverId: id, scopes: { has: "plugin:events" }, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
       prisma.integrationApiKey.create({
-        data: { serverId: id, name: "Nortix Paper milestone plugin", keyHash: hashPluginToken(token), scopes: ["plugin:events", "plugin:capabilities"], lastFour: token.slice(-4) },
+        data: {
+          serverId: id,
+          name: "Nortix Minecraft integration",
+          keyHash: hashPluginToken(token),
+          scopes: ["plugin:events", "plugin:capabilities"],
+          lastFour: token.slice(-4),
+        },
+      }),
+      prisma.server.update({
+        where: { id },
+        data: { pluginInstanceId: null, pluginLastSeenAt: null },
       }),
     ]);
     return { serverId: id, serverName: server.name, token, shownOnce: true };
@@ -491,8 +531,63 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     await requireServerPermission(id, request.user!.id, "integrations");
     return prisma.server.findUniqueOrThrow({
       where: { id },
-      select: { id: true, name: true, verificationParentId: true, pluginCapabilities: true, pluginLastSeenAt: true, pluginInstanceId: true },
+      select: {
+        id: true,
+        name: true,
+        verificationParentId: true,
+        pluginCapabilities: true,
+        pluginLastSeenAt: true,
+        pluginInstanceId: true,
+      },
     });
+  });
+
+  app.get("/v1/owner/servers/:id/campaign-suggestions", { preHandler: app.authenticate }, async (request) => {
+    const { id } = request.params as { id: string };
+    await requireServerPermission(id, request.user!.id, "campaigns");
+    const query = request.query as { budgetCredits?: string; maximumSparksReward?: string; milestoneCount?: string };
+    const boundedInteger = (value: string | undefined, fallback: number, minimum: number, maximum: number) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, Math.floor(parsed))) : fallback;
+    };
+    const budgetCredits = boundedInteger(query.budgetCredits, 5_000, 100, 10_000_000);
+    const maximumSparksReward = boundedInteger(query.maximumSparksReward, 100, 10, 2_000);
+    const milestoneCount = boundedInteger(query.milestoneCount, 3, 1, 8);
+    const capacity = deriveCampaignCapacity({ budgetCredits, maximumSparksReward, milestoneCount });
+    const server = await prisma.server.findUniqueOrThrow({
+      where: { id },
+      select: {
+        playerCount: true,
+        verificationScope: true,
+        verificationParentId: true,
+        pluginCapabilities: true,
+      },
+    });
+    const capabilities = Array.isArray(server.pluginCapabilities) ? server.pluginCapabilities : [];
+    const advertisedMetrics = capabilities.flatMap((capability) => {
+      if (!capability || typeof capability !== "object" || !("metrics" in capability)) {
+        return [];
+      }
+      const metrics = (capability as { metrics?: unknown }).metrics;
+      return Array.isArray(metrics) ? metrics.filter((metric): metric is string => typeof metric === "string") : [];
+    });
+    return {
+      exposure: estimatePotentialExposure(capacity.capacity, server.playerCount),
+      derivedCapacity: capacity.capacity,
+      estimatedCostPerPotentialParticipant: capacity.costPerPotentialParticipant,
+      suggestions: suggestCampaignMilestones(advertisedMetrics, server.verificationScope === "PROXY_NETWORK" || Boolean(server.verificationParentId)),
+    };
+  });
+
+  app.get("/v1/owner/servers/:id/campaign-eligibility", { preHandler: app.authenticate }, async (request) => {
+    const { id } = request.params as { id: string };
+    await requireServerPermission(id, request.user!.id, "campaigns");
+    const since = new Date(Date.now() - CAMPAIGN_ACTIVITY_WINDOW_DAYS * 86_400_000);
+    const samples = await prisma.serverActivitySample.findMany({
+      where: { serverId: id, observedAt: { gte: since } },
+      select: { onlinePlayers: true, observedAt: true },
+    });
+    return evaluateCampaignEligibility(samples);
   });
 
   app.post("/v1/plugin/capabilities", async (request) => {
@@ -503,52 +598,172 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     }
     const server = await prisma.server.update({
       where: { id: input.serverId },
-      data: { pluginCapabilities: input.capabilities, pluginLastSeenAt: new Date(), pluginInstanceId: input.instanceId },
+      data: {
+        pluginCapabilities: input.capabilities,
+        pluginLastSeenAt: new Date(),
+        pluginInstanceId: input.instanceId,
+      },
       select: { id: true, name: true, verificationParentId: true },
     });
-    return { accepted: true, serverId: server.id, networkId: server.verificationParentId ?? server.id, capabilities: input.capabilities.length };
+    return {
+      accepted: true,
+      serverId: server.id,
+      networkId: server.verificationParentId ?? server.id,
+      capabilities: input.capabilities.length,
+    };
   });
 
-  app.post(
-    "/v1/plugin/player-history",
-    { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } },
-    async (request, reply) => {
-      const input = PluginPlayerHistorySchema.parse(request.body);
-      const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
-      if (credential.server.pluginInstanceId !== input.instanceId) {
-        throw new Error("Plugin instance verification is required before syncing player history.");
+  app.post("/v1/plugin/player-history", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const input = PluginPlayerHistorySchema.parse(request.body);
+    const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    if (credential.server.pluginInstanceId !== input.instanceId) {
+      throw new Error("Plugin instance verification is required before syncing player history.");
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      const inserted = input.players.length
+        ? await tx.serverPlayerPresence.createMany({
+            data: input.players.map((player) => ({
+              serverId: input.serverId,
+              normalizedUsername: player.minecraftUsername.toLowerCase(),
+              minecraftUsername: player.minecraftUsername,
+              firstSeenAt: new Date(player.firstSeenAt),
+              lastSeenAt: new Date(player.firstSeenAt),
+            })),
+            skipDuplicates: true,
+          })
+        : { count: 0 };
+      if (input.complete) {
+        await tx.server.update({
+          where: { id: input.serverId },
+          data: { playerHistorySyncedAt: new Date() },
+        });
       }
-      const result = await prisma.$transaction(async (tx) => {
-        const inserted = input.players.length
-          ? await tx.serverPlayerPresence.createMany({
-              data: input.players.map((player) => ({
-                serverId: input.serverId,
-                normalizedUsername: player.minecraftUsername.toLowerCase(),
-                minecraftUsername: player.minecraftUsername,
-                firstSeenAt: new Date(player.firstSeenAt),
-                lastSeenAt: new Date(player.firstSeenAt),
-              })),
-              skipDuplicates: true,
-            })
-          : { count: 0 };
-        if (input.complete) {
-          await tx.server.update({
-            where: { id: input.serverId },
-            data: { playerHistorySyncedAt: new Date() },
-          });
-        }
-        return inserted;
+      return inserted;
+    });
+    return reply.code(202).send({ accepted: true, recorded: result.count });
+  });
+
+  app.post("/v1/plugin/presence", { config: { rateLimit: { max: 4, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const input = PluginPresenceSnapshotSchema.parse(request.body);
+    const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    if (!credential.server.pluginInstanceId && input.platform === "VELOCITY") {
+      await prisma.server.update({
+        where: { id: input.serverId },
+        data: { pluginInstanceId: input.instanceId, pluginLastSeenAt: new Date() },
       });
-      return reply.code(202).send({ accepted: true, recorded: result.count });
-    },
-  );
+    } else if (credential.server.pluginInstanceId !== input.instanceId) {
+      throw new Error("Plugin instance verification is required before activity reporting.");
+    }
+    const observedAt = new Date(input.observedAt);
+    if (Math.abs(Date.now() - observedAt.getTime()) > 5 * 60_000) {
+      throw new Error("Presence snapshots must use a current observation time.");
+    }
+    const backendCounts = input.players.reduce<Record<string, number>>((counts, player) => {
+      const backend = player.backend ?? "default";
+      counts[backend] = (counts[backend] ?? 0) + 1;
+      return counts;
+    }, {});
+    const playerHashes = [...new Set(input.players.map((player) =>
+      createHash("sha256").update(`${input.serverId}:${player.minecraftUuid.toLowerCase()}`).digest("hex"),
+    ))];
+    const stored = await prisma.$transaction(async (tx) => {
+      const sample = await tx.serverActivitySample.upsert({
+        where: { id: input.id },
+        update: {},
+        create: {
+          id: input.id,
+          serverId: input.serverId,
+          observedAt,
+          onlinePlayers: input.onlinePlayers,
+          maxPlayers: input.maxPlayers,
+          platform: input.platform,
+          pluginVersion: input.pluginVersion,
+          serverVersion: input.serverVersion,
+          backendCounts,
+          playerHashes,
+        },
+        select: { id: true },
+      });
+      await tx.server.update({
+        where: { id: input.serverId },
+        data: {
+          online: true,
+          playerCount: input.onlinePlayers,
+          maxPlayers: input.maxPlayers,
+          pluginLastSeenAt: new Date(),
+        },
+      });
+      await tx.serverActivitySample.deleteMany({
+        where: {
+          serverId: input.serverId,
+          observedAt: { lt: new Date(Date.now() - 14 * 86_400_000) },
+        },
+      });
+      return sample;
+    });
+    return reply.code(202).send({ accepted: true, sampleId: stored.id });
+  });
+
+  app.get("/v1/plugin/public-profiles/:minecraftUsername", { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const { minecraftUsername } = z.object({
+      minecraftUsername: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
+    }).parse(request.params);
+    const serverId = z.string().min(1).parse((request.query as { serverId?: string }).serverId);
+    await authenticateServerPlugin(request.headers.authorization, serverId);
+    const accountSelect = {
+      username: true,
+      displayName: true,
+      reputationScore: true,
+      reputationTier: true,
+      testerLevel: true,
+    } satisfies Prisma.UserSelect;
+    const premium = await prisma.minecraftIdentity.findFirst({
+      where: {
+        verified: true,
+        OR: [
+          { username: { equals: minecraftUsername, mode: "insensitive" } },
+          { lastKnownUsername: { equals: minecraftUsername, mode: "insensitive" } },
+        ],
+      },
+      select: { username: true, user: { select: accountSelect } },
+    });
+    const cracked = premium ? null : await prisma.crackedAccountLink.findFirst({
+      where: {
+        serverId,
+        normalizedUsername: minecraftUsername.toLowerCase(),
+        status: "ACTIVE",
+      },
+      select: { minecraftUsername: true, user: { select: accountSelect } },
+    });
+    const identity = premium ?? cracked;
+    if (!identity) {
+      return reply.code(404).send({
+        code: "PROFILE_NOT_FOUND",
+        message: "This user is not registered to Nortix.",
+      });
+    }
+    const user = identity.user;
+    const verifiedMilestones = await prisma.milestoneCompletion.count({
+      where: {
+        status: "VERIFIED",
+        participation: { player: { username: user.username } },
+      },
+    });
+    return {
+      minecraftUsername: "username" in identity ? identity.username : identity.minecraftUsername,
+      nortixUsername: user.username,
+      displayName: user.displayName,
+      reputationScore: user.reputationScore,
+      reputationTier: user.reputationTier,
+      testerLevel: user.testerLevel,
+      verifiedMilestones,
+    };
+  });
 
   app.post("/v1/plugin/events", { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } }, async (request, reply) => {
     const input = ServerPluginEventSchema.parse(request.body);
     const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
-    const capabilities = Array.isArray(credential.server.pluginCapabilities)
-      ? credential.server.pluginCapabilities
-      : [];
+    const capabilities = Array.isArray(credential.server.pluginCapabilities) ? credential.server.pluginCapabilities : [];
     const advertisedMetrics = capabilities.flatMap((capability) => {
       if (!capability || typeof capability !== "object" || !("metrics" in capability)) return [];
       const metrics = (capability as { metrics?: unknown }).metrics;
@@ -584,13 +799,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       },
     });
 
-    const activatedLink = input.type === "PLAYER_JOIN"
-      ? await minecraftIdentityService.observeServerJoin(
-          input.serverId,
-          input.minecraftUsername,
-          validated.occurredAt,
-        )
-      : null;
+    const activatedLink = input.type === "PLAYER_JOIN" ? await minecraftIdentityService.observeServerJoin(input.serverId, input.minecraftUsername, validated.occurredAt) : null;
     const [identity, existingCrackedLink] = await Promise.all([
       prisma.minecraftIdentity.findUnique({ where: { uuid: input.minecraftUuid } }),
       prisma.crackedAccountLink.findFirst({
@@ -608,15 +817,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const serverIds = [server.id];
     if (server.verificationParentId) serverIds.push(server.verificationParentId);
     else {
-      const children = await prisma.server.findMany({ where: { verificationParentId: server.id }, select: { id: true } });
+      const children = await prisma.server.findMany({
+        where: { verificationParentId: server.id },
+        select: { id: true },
+      });
       serverIds.push(...children.map((item) => item.id));
     }
     const participations = await prisma.campaignParticipation.findMany({
       where: {
-        OR: [
-          ...(identity ? [{ minecraftIdentityId: identity.id }] : []),
-          ...(crackedLink ? [{ crackedAccountLinkId: crackedLink.id }] : []),
-        ],
+        OR: [...(identity ? [{ minecraftIdentityId: identity.id }] : []), ...(crackedLink ? [{ crackedAccountLinkId: crackedLink.id }] : [])],
         status: { in: ["JOINED", "ACTIVE"] },
         campaign: { serverId: { in: serverIds } },
       },
@@ -626,7 +835,10 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     for (const participation of participations) {
       for (const milestone of participation.campaign.milestones) {
         if (milestone.verificationMethod !== "SERVER_PLUGIN") continue;
-        const config = { ...(milestone.verificationConfig as Record<string, unknown>), ...(milestone.completionRequirements as Record<string, unknown>) };
+        const config = {
+          ...(milestone.verificationConfig as Record<string, unknown>),
+          ...(milestone.completionRequirements as Record<string, unknown>),
+        };
         const metric = String(config.metric ?? milestone.templateType).toUpperCase();
         const target = Math.max(1, Number(config.target ?? 1));
         const scopedIds = config.scope === "PROXY_NETWORK" ? serverIds : [input.serverId];
@@ -634,9 +846,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           where: {
             serverId: { in: scopedIds },
             occurredAt: { gte: participation.joinedAt },
-            ...(participation.crackedAccountLinkId
-              ? { metadata: { path: ["minecraftUsername"], equals: input.minecraftUsername } }
-              : { metadata: { path: ["minecraftUuid"], equals: input.minecraftUuid } }),
+            ...(participation.crackedAccountLinkId ? { metadata: { path: ["minecraftUsername"], equals: input.minecraftUsername } } : { metadata: { path: ["minecraftUuid"], equals: input.minecraftUuid } }),
           },
           select: { type: true, metadata: true, occurredAt: true },
           orderBy: { occurredAt: "desc" },
@@ -659,18 +869,57 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           for (const item of relevant) value = Math.max(value, Number((item.metadata as Record<string, unknown>).streak ?? 0));
         }
         if (value >= target) {
-          await prisma.milestoneCompletion.upsert({
-            where: { participationId_milestoneId: { participationId: participation.id, milestoneId: milestone.id } },
-            update: { evidence: { metric, target, observed: value, serverIds: scopedIds, backendCalculated: true, attestation: "UNTRUSTED_SERVER_PLUGIN" }, verificationSource: "SERVER_PLUGIN" },
-            create: { participationId: participation.id, milestoneId: milestone.id, evidence: { metric, target, observed: value, serverIds: scopedIds, backendCalculated: true, attestation: "UNTRUSTED_SERVER_PLUGIN" }, verificationSource: "SERVER_PLUGIN", status: "PENDING" },
+          const automaticallyApproved = canAutomaticallyApprovePluginMilestone({
+            verificationMethod: milestone.verificationMethod,
+            reviewRequired: milestone.reviewRequired,
+            metric,
+            target,
+            observed: value,
+            eventCount: relevant.length,
+            firstObservedAt: relevant.at(-1)?.occurredAt,
+            lastObservedAt: relevant[0]?.occurredAt,
+          });
+          await campaignService.recordPluginMilestone({
+            participationId: participation.id,
+            milestoneId: milestone.id,
+            evidence: {
+              metric,
+              target,
+              observed: value,
+              eventCount: relevant.length,
+              firstObservedAt: relevant.at(-1)?.occurredAt.toISOString(),
+              lastObservedAt: relevant[0]?.occurredAt.toISOString(),
+              serverIds: scopedIds,
+              backendCalculated: true,
+              safeguards: {
+                authenticatedServerCredential: true,
+                boundPluginInstance: true,
+                schemaValidated: true,
+                idempotentEventIds: true,
+                plausibleEventRate: automaticallyApproved,
+              },
+              attestation: "UNTRUSTED_SERVER_PLUGIN",
+            },
+            automaticallyApproved,
           });
           completed++;
         }
       }
-      await prisma.campaignParticipation.update({ where: { id: participation.id }, data: { status: "ACTIVE", lastActivityAt: new Date() } });
+      await prisma.campaignParticipation.update({
+        where: { id: participation.id },
+        data: { status: "ACTIVE", lastActivityAt: new Date() },
+      });
     }
-    await prisma.server.update({ where: { id: input.serverId }, data: { pluginLastSeenAt: new Date(), pluginInstanceId: input.instanceId } });
-    return reply.code(202).send({ accepted: true, eventId: stored.id, matchedParticipations: participations.length, milestonesReached: completed });
+    await prisma.server.update({
+      where: { id: input.serverId },
+      data: { pluginLastSeenAt: new Date(), pluginInstanceId: input.instanceId },
+    });
+    return reply.code(202).send({
+      accepted: true,
+      eventId: stored.id,
+      matchedParticipations: participations.length,
+      milestonesReached: completed,
+    });
   });
 
   app.get("/v1/campaigns", async (request) => {
@@ -693,6 +942,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           startsAt: true,
           endsAt: true,
           maxParticipants: true,
+          minimumSparksReward: true,
+          maximumSparksReward: true,
+          potentialExposureMin: true,
+          potentialExposureMax: true,
+          automaticVerification: true,
           versionRequirements: true,
           regionRestrictions: true,
           server: { select: publicServerSelect },
@@ -724,6 +978,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         startsAt: true,
         endsAt: true,
         maxParticipants: true,
+        minimumSparksReward: true,
+        maximumSparksReward: true,
+        potentialExposureMin: true,
+        potentialExposureMax: true,
+        automaticVerification: true,
         versionRequirements: true,
         regionRestrictions: true,
         server: { select: publicServerSelect },
@@ -736,12 +995,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.post("/v1/campaigns/:id/join", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const input = JoinCampaignSchema.parse(request.body);
-    const result = await campaignService.join(
-      request.user!.id,
-      id,
-      input.minecraftIdentityId,
-      input.crackedAccountLinkId,
-    );
+    const result = await campaignService.join(request.user!.id, id, input.minecraftIdentityId, input.crackedAccountLinkId);
     return reply.code(201).send(result);
   });
   app.get("/v1/campaigns/:id/participation", { preHandler: app.authenticate }, async (request) => {
@@ -759,6 +1013,9 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             category: true,
             startsAt: true,
             endsAt: true,
+            minimumSparksReward: true,
+            maximumSparksReward: true,
+            automaticVerification: true,
             server: { select: publicServerSelect },
             milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
           },
@@ -780,6 +1037,9 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             category: true,
             startsAt: true,
             endsAt: true,
+            minimumSparksReward: true,
+            maximumSparksReward: true,
+            automaticVerification: true,
             server: { select: publicServerSelect },
             milestones: { select: publicMilestoneSelect, orderBy: { order: "asc" } },
           },
@@ -789,29 +1049,21 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       orderBy: { lastActivityAt: "desc" },
     }),
   );
-  app.post(
-    "/v1/participations/:id/milestones/:milestoneId/submit",
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const { id, milestoneId } = request.params as { id: string; milestoneId: string };
-      const input = MilestoneSubmissionSchema.parse(request.body);
-      const completion = await campaignService.submitMilestone(request.user!.id, id, milestoneId, {
-        ...input.evidence,
-        note: input.note,
-      });
-      return reply.code(201).send(completion);
-    },
-  );
+  app.post("/v1/participations/:id/milestones/:milestoneId/submit", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id, milestoneId } = request.params as { id: string; milestoneId: string };
+    const input = MilestoneSubmissionSchema.parse(request.body);
+    const completion = await campaignService.submitMilestone(request.user!.id, id, milestoneId, {
+      ...input.evidence,
+      note: input.note,
+    });
+    return reply.code(201).send(completion);
+  });
 
   app.get("/v1/earnings/summary", { preHandler: app.authenticate }, async (request) => {
     const entries = await prisma.earningsLedgerEntry.findMany({
       where: { userId: request.user!.id, currency: "USD" },
     });
-    const availableCents = entries.reduce(
-      (balance, entry) =>
-        balance + (entry.direction === "CREDIT" ? entry.amountCents : -entry.amountCents),
-      0,
-    );
+    const availableCents = entries.reduce((balance, entry) => balance + (entry.direction === "CREDIT" ? entry.amountCents : -entry.amountCents), 0);
     return {
       availableCents,
       pendingCents: request.user!.pendingEarningsCache,
@@ -832,24 +1084,17 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       orderBy: { createdAt: "desc" },
     }),
   );
-  app.post(
-    "/v1/withdrawals",
-    { preHandler: app.requirePermission("withdrawal:request") },
-    async (request, reply) => {
-      const input = WithdrawalInputSchema.parse(request.body);
-      const withdrawal = await withdrawalService.request(request.user!.id, input);
-      return reply.code(201).send(withdrawal);
-    },
-  );
+  app.post("/v1/withdrawals", { preHandler: app.requirePermission("withdrawal:request") }, async (request, reply) => {
+    const input = WithdrawalInputSchema.parse(request.body);
+    const withdrawal = await withdrawalService.request(request.user!.id, input);
+    return reply.code(201).send(withdrawal);
+  });
 
   app.get("/v1/sparks/summary", { preHandler: app.authenticate }, async (request) => {
     const entries = await prisma.sparksLedgerEntry.findMany({
       where: { userId: request.user!.id },
     });
-    const balance = entries.reduce(
-      (total, entry) => total + (entry.direction === "CREDIT" ? entry.amount : -entry.amount),
-      0,
-    );
+    const balance = entries.reduce((total, entry) => total + (entry.direction === "CREDIT" ? entry.amount : -entry.amount), 0);
     return { balance, cashValue: null, withdrawable: false };
   });
   app.get("/v1/sparks/transactions", { preHandler: app.authenticate }, async (request) =>
@@ -859,92 +1104,112 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       take: 100,
     }),
   );
-  app.get("/v1/sparks/shop", async () =>
-    prisma.cosmeticItem.findMany({ where: { available: true }, orderBy: { sparksPrice: "asc" } }),
-  );
+  app.get("/v1/quests", { preHandler: app.authenticate }, async (request) => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const quests = await prisma.dailyQuest.findMany({
+      where: { active: true },
+      include: {
+        userQuests: {
+          where: { userId: request.user!.id, questDate: { gte: today } },
+          select: { progress: true, completedAt: true },
+          take: 1,
+        },
+      },
+      orderBy: { title: "asc" },
+    });
+    return quests.map(({ userQuests, ...quest }) => ({
+      ...quest,
+      progress: userQuests[0]?.progress ?? 0,
+      completedAt: userQuests[0]?.completedAt ?? null,
+    }));
+  });
+  app.get("/v1/sparks/shop", async () => prisma.cosmeticItem.findMany({ where: { available: true }, orderBy: { sparksPrice: "asc" } }));
   app.post("/v1/sparks/purchases", { preHandler: app.authenticate }, async (request, reply) => {
     const { itemId } = sparksPurchaseSchema.parse(request.body);
-    const purchase = await prisma.$transaction(async (tx) => {
-      const [item, entries] = await Promise.all([
-        tx.cosmeticItem.findUnique({ where: { id: itemId } }),
-        tx.sparksLedgerEntry.findMany({ where: { userId: request.user!.id } }),
-      ]);
-      if (!item?.available) throw new Error("Cosmetic is not available.");
-      const balance = entries.reduce(
-        (sum, entry) => sum + (entry.direction === "CREDIT" ? entry.amount : -entry.amount),
-        0,
-      );
-      if (balance < item.sparksPrice) throw new Error("Not enough Sparks.");
-      const ledger = await tx.sparksLedgerEntry.create({
-        data: {
-          userId: request.user!.id,
-          direction: "DEBIT",
-          amount: item.sparksPrice,
-          transactionType: "COSMETIC_PURCHASE",
-          referenceType: "COSMETIC_ITEM",
-          referenceId: item.id,
-          idempotencyKey: `cosmetic:${request.user!.id}:${item.id}`,
-        },
-      });
-      return tx.cosmeticPurchase.create({
-        data: { userId: request.user!.id, itemId: item.id, sparksLedgerEntryId: ledger.id },
-      });
-    }, { isolationLevel: "Serializable" });
+    const purchase = await prisma.$transaction(
+      async (tx) => {
+        const [item, entries] = await Promise.all([tx.cosmeticItem.findUnique({ where: { id: itemId } }), tx.sparksLedgerEntry.findMany({ where: { userId: request.user!.id } })]);
+        if (!item?.available) throw new Error("Cosmetic is not available.");
+        const balance = entries.reduce((sum, entry) => sum + (entry.direction === "CREDIT" ? entry.amount : -entry.amount), 0);
+        if (balance < item.sparksPrice) throw new Error("Not enough Sparks.");
+        const ledger = await tx.sparksLedgerEntry.create({
+          data: {
+            userId: request.user!.id,
+            direction: "DEBIT",
+            amount: item.sparksPrice,
+            transactionType: "COSMETIC_PURCHASE",
+            referenceType: "COSMETIC_ITEM",
+            referenceId: item.id,
+            idempotencyKey: `cosmetic:${request.user!.id}:${item.id}`,
+          },
+        });
+        return tx.cosmeticPurchase.create({
+          data: { userId: request.user!.id, itemId: item.id, sparksLedgerEntryId: ledger.id },
+        });
+      },
+      { isolationLevel: "Serializable" },
+    );
     return reply.code(201).send(purchase);
   });
 
-  app.get(
-    "/v1/owner/servers",
-    { preHandler: app.authenticate },
-    async (request) => {
-      const userId = request.user!.id;
-      const servers = await prisma.server.findMany({
-        where: { OR: [{ ownerId: userId }, { teamMembers: { some: { userId } } }] },
-        select: {
-          id: true,
-          ownerId: true,
-          name: true,
-          slug: true,
-          description: true,
-          hostname: true,
-          port: true,
-          versions: true,
-          edition: true,
-          categories: true,
-          tags: true,
-          logoUrl: true,
-          bannerUrl: true,
-          screenshotUrls: true,
-          discordUrl: true,
-          websiteUrl: true,
-          verificationStatus: true,
-          verificationScope: true,
-          verificationParentId: true,
-          moderationStatus: true,
-          claimed: true,
-          online: true,
-          publicListing: true,
-          playerCount: true,
-          maxPlayers: true,
-          pluginLastSeenAt: true,
-          createdAt: true,
-          updatedAt: true,
-          owner: { select: { id: true, username: true, displayName: true } },
-          teamMembers: { where: { userId }, select: { role: true } },
-        },
-        orderBy: { updatedAt: "desc" },
-      });
-      return servers.map(({ teamMembers, ...server }) => {
-        const membership = teamMembers[0];
-        return {
-          ...server,
-          access: server.ownerId === userId
-            ? { type: "OWNER", role: "OWNER", permissions: ["analytics", "campaigns", "integrations", "settings", "team"] }
-            : { type: "TEAM", role: membership!.role, permissions: teamPermissions[membership!.role] },
-        };
-      });
-    },
-  );
+  app.get("/v1/owner/servers", { preHandler: app.authenticate }, async (request) => {
+    const userId = request.user!.id;
+    const servers = await prisma.server.findMany({
+      where: { OR: [{ ownerId: userId }, { teamMembers: { some: { userId } } }] },
+      select: {
+        id: true,
+        ownerId: true,
+        name: true,
+        slug: true,
+        description: true,
+        hostname: true,
+        port: true,
+        versions: true,
+        edition: true,
+        categories: true,
+        tags: true,
+        logoUrl: true,
+        bannerUrl: true,
+        screenshotUrls: true,
+        discordUrl: true,
+        websiteUrl: true,
+        verificationStatus: true,
+        verificationScope: true,
+        verificationParentId: true,
+        moderationStatus: true,
+        claimed: true,
+        online: true,
+        publicListing: true,
+        playerCount: true,
+        maxPlayers: true,
+        pluginLastSeenAt: true,
+        createdAt: true,
+        updatedAt: true,
+        owner: { select: { id: true, username: true, displayName: true } },
+        teamMembers: { where: { userId }, select: { role: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    return servers.map(({ teamMembers, ...server }) => {
+      const membership = teamMembers[0];
+      return {
+        ...server,
+        access:
+          server.ownerId === userId
+            ? {
+                type: "OWNER",
+                role: "OWNER",
+                permissions: ["analytics", "campaigns", "integrations", "settings", "team"],
+              }
+            : {
+                type: "TEAM",
+                role: membership!.role,
+                permissions: teamPermissions[membership!.role],
+              },
+      };
+    });
+  });
   app.get("/v1/team/invites", { preHandler: app.authenticate }, async (request) => {
     const now = new Date();
     await prisma.serverTeamInvite.updateMany({
@@ -954,7 +1219,14 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     return prisma.serverTeamInvite.findMany({
       where: { inviteeId: request.user!.id, status: "PENDING", expiresAt: { gt: now } },
       include: {
-        server: { select: { id: true, name: true, hostname: true, owner: { select: { username: true, displayName: true } } } },
+        server: {
+          select: {
+            id: true,
+            name: true,
+            hostname: true,
+            owner: { select: { username: true, displayName: true } },
+          },
+        },
         inviter: { select: { username: true, displayName: true, avatarUrl: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -970,14 +1242,27 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     });
     if (!invitee) return reply.code(404).send({ code: "NOT_FOUND", message: "No Nortix account has that username." });
     if (invitee.id === request.user!.id) throw new Error("The server owner already has full access.");
-    const member = await prisma.serverTeamMember.findUnique({ where: { serverId_userId: { serverId, userId: invitee.id } } });
+    const member = await prisma.serverTeamMember.findUnique({
+      where: { serverId_userId: { serverId, userId: invitee.id } },
+    });
     if (member) throw new Error("That user is already a team member.");
     const pending = await prisma.serverTeamInvite.findFirst({
-      where: { serverId, inviteeId: invitee.id, status: "PENDING", expiresAt: { gt: new Date() } },
+      where: {
+        serverId,
+        inviteeId: invitee.id,
+        status: "PENDING",
+        expiresAt: { gt: new Date() },
+      },
     });
     if (pending) throw new Error("That user already has a pending invite for this server.");
     const invite = await prisma.serverTeamInvite.create({
-      data: { serverId, inviterId: request.user!.id, inviteeId: invitee.id, role: input.role, expiresAt: new Date(Date.now() + 604_800_000) },
+      data: {
+        serverId,
+        inviterId: request.user!.id,
+        inviteeId: invitee.id,
+        role: input.role,
+        expiresAt: new Date(Date.now() + 604_800_000),
+      },
       include: { invitee: { select: { username: true, displayName: true, avatarUrl: true } } },
     });
     return reply.code(201).send({ ...invite, server: { id: server.id, name: server.name } });
@@ -986,11 +1271,16 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const { inviteId } = request.params as { inviteId: string };
     const { action } = TeamInviteResponseSchema.parse(request.body);
     return prisma.$transaction(async (tx) => {
-      const invite = await tx.serverTeamInvite.findFirst({ where: { id: inviteId, inviteeId: request.user!.id } });
+      const invite = await tx.serverTeamInvite.findFirst({
+        where: { id: inviteId, inviteeId: request.user!.id },
+      });
       if (!invite) throw new Error("Team invite not found.");
       if (invite.status !== "PENDING") throw new Error("This team invite has already been answered.");
       if (invite.expiresAt <= new Date()) {
-        await tx.serverTeamInvite.update({ where: { id: invite.id }, data: { status: "EXPIRED", respondedAt: new Date() } });
+        await tx.serverTeamInvite.update({
+          where: { id: invite.id },
+          data: { status: "EXPIRED", respondedAt: new Date() },
+        });
         throw new Error("This team invite has expired.");
       }
       const claimed = await tx.serverTeamInvite.updateMany({
@@ -1001,7 +1291,12 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       if (action === "ACCEPT") {
         await tx.serverTeamMember.upsert({
           where: { serverId_userId: { serverId: invite.serverId, userId: request.user!.id } },
-          create: { serverId: invite.serverId, userId: request.user!.id, invitedById: invite.inviterId, role: invite.role },
+          create: {
+            serverId: invite.serverId,
+            userId: request.user!.id,
+            invitedById: invite.inviterId,
+            role: invite.role,
+          },
           update: { role: invite.role, invitedById: invite.inviterId, acceptedAt: new Date() },
         });
       }
@@ -1015,8 +1310,20 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const { serverId } = request.params as { serverId: string };
     const server = await requireOwnedServer(serverId, request.user!.id);
     const [members, invites] = await Promise.all([
-      prisma.serverTeamMember.findMany({ where: { serverId }, include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: "asc" } }),
-      prisma.serverTeamInvite.findMany({ where: { serverId, status: "PENDING", expiresAt: { gt: new Date() } }, include: { invitee: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: "desc" } }),
+      prisma.serverTeamMember.findMany({
+        where: { serverId },
+        include: {
+          user: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.serverTeamInvite.findMany({
+        where: { serverId, status: "PENDING", expiresAt: { gt: new Date() } },
+        include: {
+          invitee: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
     ]);
     return {
       server: { id: server.id, name: server.name },
@@ -1045,81 +1352,71 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.delete("/v1/owner/servers/:serverId/team/invites/:inviteId", { preHandler: app.authenticate }, async (request, reply) => {
     const { serverId, inviteId } = request.params as { serverId: string; inviteId: string };
     await requireOwnedServer(serverId, request.user!.id);
-    await prisma.serverTeamInvite.update({ where: { id: inviteId, serverId }, data: { status: "REVOKED", respondedAt: new Date() } });
+    await prisma.serverTeamInvite.update({
+      where: { id: inviteId, serverId },
+      data: { status: "REVOKED", respondedAt: new Date() },
+    });
     return reply.code(204).send();
   });
-  app.get(
-    "/v1/owner/campaigns",
-    { preHandler: app.requirePermission("campaign:create") },
-    async (request) =>
-      prisma.campaign.findMany({
-        where: { ownerId: request.user!.id },
-        include: { server: true, milestones: true },
-      }),
+  app.get("/v1/owner/campaigns", { preHandler: app.requirePermission("campaign:create") }, async (request) =>
+    prisma.campaign.findMany({
+      where: { ownerId: request.user!.id },
+      include: { server: true, milestones: true },
+    }),
   );
-  app.post(
-    "/v1/owner/campaigns",
-    { preHandler: app.requirePermission("campaign:create") },
-    async (request, reply) => {
-      const input = CampaignInputSchema.parse(request.body);
-      return reply.code(201).send(await campaignService.create(request.user!.id, input));
-    },
-  );
-  app.post(
-    "/v1/owner/campaigns/:id/submit",
-    { preHandler: app.requirePermission("campaign:create") },
-    async (request) => {
-      const { id } = request.params as { id: string };
-      return campaignService.submit(request.user!.id, id);
-    },
-  );
-  app.get(
-    "/v1/owner/campaign-balance",
-    { preHandler: app.requirePermission("campaign:create") },
-    async (request) => {
-      const entries = await prisma.campaignCreditLedgerEntry.findMany({
-        where: { ownerId: request.user!.id },
-        orderBy: { createdAt: "desc" },
+  app.post("/v1/owner/campaigns", { preHandler: app.requirePermission("campaign:create") }, async (request, reply) => {
+    const input = CampaignInputSchema.parse(request.body);
+    return reply.code(201).send(await campaignService.create(request.user!.id, input));
+  });
+  app.post("/v1/owner/campaigns/:id/submit", { preHandler: app.requirePermission("campaign:create") }, async (request) => {
+    const { id } = request.params as { id: string };
+    return campaignService.submit(request.user!.id, id);
+  });
+  app.get("/v1/owner/campaign-balance", { preHandler: app.requirePermission("campaign:create") }, async (request) => {
+    const entries = await prisma.campaignCreditLedgerEntry.findMany({
+      where: { ownerId: request.user!.id },
+      orderBy: { createdAt: "desc" },
+    });
+    const balance = calculateCampaignCreditBalance(entries);
+    return {
+      availableCredits: balance.total,
+      purchasedCredits: balance.purchased,
+      promotionalCredits: balance.promotional,
+      entries: entries.map((entry) => ({
+        id: entry.id,
+        direction: entry.direction,
+        credits: entry.amountCents,
+        purchasedCredits: entry.purchasedCents,
+        promotionalCredits: entry.promotionalCents,
+        transactionType: entry.transactionType,
+        referenceType: entry.referenceType,
+        referenceId: entry.referenceId,
+        expiresAt: entry.expiresAt,
+        createdAt: entry.createdAt,
+      })),
+      promotionalTerms: "Promotional credits are non-refundable, non-transferable, and may expire.",
+    };
+  });
+  app.post("/v1/owner/campaign-balance/checkout", { preHandler: app.requirePermission("campaign:create") }, async (request, reply) => {
+    if (env.NODE_ENV === "production") {
+      return reply.code(503).send({
+        code: "PAYMENTS_NOT_CONFIGURED",
+        message: "Campaign balance checkout is unavailable until a production payment provider is configured.",
       });
-      const totalCents = entries.reduce(
-        (total, entry) =>
-          total + (entry.direction === "CREDIT" ? entry.amountCents : -entry.amountCents),
-        0,
-      );
-      return {
-        totalCents,
-        entries,
-        promotionalTerms:
-          "Promotional credits are non-refundable, non-transferable, and may expire.",
-      };
-    },
-  );
-  app.post(
-    "/v1/owner/campaign-balance/checkout",
-    { preHandler: app.requirePermission("campaign:create") },
-    async (request, reply) => {
-      if (env.NODE_ENV === "production") {
-        return reply.code(503).send({
-          code: "PAYMENTS_NOT_CONFIGURED",
-          message: "Campaign balance checkout is unavailable until a production payment provider is configured.",
-        });
-      }
-      const { amountCents } = request.body as { amountCents: number };
-      if (!Number.isInteger(amountCents) || amountCents < 1000 || amountCents > 1_000_000) {
-        return reply
-          .code(400)
-          .send({
-            code: "VALIDATION_ERROR",
-            message: "Campaign balance purchases must be between $10 and $10,000.",
-          });
-      }
-      return paymentProvider.createCheckoutSession({
-        accountId: request.user!.id,
-        amountCents,
-        currency: "USD",
+    }
+    const { amountCents } = request.body as { amountCents: number };
+    if (!Number.isInteger(amountCents) || amountCents < 1000 || amountCents > 1_000_000) {
+      return reply.code(400).send({
+        code: "VALIDATION_ERROR",
+        message: "Campaign balance purchases must be between $10 and $10,000.",
       });
-    },
-  );
+    }
+    return paymentProvider.createCheckoutSession({
+      accountId: request.user!.id,
+      amountCents,
+      currency: "USD",
+    });
+  });
   app.post("/v1/payments/webhooks/mock", async (request, reply) => {
     if (env.NODE_ENV === "production") {
       return reply.code(404).send({ code: "NOT_FOUND", message: "Endpoint not found." });
@@ -1161,226 +1458,295 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     });
     return reply.code(202).send({ accepted: true, eventId: stored.id });
   });
-  app.get(
-    "/v1/owner/analytics",
-    { preHandler: app.requirePermission("campaign:create") },
-    async (request) => {
-      const campaigns = await prisma.campaign.findMany({
-        where: { ownerId: request.user!.id },
-        select: { id: true },
-      });
-      const campaignIds = campaigns.map(({ id }) => id);
-      const events = await prisma.analyticsEvent.groupBy({
-        by: ["type"],
-        where: { campaignId: { in: campaignIds } },
-        _count: { _all: true },
-      });
-      return { events, retention: { day1: null, day7: null, label: "Insufficient data" } };
-    },
-  );
+  app.get("/v1/owner/analytics", { preHandler: app.requirePermission("campaign:create") }, async (request) => {
+    const query = z
+      .object({
+        serverId: z.string().min(1),
+        days: z.coerce.number().int().min(7).max(90).default(30),
+      })
+      .parse(request.query);
+    await requireServerPermission(query.serverId, request.user!.id, "analytics");
 
-  app.get(
-    "/v1/admin/overview",
-    { preHandler: app.requirePermission("campaign:review") },
-    async () => {
-      const [users, servers, campaigns, withdrawals, cases] = await prisma.$transaction([
-        prisma.user.count(),
-        prisma.server.count(),
-        prisma.campaign.count(),
-        prisma.withdrawalRequest.count({
-          where: { status: { in: ["REQUESTED", "UNDER_REVIEW"] } },
-        }),
-        prisma.moderationCase.count({ where: { status: "OPEN" } }),
-      ]);
-      return { users, servers, campaigns, pendingWithdrawals: withdrawals, openCases: cases };
-    },
-  );
-  app.get(
-    "/v1/admin/campaigns",
-    { preHandler: app.requirePermission("campaign:review") },
-    async () =>
+    const since = new Date();
+    since.setUTCDate(since.getUTCDate() - query.days + 1);
+    since.setUTCHours(0, 0, 0, 0);
+
+    const [events, campaigns] = await prisma.$transaction([
+      prisma.analyticsEvent.findMany({
+        where: { serverId: query.serverId, occurredAt: { gte: since } },
+        select: { id: true, type: true, source: true, occurredAt: true, userId: true },
+        orderBy: { occurredAt: "asc" },
+      }),
       prisma.campaign.findMany({
-        where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUESTED"] } },
-        include: {
-          server: { select: { id: true, name: true, slug: true, verificationStatus: true, moderationStatus: true } },
-          owner: { select: { id: true, username: true, displayName: true, email: true, status: true } },
-          milestones: true,
+        where: { serverId: query.serverId },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          minimumSparksReward: true,
+          maximumSparksReward: true,
+          _count: { select: { participations: true } },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
       }),
-  );
-  app.post(
-    "/v1/admin/campaigns/:id/review",
-    { preHandler: app.requirePermission("campaign:review") },
-    async (request) => {
-      const { id } = request.params as { id: string };
-      const body = campaignReviewSchema.parse(request.body);
-      const status = {
-        APPROVE: "APPROVED",
-        REQUEST_CHANGES: "CHANGES_REQUESTED",
-        REJECT: "REJECTED",
-        PAUSE: "PAUSED",
-        ARCHIVE: "ARCHIVED",
-      }[body.action] as any;
-      return prisma.$transaction(async (tx) => {
-        const before = await tx.campaign.findUniqueOrThrow({ where: { id } });
-        const updated = await tx.campaign.update({
-          where: { id },
-          data: {
-            status,
-            moderationNotes: body.note,
-            publishedAt: body.action === "APPROVE" ? new Date() : undefined,
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            actorId: request.user!.id,
-            action: `CAMPAIGN_${body.action}`,
-            entityType: "CAMPAIGN",
-            entityId: id,
-            beforeSnapshot: { status: before.status },
-            afterSnapshot: { status },
-            reason: body.note,
-          },
-        });
-        return updated;
+    ]);
+
+    const counts = new Map<string, number>();
+    const days = new Map<string, Record<string, number>>();
+    for (let offset = 0; offset < query.days; offset += 1) {
+      const date = new Date(since);
+      date.setUTCDate(since.getUTCDate() + offset);
+      days.set(date.toISOString().slice(0, 10), {});
+    }
+    for (const event of events) {
+      counts.set(event.type, (counts.get(event.type) ?? 0) + 1);
+      const date = event.occurredAt.toISOString().slice(0, 10);
+      const bucket = days.get(date);
+      if (bucket) bucket[event.type] = (bucket[event.type] ?? 0) + 1;
+    }
+
+    const eventCount = (type: string) => counts.get(type) ?? 0;
+    return {
+      serverId: query.serverId,
+      periodDays: query.days,
+      totals: {
+        events: events.length,
+        impressions: eventCount("CAMPAIGN_IMPRESSION"),
+        views: eventCount("CAMPAIGN_VIEW"),
+        joins: eventCount("CAMPAIGN_JOIN"),
+        connections: eventCount("SERVER_CONNECTION"),
+        uniquePlayers: new Set(events.flatMap((event) => (event.userId ? [event.userId] : []))).size,
+        campaigns: campaigns.length,
+        participations: campaigns.reduce((total, campaign) => total + campaign._count.participations, 0),
+      },
+      daily: [...days].map(([date, bucket]) => ({
+        date,
+        impressions: bucket.CAMPAIGN_IMPRESSION ?? 0,
+        views: bucket.CAMPAIGN_VIEW ?? 0,
+        joins: bucket.CAMPAIGN_JOIN ?? 0,
+        connections: bucket.SERVER_CONNECTION ?? 0,
+      })),
+      campaigns,
+      recentEvents: events
+        .slice(-20)
+        .reverse()
+        .map(({ id, type, source, occurredAt }) => ({ id, type, source, occurredAt })),
+      retention: {
+        day1: null,
+        day7: null,
+        label: "Not enough verified return events in the seeded dataset.",
+      },
+    };
+  });
+
+  app.get("/v1/admin/overview", { preHandler: app.requirePermission("campaign:review") }, async () => {
+    const [users, servers, campaigns, withdrawals, cases] = await prisma.$transaction([
+      prisma.user.count(),
+      prisma.server.count(),
+      prisma.campaign.count(),
+      prisma.withdrawalRequest.count({
+        where: { status: { in: ["REQUESTED", "UNDER_REVIEW"] } },
+      }),
+      prisma.moderationCase.count({ where: { status: "OPEN" } }),
+    ]);
+    return { users, servers, campaigns, pendingWithdrawals: withdrawals, openCases: cases };
+  });
+  app.get("/v1/admin/entities", { preHandler: app.requirePermission("campaign:review") }, async (request) => {
+    const { type } = z.object({ type: z.enum(["users", "servers"]) }).parse(request.query);
+    if (type === "users") {
+      return prisma.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          status: true,
+          roles: true,
+          lastActiveAt: true,
+        },
+        orderBy: { lastActiveAt: "desc" },
+        take: 100,
       });
-    },
-  );
-  app.get(
-    "/v1/admin/withdrawals",
-    { preHandler: app.requirePermission("withdrawal:review") },
-    async () =>
-      prisma.withdrawalRequest.findMany({
-        include: {
-          player: {
-            select: {
-              id: true,
-              username: true,
-              displayName: true,
-              email: true,
-              status: true,
-              reputationScore: true,
-              reputationTier: true,
-            },
+    }
+    return prisma.server.findMany({
+      select: {
+        id: true,
+        name: true,
+        moderationStatus: true,
+        verificationStatus: true,
+        updatedAt: true,
+        owner: { select: { username: true, displayName: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    });
+  });
+  app.get("/v1/admin/campaigns", { preHandler: app.requirePermission("campaign:review") }, async () =>
+    prisma.campaign.findMany({
+      where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUESTED"] } },
+      include: {
+        server: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            verificationStatus: true,
+            moderationStatus: true,
           },
         },
-        orderBy: { createdAt: "asc" },
-      }),
-  );
-  app.post(
-    "/v1/admin/withdrawals/:id/transition",
-    { preHandler: app.requirePermission("withdrawal:review") },
-    async (request) => {
-      const { id } = request.params as { id: string };
-      const { status, reason } = withdrawalTransitionSchema.parse(request.body);
-      const updated = await withdrawalService.transition(request.user!.id, id, status, reason);
-      if (status === "PROCESSING") {
-        const recipient = await payoutProvider.createRecipient({
-          userId: updated.playerId,
-          destinationReference: updated.payoutDestinationReference,
-        });
-        const payout = await payoutProvider.createPayout({
-          recipientId: recipient.id,
-          amountCents: updated.requestedAmountCents - updated.feesCents,
-          currency: updated.currency,
-        });
-        return prisma.withdrawalRequest.update({
-          where: { id },
-          data: { providerTransactionReference: payout.id },
-        });
-      }
-      return updated;
-    },
-  );
-  app.get(
-    "/v1/admin/payment-events",
-    { preHandler: app.requirePermission("ledger:view_internal") },
-    async () => prisma.paymentEvent.findMany({ orderBy: { createdAt: "desc" }, take: 200 }),
-  );
-  app.get(
-    "/v1/admin/ledger",
-    { preHandler: app.requirePermission("ledger:view_internal") },
-    async () => ({
-      earnings: await prisma.earningsLedgerEntry.findMany({
-        include: { user: { select: { id: true, username: true, displayName: true, status: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      }),
-      sparks: await prisma.sparksLedgerEntry.findMany({
-        include: { user: { select: { id: true, username: true, displayName: true, status: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      }),
-      campaignCredits: await prisma.campaignCreditLedgerEntry.findMany({
-        include: { owner: { select: { id: true, username: true, displayName: true, status: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      }),
+        owner: {
+          select: { id: true, username: true, displayName: true, email: true, status: true },
+        },
+        milestones: true,
+      },
+      orderBy: { createdAt: "asc" },
     }),
   );
-  app.get(
-    "/v1/admin/audit-logs",
-    { preHandler: app.requirePermission("ledger:view_internal") },
-    async () =>
-      prisma.auditLog.findMany({
-        include: { actor: { select: { id: true, username: true, displayName: true, roles: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-      }),
+  app.post("/v1/admin/campaigns/:id/review", { preHandler: app.requirePermission("campaign:review") }, async (request) => {
+    const { id } = request.params as { id: string };
+    const body = campaignReviewSchema.parse(request.body);
+    const status = {
+      APPROVE: "APPROVED",
+      REQUEST_CHANGES: "CHANGES_REQUESTED",
+      REJECT: "REJECTED",
+      PAUSE: "PAUSED",
+      ARCHIVE: "ARCHIVED",
+    }[body.action] as any;
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.campaign.findUniqueOrThrow({ where: { id } });
+      const updated = await tx.campaign.update({
+        where: { id },
+        data: {
+          status,
+          moderationNotes: body.note,
+          publishedAt: body.action === "APPROVE" ? new Date() : undefined,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: request.user!.id,
+          action: `CAMPAIGN_${body.action}`,
+          entityType: "CAMPAIGN",
+          entityId: id,
+          beforeSnapshot: { status: before.status },
+          afterSnapshot: { status },
+          reason: body.note,
+        },
+      });
+      return updated;
+    });
+  });
+  app.get("/v1/admin/withdrawals", { preHandler: app.requirePermission("withdrawal:review") }, async () =>
+    prisma.withdrawalRequest.findMany({
+      include: {
+        player: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            email: true,
+            status: true,
+            reputationScore: true,
+            reputationTier: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
   );
-  app.post(
-    "/v1/admin/completions/:id/review",
-    { preHandler: app.requirePermission("reward:approve") },
-    async (request) => {
-      const { id } = request.params as { id: string };
-      const { approved, reason } = completionReviewSchema.parse(request.body);
-      return campaignService.reviewCompletion(request.user!.id, id, approved, reason);
-    },
+  app.post("/v1/admin/withdrawals/:id/transition", { preHandler: app.requirePermission("withdrawal:review") }, async (request) => {
+    const { id } = request.params as { id: string };
+    const { status, reason } = withdrawalTransitionSchema.parse(request.body);
+    const updated = await withdrawalService.transition(request.user!.id, id, status, reason);
+    if (status === "PROCESSING") {
+      const recipient = await payoutProvider.createRecipient({
+        userId: updated.playerId,
+        destinationReference: updated.payoutDestinationReference,
+      });
+      const payout = await payoutProvider.createPayout({
+        recipientId: recipient.id,
+        amountCents: updated.requestedAmountCents - updated.feesCents,
+        currency: updated.currency,
+      });
+      return prisma.withdrawalRequest.update({
+        where: { id },
+        data: { providerTransactionReference: payout.id },
+      });
+    }
+    return updated;
+  });
+  app.get("/v1/admin/payment-events", { preHandler: app.requirePermission("ledger:view_internal") }, async () => prisma.paymentEvent.findMany({ orderBy: { createdAt: "desc" }, take: 200 }));
+  app.get("/v1/admin/ledger", { preHandler: app.requirePermission("ledger:view_internal") }, async () => ({
+    earnings: await prisma.earningsLedgerEntry.findMany({
+      include: {
+        user: { select: { id: true, username: true, displayName: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+    sparks: await prisma.sparksLedgerEntry.findMany({
+      include: {
+        user: { select: { id: true, username: true, displayName: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+    campaignCredits: await prisma.campaignCreditLedgerEntry.findMany({
+      include: {
+        owner: { select: { id: true, username: true, displayName: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  }));
+  app.get("/v1/admin/audit-logs", { preHandler: app.requirePermission("ledger:view_internal") }, async () =>
+    prisma.auditLog.findMany({
+      include: {
+        actor: { select: { id: true, username: true, displayName: true, roles: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
   );
+  app.post("/v1/admin/completions/:id/review", { preHandler: app.requirePermission("reward:approve") }, async (request) => {
+    const { id } = request.params as { id: string };
+    const { approved, reason } = completionReviewSchema.parse(request.body);
+    return campaignService.reviewCompletion(request.user!.id, id, approved, reason);
+  });
 
-  app.post(
-    "/v1/integrations/server/events",
-    { config: { rateLimit: { max: 200, timeWindow: "1 minute" } } },
-    (_request, reply) => reply.code(410).send({
+  app.post("/v1/integrations/server/events", { config: { rateLimit: { max: 200, timeWindow: "1 minute" } } }, (_request, reply) =>
+    reply.code(410).send({
       code: "ENDPOINT_RETIRED",
       message: "Use a server-scoped plugin token with /v1/plugin/events.",
     }),
   );
-  app.post(
-    "/v1/integrations/client/events",
-    { config: { rateLimit: { max: 100, timeWindow: "1 minute" } } },
-    (_request, reply) => reply.code(410).send({
+  app.post("/v1/integrations/client/events", { config: { rateLimit: { max: 100, timeWindow: "1 minute" } } }, (_request, reply) =>
+    reply.code(410).send({
       code: "ENDPOINT_RETIRED",
       message: "Client-submitted integration events are not authoritative.",
     }),
   );
-  app.get(
-    "/v1/integrations/campaigns/:campaignId/config",
-    { preHandler: app.authenticate },
-    async (request) => {
-      const { campaignId } = request.params as { campaignId: string };
-      const campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-        select: { serverId: true },
-      });
-      if (!campaign) throw new Error("Campaign not found.");
-      await requireServerPermission(campaign.serverId, request.user!.id, "campaigns");
-      return prisma.campaign.findUnique({
-        where: { id: campaignId },
-        select: {
-          id: true,
-          serverId: true,
-          milestones: {
-            select: {
-              id: true,
-              templateType: true,
-              verificationMethod: true,
-              verificationConfig: true,
-            },
+  app.get("/v1/integrations/campaigns/:campaignId/config", { preHandler: app.authenticate }, async (request) => {
+    const { campaignId } = request.params as { campaignId: string };
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { serverId: true },
+    });
+    if (!campaign) throw new Error("Campaign not found.");
+    await requireServerPermission(campaign.serverId, request.user!.id, "campaigns");
+    return prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: {
+        id: true,
+        serverId: true,
+        milestones: {
+          select: {
+            id: true,
+            templateType: true,
+            verificationMethod: true,
+            verificationConfig: true,
           },
         },
-      });
-    },
-  );
+      },
+    });
+  });
 };

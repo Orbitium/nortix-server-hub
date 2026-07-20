@@ -4,7 +4,6 @@ import {
   Clock3,
   Globe2,
   Info,
-  MessageSquareText,
   ShieldCheck,
   Sparkles,
   Star,
@@ -13,20 +12,93 @@ import {
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@nortix/ui";
-import { campaigns } from "../features/demo-data";
+import { usePublicCampaign } from "../features/api-data";
+import { api } from "../lib/api";
 import { Modal } from "./Modal";
-import { accountCreationUrl, hasNortixAccountSession } from "../lib/auth-session";
+import { accountCreationUrl } from "../lib/auth-session";
+import { Seo } from "./Seo";
 
 export function CampaignDetailRedesign() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const campaign = campaigns.find((item) => item.id === id) ?? campaigns[0]!;
+  const { data: campaign, isLoading, isError, refetch } = usePublicCampaign(id);
   const [joining, setJoining] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [joinMessage, setJoinMessage] = useState("");
+
+  if (isLoading) {
+    return <div className="campaign-v2"><p>Loading seeded campaign…</p></div>;
+  }
+  if (isError || !campaign) {
+    return (
+      <div className="campaign-v2">
+        <p>The seeded campaign could not be loaded.</p>
+        <Button onClick={() => refetch()}>Retry</Button>
+      </div>
+    );
+  }
+
+  const versions = campaign.versionRequirements.length
+    ? campaign.versionRequirements
+    : campaign.server.versions;
+  const region = campaign.regionRestrictions.length
+    ? campaign.regionRestrictions.join(" · ")
+    : "Worldwide";
+  const canonicalPath = `/campaigns/${campaign.id}`;
+  const campaignSchema = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: campaign.title,
+    description: campaign.description,
+    url: `https://hub.nortixlabs.com${canonicalPath}`,
+    eventStatus:
+      campaign.status === "ACTIVE"
+        ? "https://schema.org/EventScheduled"
+        : "https://schema.org/EventCompleted",
+    eventAttendanceMode: "https://schema.org/OnlineEventAttendanceMode",
+    startDate: campaign.startsAt,
+    endDate: campaign.endsAt,
+    location: {
+      "@type": "VirtualLocation",
+      url: `https://hub.nortixlabs.com/servers/${campaign.server.slug}`,
+    },
+    organizer: {
+      "@type": "Organization",
+      name: campaign.server.name,
+      url: `https://hub.nortixlabs.com/servers/${campaign.server.slug}`,
+    },
+    isAccessibleForFree: true,
+  };
+
+  const joinCampaign = async () => {
+    setJoinMessage("");
+    try {
+      await api(`/campaigns/${campaign.id}/join`, {
+        method: "POST",
+        body: JSON.stringify({ acceptedTerms: true }),
+      });
+      setJoined(true);
+      setJoining(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The campaign could not be joined.";
+      if (/auth|account|sign in|unauthorized/i.test(message)) {
+        navigate(accountCreationUrl(`/campaigns/${campaign.id}`, "campaign"));
+        return;
+      }
+      setJoinMessage(message);
+    }
+  };
 
   return (
     <div className="campaign-v2">
+      <Seo
+        title={`${campaign.title} – ${campaign.server.name} Playtest`}
+        description={`${campaign.description} Complete ${campaign.milestones.length} clear milestones; eligible verified activity may receive up to ${campaign.maximumSparksReward} Sparks.`}
+        path={canonicalPath}
+        type="article"
+        jsonLd={campaignSchema}
+      />
       <nav className="campaign-v2__breadcrumbs" aria-label="Breadcrumb">
         <Link to="/campaigns">Campaigns</Link>
         <ChevronRight />
@@ -44,24 +116,26 @@ export function CampaignDetailRedesign() {
               <strong>
                 {campaign.server.name} <Check />
               </strong>
-              <small>{campaign.region.replace("Worldwide", "US · CA · GB")}</small>
+              <small>{region}</small>
             </span>
           </div>
-          <span className="campaign-v2__status">Active playtest</span>
+          <span className="campaign-v2__status">{campaign.status.toLowerCase()} playtest</span>
           <h1>{campaign.title}</h1>
           <p>{campaign.description}</p>
           <div className="campaign-v2__chips">
-            <span>{campaign.version}</span>
+            <span>{versions.join(", ") || "Any version"}</span>
             <span>{campaign.category}</span>
-            <span>{campaign.difficulty}</span>
-            <span>{campaign.language}</span>
+            <span>{campaign.milestones.length} milestones</span>
+            <span>{campaign.automaticVerification ? "Automatic checks" : "System review"}</span>
           </div>
         </div>
 
         <aside className="campaign-v2__join">
           <small>Potential reward</small>
           <div className="campaign-v2__reward">
-            <strong>Up to {campaign.sparks}</strong>
+            <strong>
+              {campaign.minimumSparksReward}–{campaign.maximumSparksReward}
+            </strong>
             <Info />
           </div>
           <span>
@@ -71,21 +145,29 @@ export function CampaignDetailRedesign() {
           <dl>
             <div>
               <dt>
-                <Clock3 /> Estimated time
+                <Clock3 /> Campaign ends
               </dt>
-              <dd>{campaign.duration}</dd>
+              <dd>{new Date(campaign.endsAt).toLocaleDateString()}</dd>
             </div>
             <div>
               <dt>
                 <Users /> Active participants
               </dt>
-              <dd>{campaign.participants}</dd>
+              <dd>{campaign._count.participations}</dd>
             </div>
             <div>
               <dt>
                 <Globe2 /> Region
               </dt>
-              <dd>{campaign.region.replace("Worldwide", "US · CA · GB")}</dd>
+              <dd>{region}</dd>
+            </div>
+            <div>
+              <dt>
+                <Users /> Potential exposure
+              </dt>
+              <dd>
+                {campaign.potentialExposureMin}–{campaign.potentialExposureMax}
+              </dd>
             </div>
           </dl>
           {joined ? (
@@ -93,16 +175,7 @@ export function CampaignDetailRedesign() {
               View your progress <ChevronRight />
             </Link>
           ) : (
-            <button
-              className="campaign-v2__join-button"
-              onClick={() => {
-                if (!hasNortixAccountSession()) {
-                  navigate(accountCreationUrl(`/campaigns/${campaign.id}`, "campaign"));
-                  return;
-                }
-                setJoining(true);
-              }}
-            >
+            <button className="campaign-v2__join-button" onClick={() => setJoining(true)}>
               Join campaign <ChevronRight />
             </button>
           )}
@@ -120,14 +193,14 @@ export function CampaignDetailRedesign() {
                 <div className="milestone-image-placeholder" aria-label="Milestone image placeholder" />
                 <div className="campaign-v2__milestone-copy">
                   <h3>{milestone.title}</h3>
-                  <p>{milestone.description}</p>
+                  <p>{milestone.publicInstructions}</p>
                   <small>
-                    <Clock3 /> {milestone.duration}
+                    <ShieldCheck /> {milestone.verificationMethod.replaceAll("_", " ").toLowerCase()}
                   </small>
                 </div>
                 <div className="campaign-v2__milestone-reward">
                   <span>
-                    <Sparkles /> Up to {milestone.sparks}
+                    <Sparkles /> Up to {milestone.sparksReward}
                   </span>
                 </div>
               </article>
@@ -137,7 +210,10 @@ export function CampaignDetailRedesign() {
             <Star />
             <span>
               Completing all verified steps could provide{" "}
-              <b>up to {campaign.sparks.toLocaleString()} Sparks.</b>
+              <b>
+                {campaign.minimumSparksReward.toLocaleString()}–
+                {campaign.maximumSparksReward.toLocaleString()} Sparks.
+              </b>
             </span>
           </div>
         </section>
@@ -148,50 +224,25 @@ export function CampaignDetailRedesign() {
             <dl>
               <div>
                 <dt>Potential Sparks</dt>
-                <dd>Up to {campaign.sparks.toLocaleString()}</dd>
+                <dd>
+                  {campaign.minimumSparksReward.toLocaleString()}–
+                  {campaign.maximumSparksReward.toLocaleString()}
+                </dd>
               </div>
               <div>
                 <dt>Verification</dt>
-                <dd>Manual review</dd>
+                <dd>{campaign.automaticVerification ? "Automatic plugin checks" : "System review"}</dd>
               </div>
               <div>
-                <dt>Typical review</dt>
-                <dd>1–2 days</dd>
+                <dt>Exceptions</dt>
+                <dd>Unusual activity may be held</dd>
               </div>
             </dl>
-          </section>
-
-          <section className="campaign-v2__community">
-            <h2>Community signal</h2>
-            <div className="campaign-v2__rating">
-              <strong>{campaign.server.rating}</strong>
-              <span>
-                <b>★★★★★</b>
-                <small>Server experience</small>
-              </span>
-            </div>
-            <div className="campaign-v2__signals">
-              <span>
-                <MessageSquareText />
-                <b>1.2K</b>
-                <small>Reviews</small>
-              </span>
-              <span>
-                <ShieldCheck />
-                <b>92%</b>
-                <small>Positive</small>
-              </span>
-              <span>
-                <Clock3 />
-                <b>24h</b>
-                <small>Response time</small>
-              </span>
-            </div>
           </section>
         </aside>
       </div>
 
-      {joining && (
+      {joining ? (
         <Modal title="Join this playtest" onClose={() => setJoining(false)}>
           <div className="modal__body">
             <p>
@@ -211,23 +262,18 @@ export function CampaignDetailRedesign() {
               />
               <span>I understand and accept the campaign terms.</span>
             </label>
+            {joinMessage ? <p role="alert">{joinMessage}</p> : null}
           </div>
           <div className="modal__footer">
             <Button variant="ghost" onClick={() => setJoining(false)}>
               Cancel
             </Button>
-            <Button
-              disabled={!accepted}
-              onClick={() => {
-                setJoined(true);
-                setJoining(false);
-              }}
-            >
+            <Button disabled={!accepted} onClick={joinCampaign}>
               Accept & join campaign
             </Button>
           </div>
         </Modal>
-      )}
+      ) : null}
     </div>
   );
 }

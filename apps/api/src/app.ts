@@ -100,6 +100,8 @@ export const buildApp = async (env: Env) => {
       "Minecraft identity",
       "Minecraft account",
       "syncing previous player names",
+      "Campaign Credits",
+      "campaign budget",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),

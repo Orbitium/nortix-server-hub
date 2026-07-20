@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /servers
+Allow: /campaigns
+Allow: /how-it-works
+Allow: /for-server-owners
+Allow: /safety
+Allow: /guidelines
+Allow: /terms
+Allow: /privacy
+Allow: /contact
+Disallow: /admin
+Disallow: /owner
+Disallow: /dashboard
+Disallow: /sign-in
+Disallow: /register
+
+Sitemap: https://hub.nortixlabs.com/sitemap.xml

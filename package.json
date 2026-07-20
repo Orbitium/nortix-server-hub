@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "npm --prefix apps/web run dev --",
+    "dev": "node tooling/dev-full.mjs",
     "dev:web": "npm --prefix apps/web run dev --",
     "dev:api": "node tooling/dev-full.mjs --api-only",
     "dev:full": "node tooling/dev-full.mjs",

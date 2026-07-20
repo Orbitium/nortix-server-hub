@@ -327,9 +327,31 @@ async function main() {
     servers.push(server);
   }
 
+  await prisma.serverActivitySample.createMany({
+    data: servers.flatMap((server, serverIndex) =>
+      Array.from({ length: 24 }, (_, sampleIndex) => {
+        const baseline = Number(serverBlueprints[serverIndex]![6]);
+        const onlinePlayers = Math.max(0, baseline + ((sampleIndex % 7) - 3) * 4);
+        return {
+          id: `seed-presence-${serverIndex + 1}-${sampleIndex + 1}`,
+          serverId: server.id,
+          observedAt: new Date(Date.now() - sampleIndex * 15 * 60_000),
+          onlinePlayers,
+          maxPlayers: 5_000,
+          platform: server.verificationScope === "PROXY_NETWORK" ? "VELOCITY" : "PAPER",
+          pluginVersion: "0.4.0-seed",
+          serverVersion: server.versions[0],
+          backendCounts: { default: onlinePlayers },
+          playerHashes: [],
+        };
+      }),
+    ),
+  });
+
   const campaigns = [];
   for (let index = 0; index < 8; index += 1) {
     const server = servers[index]!;
+    const maximumSparksReward = Math.max(65, 100 - index * 5);
     const campaign = await prisma.campaign.create({
       data: {
         serverId: server.id,
@@ -348,7 +370,13 @@ async function main() {
         status: CampaignStatus.ACTIVE,
         category: ["Onboarding", "Retention", "Gameplay", "Tutorial"][index % 4]!,
         internalBudgetCents: 35_000 + index * 3_000,
+        campaignBudgetCredits: 5_000 + index * 500,
         publicRewardCents: 300 + index * 40,
+        minimumSparksReward: Math.max(25, 50 - index * 3),
+        maximumSparksReward,
+        potentialExposureMin: 100 + index * 20,
+        potentialExposureMax: 400 + index * 75,
+        automaticVerification: true,
         startsAt: new Date(Date.now() - 4 * 86_400_000),
         endsAt: new Date(Date.now() + (18 + index) * 86_400_000),
         maxParticipants: 100 + index * 25,
@@ -363,25 +391,25 @@ async function main() {
               templateType: "JOIN_SERVER",
               title: "Connect and begin",
               publicInstructions: `Join ${server.name} using the connection instructions.`,
-              verificationConfig: { mode: "manual_until_plugin" },
+              verificationConfig: { metric: "JOIN_SERVER", target: 1, scope: "SERVER" },
               order: 1,
               publicRewardCents: 50,
-              sparksReward: 150,
+              sparksReward: 25,
               completionRequirements: { connected: true },
-              verificationMethod: "MANUAL",
-              reviewRequired: true,
+              verificationMethod: "SERVER_PLUGIN",
+              reviewRequired: false,
             },
             {
               templateType: "COMPLETE_TUTORIAL",
               title: "Complete the welcome path",
               publicInstructions: "Finish the server tutorial and capture the completion screen.",
-              verificationConfig: { screenshotRequired: true },
+              verificationConfig: { metric: "COMPLETE_TUTORIAL", target: 1, scope: "SERVER" },
               order: 2,
               publicRewardCents: 125 + index * 10,
-              sparksReward: 350,
+              sparksReward: 35,
               completionRequirements: { tutorialComplete: true },
-              verificationMethod: "MANUAL",
-              reviewRequired: true,
+              verificationMethod: "SERVER_PLUGIN",
+              reviewRequired: false,
             },
             {
               templateType: "SUBMIT_FEEDBACK",
@@ -391,10 +419,10 @@ async function main() {
               verificationConfig: { form: "campaign_feedback_v1" },
               order: 3,
               publicRewardCents: 125 + index * 30,
-              sparksReward: 500,
+              sparksReward: maximumSparksReward - 60,
               completionRequirements: { minimumCommentLength: 80 },
               verificationMethod: "WEB_EVENT",
-              reviewRequired: true,
+              reviewRequired: false,
             },
           ],
         },
@@ -565,6 +593,18 @@ async function main() {
         sparksReward: 180,
       },
     ],
+  });
+  const seededQuests = await prisma.dailyQuest.findMany({ orderBy: { slug: "asc" } });
+  const questDate = new Date();
+  questDate.setUTCHours(0, 0, 0, 0);
+  await prisma.userQuest.createMany({
+    data: seededQuests.map((quest, index) => ({
+      userId: users[4]!.id,
+      questId: quest.id,
+      progress: index === 0 ? Math.min(1, quest.target) : 0,
+      completedAt: null,
+      questDate,
+    })),
   });
 
   const badges = await Promise.all([

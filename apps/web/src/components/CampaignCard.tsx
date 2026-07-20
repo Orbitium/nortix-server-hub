@@ -1,20 +1,25 @@
-import { Clock3, Gamepad2, Globe2, Signal, Users } from "lucide-react";
+import { CalendarClock, Gamepad2, Globe2, Signal, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, Sparks, VerifiedBadge } from "@nortix/ui";
-import type { DemoCampaign } from "../features/demo-data";
+import { artIndexFor, type PublicCampaign } from "../features/api-data";
 
 export function CampaignCard({
   campaign,
   featured = false,
 }: {
-  campaign: DemoCampaign;
+  campaign: PublicCampaign;
   featured?: boolean;
 }) {
+  const version =
+    campaign.versionRequirements[0] ?? campaign.server.versions[0] ?? "Any version";
+  const region = campaign.regionRestrictions.length
+    ? campaign.regionRestrictions.join(" · ")
+    : "Worldwide";
   return (
     <Card className={`campaign-card ${featured ? "campaign-card--featured" : ""}`}>
       <Link
         to={`/campaigns/${campaign.id}`}
-        className={`server-art server-art--${campaign.server.art}`}
+        className={`server-art server-art--${artIndexFor(campaign.server.id)}`}
       >
         <span className="server-art__edition">{campaign.server.edition}</span>
         <span className="server-art__monogram">
@@ -35,28 +40,34 @@ export function CampaignCard({
         <p>{campaign.description}</p>
         <div className="chip-row">
           <Badge>{campaign.category}</Badge>
-          <Badge>{campaign.version}</Badge>
-          <Badge tone={campaign.difficulty === "Advanced" ? "warning" : "neutral"}>
-            {campaign.difficulty}
-          </Badge>
+          <Badge>{version}</Badge>
+          <Badge>{campaign.milestones.length} milestones</Badge>
         </div>
         <div className="campaign-card__meta">
           <span>
-            <Clock3 size={14} /> {campaign.duration}
+            <CalendarClock size={14} /> Ends {new Date(campaign.endsAt).toLocaleDateString()}
           </span>
           <span>
-            <Users size={14} /> {campaign.participants} testing
+            <Users size={14} /> {campaign._count.participations} testing
           </span>
           <span>
-            <Globe2 size={14} /> {campaign.region}
+            <Globe2 size={14} /> {region}
           </span>
         </div>
         <div className="campaign-card__footer">
           <div>
             <small>Potential campaign reward</small>
-            <strong>Up to {campaign.sparks} Sparks</strong>
+            <strong>
+              {campaign.minimumSparksReward}–{campaign.maximumSparksReward} Sparks
+            </strong>
           </div>
-          <Sparks value="Subject to verification" />
+          <Sparks
+            value={
+              campaign.automaticVerification
+                ? "Automatic verification"
+                : "Subject to verification"
+            }
+          />
           <Link className="button button--secondary button--small" to={`/campaigns/${campaign.id}`}>
             <Gamepad2 size={15} /> View playtest
           </Link>

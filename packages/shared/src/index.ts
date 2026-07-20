@@ -97,10 +97,9 @@ export const TeamMemberRoleInputSchema = z.object({ role: ServerTeamRoleSchema }
 
 export const CampaignMilestoneInputSchema = z.object({
   templateType: MilestoneTypeSchema,
-  title: z.string().min(3).max(100),
-  instructions: z.string().min(10).max(1000),
-  rewardCents: z.number().int().min(0).max(10_000),
-  sparksReward: z.number().int().min(0).max(50_000),
+  title: z.string().trim().min(3).max(72),
+  instructions: z.string().trim().min(10).max(240),
+  rewardCents: z.literal(0).default(0),
   verificationMethod: z.enum(["MANUAL", "WEB_EVENT", "SERVER_PLUGIN", "CLIENT_MOD", "API"]),
   config: z.record(z.string(), z.unknown()).default({}),
 });
@@ -108,33 +107,74 @@ export const CampaignMilestoneInputSchema = z.object({
 export const CampaignInputSchema = z
   .object({
     serverId: z.string().min(1),
-    title: z.string().min(6).max(120),
-    description: z.string().min(30).max(4000),
+    title: z.string().trim().min(6).max(64),
+    description: z.string().trim().min(30).max(320),
     category: z.string().min(2).max(40),
     startsAt: z.coerce.date(),
     endsAt: z.coerce.date(),
-    maxParticipants: z.number().int().min(1).max(100_000),
+    budgetCredits: z.number().int().min(100).max(10_000_000),
+    sparksRewardRange: z.object({
+      minimum: z.number().int().min(5).max(2_000),
+      maximum: z.number().int().min(10).max(2_000),
+    }),
     regionRestrictions: z.array(z.string()).default([]),
     versionRequirements: z.array(z.string()).default([]),
-    milestones: z.array(CampaignMilestoneInputSchema).min(1).max(12),
+    milestones: z.array(CampaignMilestoneInputSchema).min(1).max(8),
   })
   .refine((value) => value.endsAt > value.startsAt, {
     message: "Campaign end must be after its start",
     path: ["endsAt"],
-  });
+  })
+  .refine((value) => value.sparksRewardRange.maximum >= value.sparksRewardRange.minimum, {
+    message: "Maximum Sparks must be greater than or equal to minimum Sparks",
+    path: ["sparksRewardRange", "maximum"],
+  })
+  .refine(
+    (value) => {
+      const automatic = value.milestones.filter((milestone) =>
+        ["SERVER_PLUGIN", "WEB_EVENT", "API"].includes(milestone.verificationMethod),
+      ).length;
+      const manual = value.milestones.length - automatic;
+      return automatic > manual;
+    },
+    {
+      message: "Most campaign milestones must use automatic system verification",
+      path: ["milestones"],
+    },
+  )
+  .refine((value) => value.sparksRewardRange.maximum >= value.milestones.length, {
+    message: "Maximum Sparks must allow at least one Spark per milestone",
+    path: ["sparksRewardRange", "maximum"],
+  })
+  .refine(
+    (value) => {
+      const estimatedCost =
+        10 + Math.ceil(value.sparksRewardRange.maximum / 10) + value.milestones.length * 3;
+      return value.budgetCredits >= estimatedCost * 10;
+    },
+    {
+      message: "Campaign budget must support at least ten potential participants",
+      path: ["budgetCredits"],
+    },
+  );
 
-export const JoinCampaignSchema = z.object({
-  acceptedTerms: z.literal(true),
-  minecraftIdentityId: z.string().optional(),
-  crackedAccountLinkId: z.string().optional(),
-}).refine(
-  (value) => !(value.minecraftIdentityId && value.crackedAccountLinkId),
-  "Choose either a premium identity or a server-scoped cracked account.",
-);
+export const JoinCampaignSchema = z
+  .object({
+    acceptedTerms: z.literal(true),
+    minecraftIdentityId: z.string().optional(),
+    crackedAccountLinkId: z.string().optional(),
+  })
+  .refine(
+    (value) => !(value.minecraftIdentityId && value.crackedAccountLinkId),
+    "Choose either a premium identity or a server-scoped cracked account.",
+  );
 
 export const CrackedAccountClaimSchema = z.object({
   serverId: z.string().min(1),
-  minecraftUsername: z.string().trim().regex(/^[A-Za-z0-9_]{3,16}$/),
+  minecraftUsername: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_]{3,16}$/),
 });
 
 export const MilestoneSubmissionSchema = z.object({

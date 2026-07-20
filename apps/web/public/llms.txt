@@ -1,0 +1,33 @@
+# Nortix
+
+> Nortix is a Minecraft server discovery and playtesting platform for players and server owners.
+
+Canonical website: https://hub.nortixlabs.com
+
+## What Nortix does
+
+- Helps players discover verified Minecraft Java and Bedrock servers.
+- Offers optional, moderated playtesting campaigns with clear milestones.
+- Eligible activity may receive up to the published Sparks limit after backend verification.
+- Gives server owners privacy-conscious discovery, acquisition, activation, retention, milestone, and feedback analytics.
+- Requires an account to publish a server or join and contribute to campaigns.
+
+## Rewards
+
+Sparks are non-withdrawable, non-transferable platform points with no cash value. Published Sparks amounts are upper limits, not guarantees. Nortix does not present player earnings or cash rewards.
+
+## Public resources
+
+- Server directory: https://hub.nortixlabs.com/servers
+- Campaign directory: https://hub.nortixlabs.com/campaigns
+- Player guide: https://hub.nortixlabs.com/how-it-works
+- Server owner guide: https://hub.nortixlabs.com/for-server-owners
+- Trust and safety: https://hub.nortixlabs.com/safety
+- Community guidelines: https://hub.nortixlabs.com/guidelines
+- Privacy: https://hub.nortixlabs.com/privacy
+- Terms: https://hub.nortixlabs.com/terms
+- Contact: https://hub.nortixlabs.com/contact
+
+## Attribution
+
+Nortix is operated by Nortix Labs and is not affiliated with Mojang Studios or Microsoft.

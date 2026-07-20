@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PluginCapabilitiesHandshakeSchema,
+  PluginPresenceSnapshotSchema,
   ServerPluginEventSchema,
 } from "./index.js";
 
@@ -46,5 +47,22 @@ describe("Minecraft milestone plugin contracts", () => {
       minecraftUsername: "nortix123",
       metadata: {},
     }).minecraftUsername).toBe("nortix123");
+  });
+
+  it("requires a privacy-minimized roster matching the aggregate player count", () => {
+    const snapshot = {
+      id: "presence-12345678",
+      serverId: "server",
+      instanceId: "instance-12345678",
+      platform: "PAPER",
+      pluginVersion: "0.4.0",
+      observedAt: "2026-07-21T12:00:00.000Z",
+      onlinePlayers: 1,
+      players: [{ minecraftUuid: "123e4567-e89b-42d3-a456-426614174000" }],
+    };
+    expect(PluginPresenceSnapshotSchema.safeParse(snapshot).success).toBe(true);
+    expect(
+      PluginPresenceSnapshotSchema.safeParse({ ...snapshot, onlinePlayers: 2 }).success,
+    ).toBe(false);
   });
 });

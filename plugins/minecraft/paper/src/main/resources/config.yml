@@ -6,6 +6,8 @@ server-id: ""
 server-token: ""
 proxy-server-name: ""
 metric-poll-seconds: 30
+presence-snapshot-seconds: 60
+privacy-conscious-analytics: true
 max-queued-events: 5000
 sync-player-history: true
 adapter-placeholders:

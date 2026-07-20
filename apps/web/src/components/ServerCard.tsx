@@ -1,12 +1,15 @@
 import { CircleDot, Star, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, VerifiedBadge } from "@nortix/ui";
-import type { DemoServer } from "../features/demo-data";
+import { artIndexFor, type PublicServer } from "../features/api-data";
 
-export function ServerCard({ server }: { server: DemoServer }) {
+export function ServerCard({ server }: { server: PublicServer }) {
   return (
     <Card className="server-card">
-      <Link to={`/servers/${server.slug}`} className={`server-art server-art--${server.art}`}>
+      <Link
+        to={`/servers/${server.slug}`}
+        className={`server-art server-art--${artIndexFor(server.id)}`}
+      >
         <span className="server-art__monogram">{server.name.slice(0, 2).toUpperCase()}</span>
       </Link>
       <div className="server-card__content">
@@ -26,10 +29,11 @@ export function ServerCard({ server }: { server: DemoServer }) {
             <CircleDot size={13} /> {server.online ? "Online" : "Offline"}
           </span>
           <span>
-            <Users size={13} /> {server.playerCount.toLocaleString()}
+            <Users size={13} /> {(server.playerCount ?? 0).toLocaleString()}
           </span>
           <span>
-            <Star size={13} fill="currentColor" /> {server.rating}
+            <Star size={13} fill="currentColor" />{" "}
+            {server.rating == null ? "New" : server.rating.toFixed(1)}
           </span>
         </div>
       </div>

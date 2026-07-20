@@ -1,33 +1,18 @@
-import {
-  Activity,
-  BarChart3,
-  Check,
-  ChevronRight,
-  ClipboardCheck,
-  Eye,
-  Gauge,
-  KeyRound,
-  LockKeyhole,
-  MessageSquare,
-  Pause,
-  Radio,
-  Save,
-  Search,
-  Send,
-  Server,
-  Settings,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  Users,
-  X,
-} from "lucide-react";
+import { Activity, BarChart3, Check, ChevronRight, ClipboardCheck, Eye, Gauge, KeyRound, LockKeyhole, MessageSquare, Pause, Radio, Save, Search, Send, Server, Settings, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Button, Card } from "@nortix/ui";
-import { campaigns } from "../features/demo-data";
+import { useQuery } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
+import {
+  artIndexFor,
+  type AdminReviewCampaign,
+  useAdminOverview,
+  useAdminReviewCampaigns,
+  useAuditLogs,
+  useCurrentUser,
+} from "../features/api-data";
+import { api } from "../lib/api";
 
 const sections = [
   ["Overview", "/admin", Gauge],
@@ -36,7 +21,7 @@ const sections = [
   ["Campaign moderation", "/admin/campaigns", ClipboardCheck],
   ["Reports & cases", "/admin/reports", ShieldAlert],
   ["Admin messages", "/admin/messages", MessageSquare],
-  ["Roles & permissions", "/admin/access", KeyRound],
+  ["Nortix staff access", "/admin/access", KeyRound],
   ["Live activity monitor", "/admin/monitor", Radio],
   ["Product analytics", "/admin/analytics", BarChart3],
   ["Umami usage", "/admin/umami", Activity],
@@ -47,9 +32,24 @@ const sections = [
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sectionSearch, setSectionSearch] = useState("");
-  const visibleSections = sections.filter(([label]) =>
-    label.toLowerCase().includes(sectionSearch.toLowerCase()),
-  );
+  const { data: currentUser, isLoading: accessLoading, isError: accessError } = useCurrentUser();
+  const visibleSections = sections.filter(([label]) => label.toLowerCase().includes(sectionSearch.toLowerCase()));
+  const hasAdminAccess = currentUser?.roles.some((role) => role === "ADMIN" || role === "MODERATOR");
+  const staffRole = currentUser?.roles.includes("ADMIN") ? "NORTIX ADMIN" : "NORTIX MODERATOR";
+
+  if (accessLoading) {
+    return <div className="admin-access-state"><ShieldCheck /><h1>Checking administrator access…</h1></div>;
+  }
+  if (accessError || !hasAdminAccess) {
+    return (
+      <div className="admin-access-state">
+        <LockKeyhole />
+        <h1>Administrator access required</h1>
+        <p>This internal workspace is available only to authorized Nortix staff.</p>
+        <NavLink className="button button--primary" to="/dashboard">Return to Nortix</NavLink>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-page admin-v2">
@@ -59,17 +59,13 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <strong>Nortix administration</strong>
           <small>Full actions are permission-gated, confirmed, and written to the audit log.</small>
         </div>
-        <span className="admin-role">NORTIX ADMIN</span>
+        <span className="admin-role">{staffRole}</span>
       </div>
       <div className="admin-layout">
         <aside>
           <label>
             <Search />
-            <input
-              value={sectionSearch}
-              onChange={(event) => setSectionSearch(event.target.value)}
-              placeholder="Find a tool..."
-            />
+            <input value={sectionSearch} onChange={(event) => setSectionSearch(event.target.value)} placeholder="Find a tool..." />
           </label>
           <nav>
             {visibleSections.map(([label, path, Icon]) => (
@@ -89,15 +85,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-const AdminHeading = ({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: React.ReactNode;
-}) => (
+const AdminHeading = ({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) => (
   <div className="dashboard-heading admin-v2-heading">
     <div>
       <span className="eyebrow">INTERNAL CONTROL CENTER</span>
@@ -108,16 +96,16 @@ const AdminHeading = ({
   </div>
 );
 
-const overviewEvents = [
-  ["admin@nortix", "USER_ACCESS_UPDATED", "QuartzTester", "2m ago"],
-  ["moderator@nortix", "CAMPAIGN_PAUSED", "Arcane academy", "7m ago"],
-  ["system", "RATE_LIMIT_TRIGGERED", "api/session", "11m ago"],
-  ["admin@nortix", "SERVER_RECORD_EDITED", "Skyblock X", "18m ago"],
-] as const;
-
 export function AdminOverviewPage() {
-  const [maintenance, setMaintenance] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
+  const { data: overview, isLoading, isError, refetch } = useAdminOverview();
+  const { data: auditLogs } = useAuditLogs();
+  const overviewEvents = (auditLogs ?? []).slice(0, 8).map((entry) => [
+    entry.actor?.displayName ?? entry.actor?.username ?? "System",
+    entry.action,
+    `${entry.entityType}:${entry.entityId}`,
+    new Date(entry.createdAt).toLocaleString(),
+  ]);
 
   return (
     <>
@@ -130,14 +118,15 @@ export function AdminOverviewPage() {
           </Button>
         }
       />
+      {isLoading ? <Card><p>Loading seeded operations data…</p></Card> : null}
+      {isError ? <Card><p>Seeded operations data could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
       <div className="admin-kpi-grid">
         {[
-          { Icon: Users, label: "Active users", value: "18", note: "+3 this week" },
-          { Icon: Server, label: "Published servers", value: "12", note: "2 need review" },
-          { Icon: ClipboardCheck, label: "Open moderation", value: "7", note: "Oldest 43 min" },
-          { Icon: Sparkles, label: "Sparks issued today", value: "1,840", note: "All policy-limited" },
-          { Icon: Radio, label: "Live sessions", value: "31", note: "4 admin sessions" },
-          { Icon: Activity, label: "Events / min", value: "286", note: "Within baseline" },
+          { Icon: Users, label: "User accounts", value: overview?.users ?? "—", note: "Database records" },
+          { Icon: Server, label: "Servers", value: overview?.servers ?? "—", note: "All moderation states" },
+          { Icon: ClipboardCheck, label: "Campaigns", value: overview?.campaigns ?? "—", note: "All lifecycle states" },
+          { Icon: ShieldAlert, label: "Open moderation", value: overview?.openCases ?? "—", note: "Cases requiring attention" },
+          { Icon: Sparkles, label: "Pending requests", value: overview?.pendingWithdrawals ?? "—", note: "Legacy review queue" },
         ].map(({ Icon, label, value, note }) => (
           <Card key={label}>
             <Icon />
@@ -152,22 +141,20 @@ export function AdminOverviewPage() {
         <Card>
           <div className="data-card__header">
             <div>
-              <h2>Live platform monitor</h2>
-              <p>Operational signals refresh locally in this prototype.</p>
+              <h2>Platform data monitor</h2>
+              <p>Counts below come from the seeded database through administrator-only endpoints.</p>
             </div>
-            <span className="live-pill">LIVE</span>
+            <span className="live-pill">DATABASE</span>
           </div>
           <div className="admin-signal-grid">
             {[
-              ["Web app", "Operational", "118 ms"],
-              ["API", "Operational", "94 ms"],
-              ["Database", "Operational", "36 ms"],
-              ["Authentication", "Operational", "99.98%"],
-              ["Minecraft events", "Elevated", "7 retries"],
-              ["Moderation queue", "Attention", "7 open"],
+              ["Users", "Available", String(overview?.users ?? "—")],
+              ["Servers", "Available", String(overview?.servers ?? "—")],
+              ["Campaigns", "Available", String(overview?.campaigns ?? "—")],
+              ["Moderation queue", "Available", String(overview?.openCases ?? "—")],
             ].map(([label, status, value]) => (
               <div key={label}>
-                <i className={status === "Operational" ? "signal-good" : "signal-warn"} />
+                <i className="signal-good" />
                 <span>
                   <strong>{label}</strong>
                   <small>{status}</small>
@@ -179,31 +166,27 @@ export function AdminOverviewPage() {
         </Card>
         <Card>
           <h2>System controls</h2>
-          <p>High-impact actions would require a reason and explicit confirmation.</p>
+          <p>Controls remain unavailable until a persisted, audited system-settings endpoint is configured.</p>
           <label className="admin-toggle-row">
             <span>
               <strong>Maintenance mode</strong>
               <small>Limit new sessions while preserving admin access.</small>
             </span>
-            <input
-              type="checkbox"
-              checked={maintenance}
-              onChange={(event) => setMaintenance(event.target.checked)}
-            />
+            <input type="checkbox" disabled />
           </label>
           <label className="admin-toggle-row">
             <span>
               <strong>Campaign joins</strong>
               <small>Allow players to begin new campaign activity.</small>
             </span>
-            <input type="checkbox" defaultChecked />
+            <input type="checkbox" disabled />
           </label>
           <label className="admin-toggle-row">
             <span>
               <strong>Sparks issuance</strong>
               <small>Could pause all automated Sparks issuance.</small>
             </span>
-            <input type="checkbox" defaultChecked />
+            <input type="checkbox" disabled />
           </label>
         </Card>
       </div>
@@ -225,55 +208,81 @@ export function AdminOverviewPage() {
 }
 
 export function CampaignReviewPage() {
-  const [selected, setSelected] = useState<(typeof campaigns)[number] | null>(null);
-  const [resolved, setResolved] = useState<string[]>([]);
+  const { data, isLoading, isError, refetch } = useAdminReviewCampaigns();
+  const campaigns = data ?? [];
+  const [selected, setSelected] = useState<AdminReviewCampaign | null>(null);
+  const [reason, setReason] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
+
+  const review = async (action: "APPROVE" | "REJECT" | "PAUSE") => {
+    if (!selected) return;
+    if (action !== "APPROVE" && reason.trim().length < 3) {
+      setReviewMessage("Add an internal reason before a restrictive action.");
+      return;
+    }
+    try {
+      await api(`/admin/campaigns/${selected.id}/review`, {
+        method: "POST",
+        body: JSON.stringify({ action, note: reason.trim() || undefined }),
+      });
+      setSelected(null);
+      setReason("");
+      setReviewMessage("");
+      await refetch();
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : "The review action failed.");
+    }
+  };
 
   return (
     <>
-      <AdminHeading
-        title="Campaign moderation"
-        description="Review task clarity, Sparks limits, verification, safety, and owner history."
-      />
+      <AdminHeading title="Campaign moderation" description="Review task clarity, Sparks limits, verification, safety, and owner history." />
+      {isLoading ? <Card><p>Loading seeded moderation queue…</p></Card> : null}
+      {isError ? <Card><p>The seeded moderation queue could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+      {!isLoading && !isError && campaigns.length === 0 ? <Card><p>No seeded campaigns currently require review.</p></Card> : null}
       <div className="admin-queue">
         {campaigns
           .slice(0, 5)
-          .filter((campaign) => !resolved.includes(campaign.id))
-          .map((campaign, index) => (
+          .map((campaign) => (
             <Card className="review-queue-card" key={campaign.id}>
               <div className="review-queue-card__header">
-                <span className={`server-inline__logo server-art--${campaign.server.art}`}>
-                  {campaign.server.name.slice(0, 2)}
-                </span>
+                <span className={`server-inline__logo server-art--${artIndexFor(campaign.server.id)}`}>{campaign.server.name.slice(0, 2)}</span>
                 <div>
                   <h2>{campaign.title}</h2>
-                  <p>{campaign.server.name} · submitted {index + 1}h ago</p>
+                  <p>
+                    {campaign.server.name} · submitted {new Date(campaign.createdAt).toLocaleString()}
+                  </p>
                 </div>
-                <span className="admin-status">{index === 0 ? "NEEDS REVIEW" : "SUBMITTED"}</span>
+                <span className="admin-status">{campaign.status}</span>
               </div>
               <div className="review-card-stats">
                 <span>
                   <small>Potential Sparks</small>
-                  <strong>Up to {campaign.sparks}</strong>
+                  <strong>
+                    {campaign.minimumSparksReward}–{campaign.maximumSparksReward}
+                  </strong>
                 </span>
                 <span>
                   <small>Verification</small>
-                  <strong>Manual</strong>
+                  <strong>{campaign.automaticVerification ? "Automatic checks" : "System review"}</strong>
                 </span>
                 <span>
                   <small>Capacity</small>
-                  <strong>{campaign.participants}</strong>
+                  <strong>{campaign.maxParticipants}</strong>
                 </span>
                 <span>
                   <small>Risk score</small>
-                  <strong>{18 + index * 9}/100</strong>
+                  <strong>Pending assessment</strong>
                 </span>
                 <span>
                   <small>Owner status</small>
-                  <strong>Verified</strong>
+                  <strong>{campaign.owner.status}</strong>
                 </span>
               </div>
               <div className="review-queue-card__footer">
-                <span>{campaign.milestones.length} tasks · {campaign.duration} estimated</span>
+                <span>
+                  {campaign.milestones.length} tasks · submitted {new Date(campaign.createdAt).toLocaleDateString()}
+                </span>
                 <Button variant="secondary" onClick={() => setSelected(campaign)}>
                   Open review
                 </Button>
@@ -291,12 +300,7 @@ export function CampaignReviewPage() {
               </label>
               <label>
                 Potential Sparks limit
-                <select defaultValue={String(selected.sparks)}>
-                  <option value="25">Up to 25 Sparks</option>
-                  <option value="50">Up to 50 Sparks</option>
-                  <option value="75">Up to 75 Sparks</option>
-                  <option value="100">Up to 100 Sparks</option>
-                </select>
+                <input value={`Up to ${selected.maximumSparksReward} Sparks`} readOnly />
               </label>
               <label className="span-two">
                 Public description
@@ -313,24 +317,22 @@ export function CampaignReviewPage() {
               </label>
               <label>
                 Internal reason
-                <input placeholder="Required for restrictive actions" />
+                <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for restrictive actions" />
               </label>
             </div>
+            {reviewMessage ? <p role="alert">{reviewMessage}</p> : null}
           </div>
           <div className="modal__footer modal__footer--spread">
             <div>
-              <Button variant="danger" onClick={() => setResolved([...resolved, selected.id])}>
+              <Button variant="danger" onClick={() => review("REJECT")}>
                 <X /> Reject
               </Button>
-              <Button variant="secondary">
+              <Button variant="secondary" onClick={() => review("PAUSE")}>
                 <Pause /> Pause
               </Button>
             </div>
             <Button
-              onClick={() => {
-                setResolved([...resolved, selected.id]);
-                setSelected(null);
-              }}
+              onClick={() => review("APPROVE")}
             >
               <Check /> Approve changes
             </Button>
@@ -345,10 +347,7 @@ export function WithdrawalReviewPage() {
   const [editing, setEditing] = useState(false);
   return (
     <>
-      <AdminHeading
-        title="Sparks adjustment review"
-        description="Review manual Sparks corrections, reversals, limits, and policy exceptions."
-      />
+      <AdminHeading title="Sparks adjustment review" description="Review manual Sparks corrections, reversals, limits, and policy exceptions." />
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -374,11 +373,15 @@ export function WithdrawalReviewPage() {
                 ["OakStorm", "-40 Sparks", "Duplicate campaign activity", "Review"],
               ].map((row, index) => (
                 <tr key={row[0]}>
-                  <td><strong>{row[0]}</strong></td>
+                  <td>
+                    <strong>{row[0]}</strong>
+                  </td>
                   <td>{row[1]}</td>
                   <td>{row[2]}</td>
                   <td>{row[3]}</td>
-                  <td><span className="admin-status">PENDING</span></td>
+                  <td>
+                    <span className="admin-status">PENDING</span>
+                  </td>
                   <td>
                     <Button variant="secondary" onClick={() => index === 0 && setEditing(true)}>
                       Review
@@ -406,7 +409,9 @@ export function WithdrawalReviewPage() {
             </p>
           </div>
           <div className="modal__footer">
-            <Button variant="danger" onClick={() => setEditing(false)}>Reject</Button>
+            <Button variant="danger" onClick={() => setEditing(false)}>
+              Reject
+            </Button>
             <Button onClick={() => setEditing(false)}>Approve adjustment</Button>
           </div>
         </Modal>
@@ -424,22 +429,7 @@ type ManagedRecord = {
   updated: string;
 };
 
-const records: ManagedRecord[] = [
-  { id: "usr_102", name: "QuartzTester", type: "User", status: "ACTIVE", access: "Player", updated: "2m ago" },
-  { id: "srv_014", name: "Skyblock X", type: "Server", status: "PUBLISHED", access: "Verified owner", updated: "8m ago" },
-  { id: "usr_087", name: "OakStorm", type: "User", status: "LIMITED", access: "Player", updated: "22m ago" },
-  { id: "srv_009", name: "Arcane Realms", type: "Server", status: "UNDER_REVIEW", access: "Owner", updated: "1h ago" },
-];
-
-export function AdminGenericPage({
-  title,
-  description,
-  type = "generic",
-}: {
-  title: string;
-  description: string;
-  type?: string;
-}) {
+export function AdminGenericPage({ title, description, type = "generic" }: { title: string; description: string; type?: string }) {
   if (type === "messages") return <AdminMessagesPage />;
   if (type === "analytics" || type === "umami") return <AdminAnalyticsPage type={type} />;
   if (type === "monitor") return <AdminMonitorPage />;
@@ -450,30 +440,49 @@ export function AdminGenericPage({
   return <EntityManagementPage title={title} description={description} type={type} />;
 }
 
-function EntityManagementPage({
-  title,
-  description,
-  type,
-}: {
-  title: string;
-  description: string;
-  type: string;
-}) {
+function EntityManagementPage({ title, description, type }: { title: string; description: string; type: string }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<ManagedRecord | null>(null);
-  const [rows, setRows] = useState(records);
-  const scopedRows = type === "users"
-    ? rows.filter((row) => row.type === "User")
-    : type === "servers"
-      ? rows.filter((row) => row.type === "Server")
-      : rows;
-  const filtered = scopedRows.filter((row) =>
-    `${row.name} ${row.type} ${row.status} ${row.access}`.toLowerCase().includes(query.toLowerCase()),
-  );
+  const supportedType = type === "users" || type === "servers" ? type : null;
+  const { data: entityData = [], isLoading } = useQuery({
+    queryKey: ["admin-entities", supportedType],
+    queryFn: () => api<Array<Record<string, unknown>>>(`/admin/entities?type=${supportedType}`),
+    enabled: Boolean(supportedType),
+  });
+  const rows: ManagedRecord[] = entityData.map((record) => {
+    if (supportedType === "users") {
+      return {
+        id: String(record.id),
+        name: String(record.displayName ?? record.username),
+        type: "User",
+        status: String(record.status),
+        access: Array.isArray(record.roles) ? record.roles.join(", ") : "Player",
+        updated: new Date(String(record.lastActiveAt)).toLocaleString(),
+      };
+    }
+    const owner = record.owner as { displayName?: string; username?: string } | undefined;
+    return {
+      id: String(record.id),
+      name: String(record.name),
+      type: "Server",
+      status: String(record.moderationStatus),
+      access: `Owner: ${owner?.displayName ?? owner?.username ?? "Unknown"}`,
+      updated: new Date(String(record.updatedAt)).toLocaleString(),
+    };
+  });
+  const scopedRows = type === "users" ? rows.filter((row) => row.type === "User") : type === "servers" ? rows.filter((row) => row.type === "Server") : rows;
+  const filtered = scopedRows.filter((row) => `${row.name} ${row.type} ${row.status} ${row.access}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <>
-      <AdminHeading title={title} description={description} action={<Button><Save /> Save view</Button>} />
+      <AdminHeading
+        title={title}
+        description={description}
+        action={
+          <Button>
+            <Save /> Save view
+          </Button>
+        }
+      />
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -501,14 +510,20 @@ function EntityManagementPage({
             <tbody>
               {filtered.map((row) => (
                 <tr key={row.id}>
-                  <td><code>{row.id}</code></td>
-                  <td><strong>{row.name}</strong></td>
+                  <td>
+                    <code>{row.id}</code>
+                  </td>
+                  <td>
+                    <strong>{row.name}</strong>
+                  </td>
                   <td>{row.type}</td>
-                  <td><span className="admin-status">{row.status}</span></td>
+                  <td>
+                    <span className="admin-status">{row.status}</span>
+                  </td>
                   <td>{row.access}</td>
                   <td>{row.updated}</td>
                   <td>
-                    <button className="icon-button" onClick={() => setSelected(row)} aria-label={`Edit ${row.name}`}>
+                    <button className="icon-button" disabled title="Persisted editing endpoint not enabled" aria-label={`Editing ${row.name} is unavailable`}>
                       <ChevronRight />
                     </button>
                   </td>
@@ -518,29 +533,13 @@ function EntityManagementPage({
           </table>
         </div>
       </Card>
-      {selected && (
-        <RecordEditor
-          record={selected}
-          onClose={() => setSelected(null)}
-          onSave={(next) => {
-            setRows(rows.map((row) => (row.id === next.id ? next : row)));
-            setSelected(null);
-          }}
-        />
-      )}
+      {isLoading && <Card><p>Loading seeded administration records…</p></Card>}
+      {!supportedType && <Card><p>This tool has no persisted data endpoint yet. No example records are shown.</p></Card>}
     </>
   );
 }
 
-function RecordEditor({
-  record,
-  onClose,
-  onSave,
-}: {
-  record: ManagedRecord;
-  onClose: () => void;
-  onSave: (record: ManagedRecord) => void;
-}) {
+function _RecordEditor({ record, onClose, onSave }: { record: ManagedRecord; onClose: () => void; onSave: (record: ManagedRecord) => void }) {
   const [draft, setDraft] = useState(record);
   const [confirmation, setConfirmation] = useState("");
 
@@ -585,18 +584,18 @@ function RecordEditor({
           <strong>Termination safeguard</strong>
           <p>Type the record ID to enable termination. This would revoke access and preserve an audit record.</p>
           <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={record.id} />
-          <Button
-            variant="danger"
-            disabled={confirmation !== record.id}
-            onClick={() => setDraft({ ...draft, status: "TERMINATED", access: "No access" })}
-          >
+          <Button variant="danger" disabled={confirmation !== record.id} onClick={() => setDraft({ ...draft, status: "TERMINATED", access: "No access" })}>
             <Trash2 /> Terminate record
           </Button>
         </div>
       </div>
       <div className="modal__footer">
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button onClick={() => onSave({ ...draft, updated: "just now" })}><Save /> Save audited changes</Button>
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={() => onSave({ ...draft, updated: "just now" })}>
+          <Save /> Save audited changes
+        </Button>
       </div>
     </Modal>
   );
@@ -604,54 +603,59 @@ function RecordEditor({
 
 function AdminMessagesPage() {
   const [composer, setComposer] = useState(false);
-  const [messages, setMessages] = useState([
-    ["Campaign verification update", "All players", "Sent", "12 min ago"],
-    ["Owner policy reminder", "Server owners", "Scheduled", "Tomorrow"],
-    ["Maintenance notice", "Active sessions", "Draft", "Not sent"],
-  ]);
+  const [messages, setMessages] = useState<string[][]>([]);
 
   return (
     <>
       <AdminHeading
         title="Admin messages"
         description="Send targeted in-product messages, banners, policy notices, or urgent interventions."
-        action={<Button onClick={() => setComposer(true)}><Send /> New message</Button>}
+        action={
+          <Button onClick={() => setComposer(true)}>
+            <Send /> New message
+          </Button>
+        }
       />
       <Card className="data-card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Message</th><th>Audience</th><th>Status</th><th>Delivery</th><th /></tr></thead>
+            <thead>
+              <tr>
+                <th>Message</th>
+                <th>Audience</th>
+                <th>Status</th>
+                <th>Delivery</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
               {messages.map((message) => (
                 <tr key={message[0]}>
-                  <td><strong>{message[0]}</strong></td>
+                  <td>
+                    <strong>{message[0]}</strong>
+                  </td>
                   <td>{message[1]}</td>
-                  <td><span className="admin-status">{message[2]}</span></td>
+                  <td>
+                    <span className="admin-status">{message[2]}</span>
+                  </td>
                   <td>{message[3]}</td>
-                  <td><button className="icon-button"><ChevronRight /></button></td>
+                  <td>
+                    <button className="icon-button">
+                      <ChevronRight />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
-      {composer && (
-        <AdminMessageComposer
-          onClose={() => setComposer(false)}
-          onSend={(title) => setMessages([[title, "All players", "Sent", "just now"], ...messages])}
-        />
-      )}
+      {composer && <AdminMessageComposer onClose={() => setComposer(false)} onSend={(title) => setMessages([[title, "All players", "Sent", "just now"], ...messages])} />}
     </>
   );
 }
 
-function AdminMessageComposer({
-  onClose,
-  onSend,
-}: {
-  onClose: () => void;
-  onSend?: (title: string) => void;
-}) {
+function AdminMessageComposer({ onClose, onSend }: { onClose: () => void; onSend?: (title: string) => void }) {
   const [title, setTitle] = useState("Important Nortix update");
   return (
     <Modal title="Compose admin message" onClose={onClose}>
@@ -679,8 +683,17 @@ function AdminMessageComposer({
         </label>
       </div>
       <div className="modal__footer">
-        <Button variant="ghost" onClick={onClose}>Save draft</Button>
-        <Button onClick={() => { onSend?.(title); onClose(); }}><Send /> Send message</Button>
+        <Button variant="ghost" onClick={onClose}>
+          Save draft
+        </Button>
+        <Button
+          onClick={() => {
+            onSend?.(title);
+            onClose();
+          }}
+        >
+          <Send /> Send message
+        </Button>
       </div>
     </Modal>
   );
@@ -688,6 +701,8 @@ function AdminMessageComposer({
 
 function AdminAnalyticsPage({ type }: { type: string }) {
   const [range, setRange] = useState("7 days");
+  const { data: overview } = useAdminOverview();
+  const { data: auditLogs = [] } = useAuditLogs();
   return (
     <>
       <AdminHeading
@@ -695,56 +710,63 @@ function AdminAnalyticsPage({ type }: { type: string }) {
         description="Privacy-conscious traffic, engagement, campaign, search, and retention signals."
         action={
           <select className="admin-range" value={range} onChange={(event) => setRange(event.target.value)}>
-            <option>24 hours</option><option>7 days</option><option>30 days</option>
+            <option>24 hours</option>
+            <option>7 days</option>
+            <option>30 days</option>
           </select>
         }
       />
       <div className="admin-kpi-grid">
         {[
-          ["Visitors", "8,492", "+12.4%"],
-          ["Sessions", "11,804", "+8.1%"],
-          ["Campaign views", "24,610", "+18.7%"],
-          ["Searches", "6,203", "+5.2%"],
-          ["Quest interactions", "3,882", "+9.6%"],
-          ["Return rate", "41.8%", "+2.3%"],
+          ["Seeded users", (overview?.users ?? 0).toLocaleString(), "Database"],
+          ["Seeded servers", (overview?.servers ?? 0).toLocaleString(), "Database"],
+          ["Campaigns", (overview?.campaigns ?? 0).toLocaleString(), "Database"],
+          ["Open cases", (overview?.openCases ?? 0).toLocaleString(), "Database"],
+          ["Pending adjustments", (overview?.pendingWithdrawals ?? 0).toLocaleString(), "Database"],
+          ["Audit events", auditLogs.length.toLocaleString(), "Latest page"],
         ].map(([label, value, trend]) => (
-          <Card key={label}><small>{label}</small><strong>{value}</strong><span className="positive">{trend}</span></Card>
+          <Card key={label}>
+            <small>{label}</small>
+            <strong>{value}</strong>
+            <span className="positive">{trend}</span>
+          </Card>
         ))}
       </div>
       <div className="admin-command-grid">
         <Card>
           <h2>Usage over time</h2>
           <div className="admin-chart" aria-label="Usage chart">
-            {[38, 52, 44, 68, 61, 82, 74, 91, 80, 96, 87, 100].map((height, index) => (
-              <i style={{ height: `${height}%` }} key={index} />
+            {auditLogs.slice(0, 12).map((entry, index) => (
+              <i style={{ height: `${Math.max(12, 100 - index * 7)}%` }} key={entry.id} />
             ))}
           </div>
         </Card>
         <Card>
           <h2>Top product routes</h2>
-          {[
-            ["/dashboard", "31%"],
-            ["/campaigns", "24%"],
-            ["/servers", "18%"],
-            ["/dashboard/quests", "11%"],
-            ["/owner", "7%"],
-          ].map(([route, share]) => (
-            <div className="analytics-route" key={route}><code>{route}</code><strong>{share}</strong></div>
+          {auditLogs.slice(0, 5).map((entry) => (
+            <div className="analytics-route" key={entry.id}>
+              <code>{entry.action}</code>
+              <strong>{entry.entityType}</strong>
+            </div>
           ))}
         </Card>
       </div>
       <Card>
         <h2>{type === "umami" ? "Umami integration" : "Measurement controls"}</h2>
-        <p>
-          {type === "umami"
-            ? "Connect a self-hosted Umami instance with a site ID and endpoint. No tracking script is enabled in this prototype."
-            : "Event names, retention windows, and privacy rules could be configured here."}
-        </p>
+        <p>{type === "umami" ? "Connect a self-hosted Umami instance with a site ID and endpoint. No tracking script is enabled in this prototype." : "Event names, retention windows, and privacy rules could be configured here."}</p>
         <div className="form-grid form-grid--two">
-          <label>Endpoint<input placeholder="https://analytics.example.com" /></label>
-          <label>Website ID<input placeholder="Umami website ID" /></label>
+          <label>
+            Endpoint
+            <input placeholder="https://analytics.example.com" />
+          </label>
+          <label>
+            Website ID
+            <input placeholder="Umami website ID" />
+          </label>
         </div>
-        <Button><Save /> Save analytics configuration</Button>
+        <Button>
+          <Save /> Save analytics configuration
+        </Button>
       </Card>
     </>
   );
@@ -752,26 +774,31 @@ function AdminAnalyticsPage({ type }: { type: string }) {
 
 function AdminMonitorPage() {
   const [paused, setPaused] = useState(false);
-  const events = [
-    ["SESSION_STARTED", "usr_102", "dashboard", "now"],
-    ["SEARCH_PERFORMED", "usr_087", "skyblock", "4s"],
-    ["CAMPAIGN_VIEWED", "usr_102", "campaign-1", "8s"],
-    ["RATE_LIMIT_CHECK", "api", "allowed", "12s"],
-    ["ADMIN_RECORD_OPENED", "admin@nortix", "srv_014", "18s"],
-  ];
+  const { data: auditLogs = [] } = useAuditLogs();
+  const events = paused ? [] : auditLogs.slice(0, 20);
   return (
     <>
       <AdminHeading
         title="Live activity monitor"
         description="Observe recent platform events, sessions, errors, moderation triggers, and unusual patterns."
-        action={<Button variant="secondary" onClick={() => setPaused(!paused)}>{paused ? "Resume stream" : "Pause stream"}</Button>}
+        action={
+          <Button variant="secondary" onClick={() => setPaused(!paused)}>
+            {paused ? "Resume stream" : "Pause stream"}
+          </Button>
+        }
       />
       <div className="admin-command-grid">
         <Card>
           <h2>Live event stream</h2>
           <div className="live-event-stream">
             {events.map((event) => (
-              <div key={event.join("-")}><i /><code>{event[0]}</code><span>{event[1]}</span><b>{event[2]}</b><small>{event[3]}</small></div>
+              <div key={event.id}>
+                <i />
+                <code>{event.action}</code>
+                <span>{event.actor?.username ?? "system"}</span>
+                <b>{event.entityType}</b>
+                <small>{new Date(event.createdAt).toLocaleTimeString()}</small>
+              </div>
             ))}
           </div>
         </Card>
@@ -785,7 +812,10 @@ function AdminMonitorPage() {
             ["Admin privilege changes", "Always on"],
           ].map(([label, status]) => (
             <label className="admin-toggle-row" key={label}>
-              <span><strong>{label}</strong><small>{status}</small></span>
+              <span>
+                <strong>{label}</strong>
+                <small>{status}</small>
+              </span>
               <input type="checkbox" defaultChecked />
             </label>
           ))}
@@ -797,13 +827,26 @@ function AdminMonitorPage() {
 
 function AdminAuditPage() {
   const [filter, setFilter] = useState("");
-  const rows = overviewEvents.filter((row) => row.join(" ").toLowerCase().includes(filter.toLowerCase()));
+  const { data, isLoading, isError, refetch } = useAuditLogs();
+  const rows = (data ?? [])
+    .map((entry) => [
+      entry.actor?.displayName ?? entry.actor?.username ?? "System",
+      entry.action,
+      `${entry.entityType}:${entry.entityId}`,
+      new Date(entry.createdAt).toLocaleString(),
+    ])
+    .filter((row) => row.join(" ").toLowerCase().includes(filter.toLowerCase()));
   return (
     <>
       <AdminHeading title="Activity logs" description="Search administrative, moderation, security, and system events." />
+      {isLoading ? <Card><p>Loading seeded audit records…</p></Card> : null}
+      {isError ? <Card><p>Seeded audit records could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
       <Card className="data-card">
         <div className="data-card__header">
-          <label className="table-search"><Search /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter logs..." /></label>
+          <label className="table-search">
+            <Search />
+            <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter logs..." />
+          </label>
           <Button variant="secondary">Export filtered log</Button>
         </div>
         <AdminLogTable rows={rows} />
@@ -816,10 +859,24 @@ function AdminLogTable({ rows }: { rows: readonly (readonly string[])[] }) {
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>Actor</th><th>Action</th><th>Target</th><th>Time</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Time</th>
+          </tr>
+        </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.join("-")}><td>{row[0]}</td><td><code>{row[1]}</code></td><td>{row[2]}</td><td>{row[3]}</td></tr>
+            <tr key={row.join("-")}>
+              <td>{row[0]}</td>
+              <td>
+                <code>{row[1]}</code>
+              </td>
+              <td>{row[2]}</td>
+              <td>{row[3]}</td>
+            </tr>
           ))}
         </tbody>
       </table>
@@ -831,9 +888,14 @@ function AdminAccessPage() {
   const [saved, setSaved] = useState(false);
   return (
     <>
-      <AdminHeading title="Roles & permissions" description="Control staff roles with least-privilege defaults and audited changes." />
+      <AdminHeading title="Nortix staff access" description="Control platform staff roles with least-privilege defaults and audited changes. Server-team roles never grant access here." />
       <Card className="permission-matrix">
-        <div className="permission-row permission-row--head"><b>Capability</b><b>Moderator</b><b>Analyst</b><b>Nortix admin</b></div>
+        <div className="permission-row permission-row--head">
+          <b>Capability</b>
+          <b>Moderator</b>
+          <b>Analyst</b>
+          <b>Nortix admin</b>
+        </div>
         {["Review reports", "Edit servers", "Edit users", "Send messages", "View analytics", "Terminate access", "Manage admin roles"].map((capability, index) => (
           <div className="permission-row" key={capability}>
             <strong>{capability}</strong>
@@ -842,7 +904,9 @@ function AdminAccessPage() {
             <input type="checkbox" defaultChecked />
           </div>
         ))}
-        <Button onClick={() => setSaved(true)}><Save /> {saved ? "Permissions saved" : "Save permission matrix"}</Button>
+        <Button onClick={() => setSaved(true)}>
+          <Save /> {saved ? "Permissions saved" : "Save permission matrix"}
+        </Button>
       </Card>
     </>
   );
@@ -854,31 +918,38 @@ function AdminTerminationPage() {
   const [completed, setCompleted] = useState(false);
   return (
     <>
-      <AdminHeading
-        title="Termination tools"
-        description="Revoke access, terminate records, invalidate sessions, or remove published entities with safeguards."
-      />
+      <AdminHeading title="Termination tools" description="Revoke access, terminate records, invalidate sessions, or remove published entities with safeguards." />
       <Card className="termination-console">
         <ShieldAlert />
         <h2>Protected destructive action</h2>
-        <p>
-          Enter an exact user, server, campaign, or session ID. The action would require a reason,
-          typed confirmation, role permission, and an immutable audit event.
-        </p>
-        <label>Target ID<input value={target} onChange={(event) => setTarget(event.target.value)} placeholder="usr_102 or srv_014" /></label>
-        <label>Reason<textarea rows={3} placeholder="Required moderation or security reason" /></label>
-        <label>Type TERMINATE {target || "TARGET"}<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+        <p>Enter an exact user, server, campaign, or session ID. The action would require a reason, typed confirmation, role permission, and an immutable audit event.</p>
+        <label>
+          Target ID
+          <input value={target} onChange={(event) => setTarget(event.target.value)} placeholder="usr_102 or srv_014" />
+        </label>
+        <label>
+          Reason
+          <textarea rows={3} placeholder="Required moderation or security reason" />
+        </label>
+        <label>
+          Type TERMINATE {target || "TARGET"}
+          <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+        </label>
         <div className="termination-options">
-          <label><input type="checkbox" defaultChecked /> Revoke active sessions</label>
-          <label><input type="checkbox" defaultChecked /> Disable new authentication</label>
-          <label><input type="checkbox" /> Unpublish associated content</label>
-          <label><input type="checkbox" /> Schedule data retention review</label>
+          <label>
+            <input type="checkbox" defaultChecked /> Revoke active sessions
+          </label>
+          <label>
+            <input type="checkbox" defaultChecked /> Disable new authentication
+          </label>
+          <label>
+            <input type="checkbox" /> Unpublish associated content
+          </label>
+          <label>
+            <input type="checkbox" /> Schedule data retention review
+          </label>
         </div>
-        <Button
-          variant="danger"
-          disabled={!target || confirmation !== `TERMINATE ${target}`}
-          onClick={() => setCompleted(true)}
-        >
+        <Button variant="danger" disabled={!target || confirmation !== `TERMINATE ${target}`} onClick={() => setCompleted(true)}>
           <Trash2 /> {completed ? "Termination recorded" : "Execute termination"}
         </Button>
       </Card>

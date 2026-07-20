@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.bukkit.entity.EntityType;
 import org.bukkit.OfflinePlayer;
@@ -40,6 +41,7 @@ final class MilestoneReporter implements Listener {
     private BukkitTask flushTask;
     private BukkitTask metricTask;
     private BukkitTask capabilityTask;
+    private BukkitTask presenceTask;
 
     MilestoneReporter(NortixPaperPlugin plugin) {
         this.plugin = plugin;
@@ -53,6 +55,12 @@ final class MilestoneReporter implements Listener {
         long interval = Math.max(15L, plugin.getConfig().getLong("metric-poll-seconds", 30L));
         metricTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> pollMetrics(interval), interval * 20L, interval * 20L);
         capabilityTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, this::publishCapabilities, 80L, 20L * 300L);
+        long presenceInterval = Math.max(30L, Math.min(60L,
+            plugin.getConfig().getLong("presence-snapshot-seconds", 60L)));
+        if (plugin.getConfig().getBoolean("privacy-conscious-analytics", true)) {
+            presenceTask = plugin.getServer().getScheduler().runTaskTimer(
+                plugin, this::publishPresence, 20L * 15L, presenceInterval * 20L);
+        }
         if (plugin.getConfig().getBoolean("sync-player-history", true)) {
             plugin.getServer().getScheduler().runTaskLater(plugin, this::syncPlayerHistory, 20L * 10L);
         }
@@ -62,6 +70,7 @@ final class MilestoneReporter implements Listener {
         if (flushTask != null) flushTask.cancel();
         if (metricTask != null) metricTask.cancel();
         if (capabilityTask != null) capabilityTask.cancel();
+        if (presenceTask != null) presenceTask.cancel();
         flush();
     }
 
@@ -128,6 +137,55 @@ final class MilestoneReporter implements Listener {
                     + reading.value + ",\"provider\":\"" + json(reading.provider) + "\"}");
             }
         }
+    }
+
+    private void publishPresence() {
+        if (!isConnected()) return;
+        Collection<? extends Player> online = plugin.getServer().getOnlinePlayers();
+        List<String> players = new ArrayList<>();
+        for (Player player : online) {
+            String backend = proxyServerName.isEmpty() ? "" : ",\"backend\":\"" + json(proxyServerName) + "\"";
+            players.add("{\"minecraftUuid\":\"" + player.getUniqueId() + "\"" + backend + "}");
+        }
+        String body = "{\"id\":\"" + UUID.randomUUID() + "\",\"serverId\":\"" + json(serverId)
+            + "\",\"instanceId\":\"" + instanceId + "\",\"platform\":\"PAPER\",\"pluginVersion\":\""
+            + NortixPaperPlugin.VERSION + "\",\"serverVersion\":\""
+            + json(plugin.getServer().getBukkitVersion()) + "\",\"observedAt\":\""
+            + Instant.now().toString() + "\",\"onlinePlayers\":" + players.size()
+            + ",\"maxPlayers\":" + plugin.getServer().getMaxPlayers() + ",\"players\":["
+            + String.join(",", players) + "]}";
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                request("POST", "/plugin/presence", body, true);
+            } catch (Exception error) {
+                plugin.getLogger().warning("Could not publish Nortix activity sample: " + error.getMessage());
+            }
+        });
+    }
+
+    void requestPublicProfile(
+        String minecraftUsername,
+        Consumer<String> onFound,
+        Runnable onMissing,
+        Consumer<String> onError
+    ) {
+        if (!isConnected()) {
+            onError.accept("This server is not connected to Nortix.");
+            return;
+        }
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                String response = request("GET", "/plugin/public-profiles/"
+                    + minecraftUsername + "?serverId=" + serverId, null, true);
+                onFound.accept(response);
+            } catch (Exception error) {
+                if (error.getMessage() != null && error.getMessage().startsWith("HTTP 404")) {
+                    onMissing.run();
+                } else {
+                    onError.accept("Nortix profiles are temporarily unavailable.");
+                }
+            }
+        });
     }
 
     private void enqueue(Player player, String type, String metadata) {

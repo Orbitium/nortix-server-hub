@@ -7,9 +7,8 @@ author: Nortix
 softdepend: [PlaceholderAPI, BentoBox, Level, SuperiorSkyblock2, IridiumSkyblock, ASkyBlock, uSkyBlock, LifeStealZ, LifestealCore, CombatLogX, PvPManager, mcMMO]
 commands:
   nortix:
-    description: Manage Nortix server ownership verification.
-    usage: /nortix <verify|connect|capabilities|status|clear>
-    permission: nortix.admin
+    description: View public Nortix profiles or manage the server integration.
+    usage: /nortix help or /nortix <player>
 permissions:
   nortix.admin:
     description: Manage Nortix verification and milestone tracking.

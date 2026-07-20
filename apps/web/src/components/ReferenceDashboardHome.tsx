@@ -1,57 +1,45 @@
 import { ArrowRight, BadgeCheck, Compass, Gamepad2, Search, Sparkles, Users } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-
-const featured = [
-  ["HOT", "Skyblock X", "Skyblock", "Economy", "1.20.4", "Up to 100 Sparks", "1,243", 0],
-  ["NEW", "PrisonCraft", "Prison", "PvP", "1.20.2", "Up to 95 Sparks", "982", 1],
-  ["ACTIVE", "Lifesteal SMP", "SMP", "PvP", "1.20.4", "Up to 90 Sparks", "765", 2],
-  ["TRENDING", "Factions Legacy", "Factions", "PvP", "1.20.4", "Up to 85 Sparks", "654", 3],
-] as const;
-
-const campaignRows = [
-  [
-    "Vanilla Frontier",
-    "A fresh vanilla experience. Pure survival.",
-    "Survival",
-    "Vanilla",
-    "1.20.4",
-    "Up to 65",
-    "423",
-    7,
-  ],
-  [
-    "Arcane Realms",
-    "Magic, quests, and an open world adventure.",
-    "RPG",
-    "Quests",
-    "1.20.2",
-    "Up to 80",
-    "331",
-    4,
-  ],
-  [
-    "Bedwars Classic",
-    "Competitive maps, fair queues, useful feedback.",
-    "Minigames",
-    "Bedwars",
-    "1.20.4",
-    "Up to 75",
-    "812",
-    5,
-  ],
-  [
-    "OneBlock Journey",
-    "Turn one block into a world worth exploring.",
-    "Skyblock",
-    "Survival",
-    "1.20.2",
-    "Up to 70",
-    "298",
-    6,
-  ],
-] as const;
+import { artIndexFor, usePublicCampaigns } from "../features/api-data";
 
 export function ReferenceDashboardHome() {
+  const { data, isLoading, isError, refetch } = usePublicCampaigns();
+  const campaigns = data?.items ?? [];
+  const categories = ["All categories", ...new Set(campaigns.map((item) => item.category))];
+  const versions = [
+    "All versions",
+    ...new Set(campaigns.flatMap((item) => item.versionRequirements)),
+  ];
+  const sorts = ["Recommended", "Highest Sparks", "Most active"] as const;
+  const [categoryFilter, setCategoryFilter] = useState("All categories");
+  const [versionFilter, setVersionFilter] = useState("All versions");
+  const [sort, setSort] = useState<(typeof sorts)[number]>("Recommended");
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(4);
+  const matchingCampaigns = campaigns
+    .filter(
+      (campaign) =>
+        (categoryFilter === "All categories" || campaign.category === categoryFilter) &&
+        (versionFilter === "All versions" ||
+          campaign.versionRequirements.includes(versionFilter)) &&
+        `${campaign.title} ${campaign.description} ${campaign.category} ${campaign.server.name}`
+          .toLowerCase()
+          .includes(search.trim().toLowerCase()),
+    )
+    .sort((left, right) => {
+      if (sort === "Highest Sparks") {
+        return right.maximumSparksReward - left.maximumSparksReward;
+      }
+      if (sort === "Most active") {
+        return right._count.participations - left._count.participations;
+      }
+      return 0;
+    });
+
+  const cycleValue = (values: readonly string[], current: string) =>
+    values[(values.indexOf(current) + 1) % values.length]!;
+
   return (
     <div className="dashboard-page dashboard-home">
       <section className="home-hero">
@@ -61,7 +49,7 @@ export function ReferenceDashboardHome() {
           <h1>Make every session count.</h1>
           <p>Help ambitious Minecraft servers grow. Verified activity may receive Sparks.</p>
           <div>
-            <Link className="button button--primary" to="/dashboard/campaigns">
+            <Link className="button button--primary" to="/campaigns">
               <Gamepad2 /> Browse campaigns
             </Link>
             <Link className="button button--glass" to="/how-it-works">
@@ -77,43 +65,41 @@ export function ReferenceDashboardHome() {
             <h2>
               <Sparkles /> Featured campaigns
             </h2>
-            <p>Hand-picked campaigns that may offer up to 100 Sparks.</p>
+            <p>Active campaigns loaded from Nortix seed data.</p>
           </div>
-          <Link to="/dashboard/campaigns">
+          <Link to="/campaigns">
             View all <ArrowRight />
           </Link>
         </div>
         <div className="featured-campaigns">
-          {featured.map(
-            ([label, name, category, mode, version, reward, players, art], index) => (
-              <Link
-                className="featured-tile"
-                to={`/campaigns/campaign-${index + 1}`}
-                key={name}
-              >
-                <div className={`featured-tile__art server-art--${art}`}>
-                  <span className={`featured-label featured-label--${index}`}>{label}</span>
-                  <b>{name}</b>
+          {campaigns.slice(0, 4).map((campaign, index) => (
+            <Link className="featured-tile" to={`/campaigns/${campaign.id}`} key={campaign.id}>
+              <div className={`featured-tile__art server-art--${artIndexFor(campaign.server.id)}`}>
+                <span className={`featured-label featured-label--${index}`}>
+                  {index === 0 ? "FEATURED" : campaign.status}
+                </span>
+                <b>{campaign.server.name}</b>
+              </div>
+              <div className="featured-tile__body">
+                <h3>
+                  {campaign.title} <BadgeCheck />
+                </h3>
+                <div className="featured-tile__tags">
+                  <span>{campaign.category}</span>
+                  <span>{campaign.versionRequirements[0] ?? "Any version"}</span>
+                  <span>{campaign.milestones.length} steps</span>
                 </div>
-                <div className="featured-tile__body">
-                  <h3>
-                    {name} <BadgeCheck />
-                  </h3>
-                  <div className="featured-tile__tags">
-                    <span>{category}</span>
-                    <span>{mode}</span>
-                    <span>{version}</span>
-                  </div>
-                  <div className="featured-tile__meta">
-                    <strong>{reward}</strong>
-                    <span>
-                      <Users /> {players}
-                    </span>
-                  </div>
+                <div className="featured-tile__meta">
+                  <strong>Up to {campaign.maximumSparksReward} Sparks</strong>
+                  <span>
+                    <Users /> {campaign._count.participations}
+                  </span>
                 </div>
-              </Link>
-            ),
-          )}
+              </div>
+            </Link>
+          ))}
+          {isLoading ? <p>Loading seeded campaigns…</p> : null}
+          {isError ? <button onClick={() => refetch()}>Retry seeded campaigns</button> : null}
         </div>
       </section>
 
@@ -123,54 +109,92 @@ export function ReferenceDashboardHome() {
             <Gamepad2 /> All campaigns
           </h2>
           <div className="campaign-filters">
-            <button>All categories</button>
-            <button>All versions</button>
-            <button>Sort: Recommended</button>
+            <button
+              type="button"
+              title="Change category"
+              onClick={() => {
+                setCategoryFilter(cycleValue(categories, categoryFilter));
+                setVisibleCount(4);
+              }}
+            >
+              {categoryFilter}
+            </button>
+            <button
+              type="button"
+              title="Change version"
+              onClick={() => {
+                setVersionFilter(cycleValue(versions, versionFilter));
+                setVisibleCount(4);
+              }}
+            >
+              {versionFilter}
+            </button>
+            <button
+              type="button"
+              title="Change sorting"
+              onClick={() => setSort(cycleValue(sorts, sort) as (typeof sorts)[number])}
+            >
+              Sort: {sort}
+            </button>
             <label>
               <Search />
-              <input aria-label="Search campaigns" placeholder="Search campaigns..." />
+              <input
+                aria-label="Search campaigns"
+                placeholder="Search campaigns..."
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setVisibleCount(4);
+                }}
+              />
             </label>
           </div>
         </div>
 
         <div className="campaign-list">
-          {campaignRows.map(
-            ([name, description, category, mode, version, reward, players, art], index) => (
-              <div className="campaign-row" key={name}>
-                <div className={`campaign-row__art server-art--${art}`} aria-hidden="true">
-                  {name
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")
-                    .slice(0, 2)}
-                </div>
-                <div className="campaign-row__copy">
-                  <h3>
-                    {name} <BadgeCheck />
-                  </h3>
-                  <p>{description}</p>
-                </div>
-                <div className="campaign-row__tags">
-                  <span>{category}</span>
-                  <span>{mode}</span>
-                  <span>{version}</span>
-                </div>
-                <strong>{reward} Sparks</strong>
-                <span className="campaign-row__players">
-                  <Users /> {players}
-                </span>
-                <Link
-                  className="button button--primary button--small"
-                  to={`/campaigns/campaign-${index + 5}`}
-                >
-                  Play now
-                </Link>
+          {matchingCampaigns.slice(0, visibleCount).map((campaign) => (
+            <div className="campaign-row" key={campaign.id}>
+              <div
+                className={`campaign-row__art server-art--${artIndexFor(campaign.server.id)}`}
+                aria-hidden="true"
+              >
+                {campaign.server.name.slice(0, 2).toUpperCase()}
               </div>
-            ),
-          )}
+              <div className="campaign-row__copy">
+                <h3>
+                  {campaign.title} <BadgeCheck />
+                </h3>
+                <p>{campaign.description}</p>
+              </div>
+              <div className="campaign-row__tags">
+                <span>{campaign.category}</span>
+                <span>{campaign.versionRequirements[0] ?? "Any"}</span>
+                <span>{campaign.milestones.length} steps</span>
+              </div>
+              <strong>Up to {campaign.maximumSparksReward} Sparks</strong>
+              <span className="campaign-row__players">
+                <Users /> {campaign._count.participations}
+              </span>
+              <Link
+                className="button button--primary button--small"
+                to={`/campaigns/${campaign.id}`}
+              >
+                Play now
+              </Link>
+            </div>
+          ))}
+          {!isLoading && !isError && matchingCampaigns.length === 0 ? (
+            <p className="campaign-list__empty">No campaigns match these filters.</p>
+          ) : null}
         </div>
-        <button className="load-campaigns">
-          Load more campaigns <ArrowRight />
+        <button
+          type="button"
+          className="load-campaigns"
+          disabled={visibleCount >= matchingCampaigns.length}
+          onClick={() => setVisibleCount((current) => current + 4)}
+        >
+          {visibleCount >= matchingCampaigns.length ? "All campaigns loaded" : "Load more campaigns"}{" "}
+          <ArrowRight />
         </button>
       </section>
     </div>

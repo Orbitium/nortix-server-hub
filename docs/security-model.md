@@ -7,8 +7,11 @@ Minecraft plugins, client mods, analytics payloads, and cached user balances are
 not authoritative.
 
 - A campaign completion is created from player evidence or backend-calculated
-  integration evidence and remains pending until the backend review workflow
-  verifies it.
+  integration evidence. Eligible plugin milestones can be verified automatically
+  only after the backend authenticates the server credential, binds the plugin
+  instance, validates the schema and capability, deduplicates event IDs,
+  aggregates the target itself, and accepts the event rate. Anything unusual or
+  explicitly marked for review remains pending for a moderator.
 - Plugin events are server-scoped attestations. The API validates their token,
   verified server, bound instance, delivery window, schema, capability, and
   ranges before storing them. Stored plugin data is explicitly marked as an

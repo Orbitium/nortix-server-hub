@@ -13,7 +13,6 @@ import {
   ProfilePage,
   ProgressPage,
   QuestsPage,
-  ReferralsPage,
   SparksShopPage,
 } from "../routes/DashboardPages";
 import {
@@ -24,6 +23,7 @@ import {
   WithdrawalReviewPage,
 } from "../routes/AdminPages";
 import { AuthPage } from "../routes/AuthPages";
+import { RouteSeo } from "../components/Seo";
 
 const managedPages = [
   ["users", "Users", "Edit account data, roles, access, restrictions, and moderation context.", "users"],
@@ -65,7 +65,9 @@ function AdminRoutes() {
 
 export function App() {
   return (
-    <Routes>
+    <>
+      <RouteSeo />
+      <Routes>
       <Route element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="welcome" element={<Navigate to="/dashboard" replace />} />
@@ -89,7 +91,7 @@ export function App() {
         <Route path="dashboard/sparks-shop" element={<SparksShopPage />} />
         <Route path="dashboard/leaderboards" element={<LeaderboardsPage />} />
         <Route path="dashboard/community" element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard/referrals" element={<ReferralsPage />} />
+        <Route path="dashboard/referrals" element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard/profile" element={<ProfilePage />} />
         <Route path="dashboard/settings" element={<PlaceholderDashboardPage title="Settings" description="Profile, notifications, privacy, Sparks preferences, and security." />} />
         <Route path="owner" element={<OwnerPlatform />} />
@@ -111,6 +113,7 @@ export function App() {
       <Route path="register" element={<AuthPage mode="register" />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }

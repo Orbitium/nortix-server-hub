@@ -38,9 +38,20 @@ Errors use:
 - `POST /participations/:id/milestones/:milestoneId/submit`
 - `POST /owner/campaigns`
 - `POST /owner/campaigns/:id/submit`
+- `GET /owner/servers/:id/campaign-suggestions?budgetCredits=5000&maximumSparksReward=100&milestoneCount=3`
 
 Joining requires `{ "acceptedTerms": true }`. Reward amounts and completion approval are never
 accepted from the player client.
+
+Campaign creation accepts compact player-facing copy, a campaign-level
+`sparksRewardRange`, a Campaign Credits budget, and up to eight structured
+milestones. Owners do not submit a participant limit. The backend derives an
+internal capacity from the credit budget and campaign configuration. It rejects
+budgets above the authoritative Campaign Credits ledger balance and reserves
+the budget transactionally when the campaign is submitted. The suggestions
+endpoint returns capability-aware plugin milestone presets and a deliberately
+broad potential-exposure range. Exposure is directional and is not a delivery
+promise.
 
 ## Earnings, withdrawals, and Sparks
 
@@ -86,8 +97,20 @@ and ledgers are never serialized from public campaign endpoints.
 - `POST /integrations/server/events`
 - `POST /integrations/client/events`
 - `GET /integrations/campaigns/:campaignId/config`
+- `POST /plugin/presence`
+- `GET /plugin/public-profiles/:minecraftUsername`
+- `GET /owner/servers/:id/campaign-eligibility`
 
 See [integrations.md](integrations.md) for signatures and replay protection.
+
+Plugin presence snapshots are authenticated with a server-scoped token. Nortix stores aggregate
+counts and server-scoped one-way UUID hashes for at most 14 days. Campaign eligibility requires at
+least 10 average active players across a fresh, sufficiently-spread seven-day sample history, and
+is checked during both campaign creation and submission.
+
+The plugin profile endpoint returns only an allowlisted public tester summary. It never returns
+Sparks, campaign history, identity records, internal account IDs, moderation state, or private
+activity.
 
 ## Pagination and idempotency
 

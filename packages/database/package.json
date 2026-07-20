@@ -14,7 +14,7 @@
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src prisma/seed.ts",
+    "lint": "eslint src prisma/*.ts",
     "test": "vitest run --passWithNoTests",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",

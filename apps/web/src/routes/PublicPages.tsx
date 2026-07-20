@@ -26,9 +26,19 @@ import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
 import { CampaignDetailRedesign } from "../components/CampaignDetailRedesign";
-import { campaigns, servers } from "../features/demo-data";
+import { Seo } from "../components/Seo";
+import {
+  artIndexFor,
+  usePublicCampaigns,
+  usePublicServer,
+  usePublicServers,
+} from "../features/api-data";
 
 export function HomePage() {
+  const { data: campaignData } = usePublicCampaigns();
+  const { data: serverData } = usePublicServers();
+  const campaigns = campaignData?.items ?? [];
+  const featuredCampaign = campaigns[0];
   return (
     <>
       <section className="hero">
@@ -83,16 +93,17 @@ export function HomePage() {
             </div>
             <div className="hero-console__campaign">
               <div>
-                <span className="server-mini-logo">SX</span>
+                <span className="server-mini-logo">
+                  {featuredCampaign?.server.name.slice(0, 2).toUpperCase() ?? "NX"}
+                </span>
                 <span>
-                  <strong>First island experience</strong>
+                  <strong>{featuredCampaign?.title ?? "Loading active campaign…"}</strong>
                   <small>Skyblock X · Verified</small>
                 </span>
               </div>
               <div className="hero-reward">
-                <small>AVAILABLE REWARD</small>
-                <strong>$3.00</strong>
-                <Sparks value="1,000" />
+                <small>POTENTIAL REWARD</small>
+                <strong>Up to {featuredCampaign?.maximumSparksReward ?? "—"} Sparks</strong>
               </div>
             </div>
             <div className="hero-milestones">
@@ -128,11 +139,11 @@ export function HomePage() {
 
       <section className="social-proof">
         <div>
-          <strong>12</strong>
+          <strong>{serverData?.total ?? "—"}</strong>
           <span>verified servers</span>
         </div>
         <div>
-          <strong>8</strong>
+          <strong>{campaignData?.total ?? "—"}</strong>
           <span>active playtests</span>
         </div>
         <div>
@@ -305,6 +316,8 @@ export function HomePage() {
 export function BrowseServersPage() {
   const [search, setSearch] = useState("");
   const [edition, setEdition] = useState("ALL");
+  const { data, isLoading, isError, refetch } = usePublicServers();
+  const servers = data?.items ?? [];
   const visible = useMemo(
     () =>
       servers.filter(
@@ -348,6 +361,8 @@ export function BrowseServersPage() {
         <span>{visible.length} servers</span>
       </div>
       <div className="server-grid">
+        {isLoading ? <Card><p>Loading seeded servers…</p></Card> : null}
+        {isError ? <Card><p>Seeded servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
         {visible.map((server) => (
           <ServerCard server={server} key={server.id} />
         ))}
@@ -358,10 +373,13 @@ export function BrowseServersPage() {
 
 export function BrowseCampaignsPage() {
   const [search, setSearch] = useState("");
-  const [difficulty, setDifficulty] = useState("All");
+  const [category, setCategory] = useState("All");
+  const { data, isLoading, isError, refetch } = usePublicCampaigns();
+  const campaigns = data?.items ?? [];
+  const categories = ["All", ...new Set(campaigns.map((campaign) => campaign.category))];
   const visible = campaigns.filter(
     (campaign) =>
-      (difficulty === "All" || campaign.difficulty === difficulty) &&
+      (category === "All" || campaign.category === category) &&
       `${campaign.title} ${campaign.server.name} ${campaign.category}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -386,10 +404,10 @@ export function BrowseCampaignsPage() {
           />
         </label>
         <div className="segmented">
-          {["All", "Easy", "Moderate", "Advanced"].map((item) => (
+          {categories.map((item) => (
             <button
-              className={difficulty === item ? "active" : ""}
-              onClick={() => setDifficulty(item)}
+              className={category === item ? "active" : ""}
+              onClick={() => setCategory(item)}
               key={item}
             >
               {item}
@@ -399,6 +417,8 @@ export function BrowseCampaignsPage() {
         <span>{visible.length} playtests</span>
       </div>
       <div className="campaign-grid campaign-grid--listing">
+        {isLoading ? <Card><p>Loading seeded campaigns…</p></Card> : null}
+        {isError ? <Card><p>Seeded campaigns could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
         {visible.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
@@ -409,11 +429,47 @@ export function BrowseCampaignsPage() {
 
 export function ServerDetailPage() {
   const { slug } = useParams();
-  const server = servers.find((item) => item.slug === slug) ?? servers[0]!;
-  const related = campaigns.filter((campaign) => campaign.server.id === server.id);
+  const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
+  const { data: campaignData } = usePublicCampaigns();
+  if (isLoading) {
+    return <div className="detail-page"><Card><p>Loading seeded server…</p></Card></div>;
+  }
+  if (isError || !server) {
+    return <div className="detail-page"><Card><p>The seeded server could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card></div>;
+  }
+  const related = (campaignData?.items ?? []).filter(
+    (campaign) => campaign.server.id === server.id,
+  );
+  const canonicalPath = `/servers/${server.slug}`;
+  const serverSchema = {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    name: server.name,
+    description: server.description,
+    url: `https://hub.nortixlabs.com${canonicalPath}`,
+    gamePlatform: server.edition === "JAVA" ? "Minecraft: Java Edition" : "Minecraft: Bedrock Edition",
+    applicationCategory: server.categories.join(", "),
+    aggregateRating:
+      server.rating != null && server.reviewCount
+        ? {
+            "@type": "AggregateRating",
+            ratingValue: server.rating,
+            reviewCount: server.reviewCount,
+            bestRating: 5,
+            worstRating: 1,
+          }
+        : undefined,
+    publisher: { "@id": "https://hub.nortixlabs.com/#organization" },
+  };
   return (
     <div className="detail-page">
-      <div className={`server-detail-hero server-art--${server.art}`}>
+      <Seo
+        title={`${server.name} Minecraft Server`}
+        description={`${server.description} View editions, versions, categories, player activity, reviews, and active Nortix playtests.`}
+        path={canonicalPath}
+        jsonLd={serverSchema}
+      />
+      <div className={`server-detail-hero server-art--${artIndexFor(server.id)}`}>
         <div className="server-detail-hero__logo">{server.name.slice(0, 2).toUpperCase()}</div>
         <div>
           <div className="detail-title-row">
@@ -433,7 +489,7 @@ export function ServerDetailPage() {
         </div>
         <div className="server-connect">
           <span className="online">
-            <i /> Online · {server.playerCount.toLocaleString()} players
+            <i /> Online · {(server.playerCount ?? 0).toLocaleString()} players
           </span>
           <button className="button button--primary">Copy server address</button>
         </div>
@@ -476,25 +532,26 @@ export function ServerDetailPage() {
           <Card>
             <h2>Community reviews</h2>
             <div className="review-summary">
-              <strong>{server.rating}</strong>
+              <strong>{server.rating ?? "New"}</strong>
               <span>
                 <span className="stars">★★★★★</span>
                 <small>Based on verified community reviews</small>
               </span>
             </div>
-            <div className="review">
-              <span className="avatar">PF</span>
-              <div>
-                <strong>
-                  PixelFern <Badge tone="success">Campaign linked</Badge>
-                </strong>
-                <span className="stars">★★★★★</span>
-                <p>
-                  Clear onboarding and a surprisingly helpful community. The first island upgrade
-                  path made sense after the recent changes.
-                </p>
+            {(server.reviews ?? []).map((review) => (
+              <div className="review" key={review.id}>
+                <span className="avatar">{review.player.username.slice(0, 2).toUpperCase()}</span>
+                <div>
+                  <strong>
+                    {review.player.displayName ?? review.player.username}
+                    {review.campaignLinked ? <Badge tone="success">Campaign linked</Badge> : null}
+                  </strong>
+                  <span className="stars">{"★".repeat(review.rating)}</span>
+                  <p>{review.text}</p>
+                </div>
               </div>
-            </div>
+            ))}
+            {(server.reviews ?? []).length === 0 ? <p>No approved reviews yet.</p> : null}
           </Card>
         </div>
         <aside className="detail-aside">
@@ -511,11 +568,11 @@ export function ServerDetailPage() {
               </div>
               <div>
                 <dt>Players online</dt>
-                <dd>{server.playerCount.toLocaleString()}</dd>
+                <dd>{(server.playerCount ?? 0).toLocaleString()}</dd>
               </div>
               <div>
                 <dt>Community rating</dt>
-                <dd>{server.rating}/5</dd>
+                <dd>{server.rating == null ? "No reviews yet" : `${server.rating}/5`}</dd>
               </div>
             </dl>
           </Card>
@@ -537,7 +594,39 @@ export function CampaignDetailPage() {
 
 export function LegacyCampaignDetailPage() {
   const { id } = useParams();
-  const campaign = campaigns.find((item) => item.id === id) ?? campaigns[0]!;
+  const { data } = usePublicCampaigns();
+  const rawCampaign = data?.items.find((item) => item.id === id) ?? data?.items[0];
+  if (!rawCampaign) return <CampaignDetailRedesign />;
+  const campaign = {
+    ...rawCampaign,
+    version: rawCampaign.versionRequirements[0] ?? rawCampaign.server.versions[0] ?? "Any version",
+    difficulty: rawCampaign.category,
+    language: "Server supported",
+    rewardCents: 0,
+    sparksMinimum: rawCampaign.minimumSparksReward,
+    sparks: rawCampaign.maximumSparksReward,
+    duration: `Ends ${new Date(rawCampaign.endsAt).toLocaleDateString()}`,
+    participants: rawCampaign._count.participations,
+    region: rawCampaign.regionRestrictions.length
+      ? rawCampaign.regionRestrictions.join(" · ")
+      : "Worldwide",
+    potentialExposure: {
+      minimum: rawCampaign.potentialExposureMin,
+      maximum: rawCampaign.potentialExposureMax,
+    },
+    server: {
+      ...rawCampaign.server,
+      art: artIndexFor(rawCampaign.server.id),
+      rating: rawCampaign.server.rating ?? 0,
+    },
+    milestones: rawCampaign.milestones.map((milestone) => ({
+      ...milestone,
+      description: milestone.publicInstructions,
+      duration: milestone.verificationMethod.replaceAll("_", " ").toLowerCase(),
+      rewardCents: 0,
+      sparks: milestone.sparksReward,
+    })),
+  };
   const [joining, setJoining] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [joined, setJoined] = useState(false);
