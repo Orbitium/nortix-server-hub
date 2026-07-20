@@ -25,6 +25,7 @@ import { formatMoney } from "@nortix/shared";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
+import { CampaignDetailRedesign } from "../components/CampaignDetailRedesign";
 import { campaigns, servers } from "../features/demo-data";
 
 export function HomePage() {
@@ -531,6 +532,10 @@ export function ServerDetailPage() {
 }
 
 export function CampaignDetailPage() {
+  return <CampaignDetailRedesign />;
+}
+
+export function LegacyCampaignDetailPage() {
   const { id } = useParams();
   const campaign = campaigns.find((item) => item.id === id) ?? campaigns[0]!;
   const [joining, setJoining] = useState(false);
