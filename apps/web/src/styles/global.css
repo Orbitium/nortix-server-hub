@@ -9226,6 +9226,39 @@ td > small {
   font-size: 10px;
 }
 
+.auth-requirement {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 2px 0 16px;
+  padding: 12px;
+  border: 1px solid #31533e;
+  border-radius: 9px;
+  color: #a0ee71;
+  background: #132d1e;
+  text-align: left;
+}
+
+.auth-requirement > svg {
+  width: 19px;
+  flex: 0 0 auto;
+}
+
+.auth-requirement > span {
+  display: grid;
+  gap: 3px;
+}
+
+.auth-requirement strong {
+  font-size: 12px;
+}
+
+.auth-requirement small {
+  color: #99b5a2;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 /* Consistent owner-widget insets. Base Card is intentionally unpadded elsewhere. */
 .owner-platform .card:not(.owner-kpi) {
   box-sizing: border-box;

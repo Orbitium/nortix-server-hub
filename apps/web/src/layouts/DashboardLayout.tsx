@@ -21,7 +21,6 @@ import {
   Sparkles,
   Trophy,
   UserRound,
-  Users,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,7 +38,6 @@ const playerNav = [
   ["/dashboard/quests", "Quests", Zap],
   ["/dashboard/sparks-shop", "Sparks Shop", Sparkles],
   ["/dashboard/leaderboards", "Leaderboards", Trophy],
-  ["/dashboard/community", "Community", Users],
   ["/dashboard/referrals", "Referrals", Gift],
 ] as const;
 
@@ -202,7 +200,7 @@ export function DashboardLayout() {
                 {adminMessages.map((message) => (
                   <article key={message.title}><strong>{message.title}</strong><p>{message.body}</p><small>{message.time}</small></article>
                 ))}
-                <NavLink to="/dashboard/community" onClick={() => setMessagesOpen(false)}>Open message center</NavLink>
+                <NavLink to="/dashboard/settings" onClick={() => setMessagesOpen(false)}>Message settings</NavLink>
               </div>
             )}
           </div>

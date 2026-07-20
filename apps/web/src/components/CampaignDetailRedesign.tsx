@@ -11,13 +11,15 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@nortix/ui";
 import { campaigns } from "../features/demo-data";
 import { Modal } from "./Modal";
+import { accountCreationUrl, hasNortixAccountSession } from "../lib/auth-session";
 
 export function CampaignDetailRedesign() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const campaign = campaigns.find((item) => item.id === id) ?? campaigns[0]!;
   const [joining, setJoining] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -91,7 +93,16 @@ export function CampaignDetailRedesign() {
               View your progress <ChevronRight />
             </Link>
           ) : (
-            <button className="campaign-v2__join-button" onClick={() => setJoining(true)}>
+            <button
+              className="campaign-v2__join-button"
+              onClick={() => {
+                if (!hasNortixAccountSession()) {
+                  navigate(accountCreationUrl(`/campaigns/${campaign.id}`, "campaign"));
+                  return;
+                }
+                setJoining(true);
+              }}
+            >
               Join campaign <ChevronRight />
             </button>
           )}

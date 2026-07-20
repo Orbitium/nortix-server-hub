@@ -1,17 +1,23 @@
 import { ArrowLeft, Check, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button } from "@nortix/ui";
 import { Brand } from "../components/Brand";
 import { firebaseActions, firebaseConfigured } from "../lib/firebase";
+import { markNortixAccountSession } from "../lib/auth-session";
 
 export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const next = searchParams.get("next");
+  const safeNext = next?.startsWith("/") ? next : "/dashboard";
+  const reason = searchParams.get("reason");
+  const continuation = `next=${encodeURIComponent(safeNext)}${reason ? `&reason=${encodeURIComponent(reason)}` : ""}`;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -19,9 +25,8 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
     try {
       if (mode === "register") await firebaseActions.register(email, password);
       else await firebaseActions.signIn(email, password);
-      if (mode === "register" && firebaseConfigured)
-        setMessage("Check your inbox to verify your email.");
-      else navigate("/dashboard");
+      markNortixAccountSession();
+      navigate(safeNext);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Authentication failed.");
     } finally {
@@ -43,6 +48,19 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             Discover Minecraft communities, complete clear milestones, and help server teams
             improve.
           </p>
+          {reason && (
+            <div className="auth-requirement">
+              <ShieldCheck />
+              <span>
+                <strong>Account required</strong>
+                <small>
+                  {reason === "server"
+                    ? "Create an account before registering or publishing a server."
+                    : "Create an account before joining or contributing to a campaign."}
+                </small>
+              </span>
+            </div>
+          )}
           <div className="auth-benefits">
             <span>
               <Check /> Moderated campaigns
@@ -77,7 +95,8 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             className="google-button"
             onClick={async () => {
               await firebaseActions.google();
-              navigate("/dashboard");
+              markNortixAccountSession();
+              navigate(safeNext);
             }}
           >
             <b>G</b> Continue with Google
@@ -141,7 +160,9 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             {mode === "register" ? (
               <>
                 By creating a profile, you agree to the <Link to="/terms">Terms</Link> and{" "}
-                <Link to="/privacy">Privacy placeholder</Link>.
+                <Link to="/privacy">Privacy Policy</Link>.
+                <br />
+                Already have an account? <Link to={`/sign-in?${continuation}`}>Sign in</Link>
               </>
             ) : (
               <>

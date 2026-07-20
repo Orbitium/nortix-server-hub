@@ -1,10 +1,10 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { UnifiedInfoPage } from "../components/UnifiedPages";
 import { OwnerPlatform } from "../components/OwnerWorkspace";
+import { RequireAccount } from "../components/RequireAccount";
 import { DashboardLayout } from "../layouts/DashboardLayout";
 import { CampaignDetailPage, ContactPage, ServerDetailPage } from "../routes/PublicPages";
 import {
-  CommunityPage,
   DashboardCampaignsPage,
   DashboardHomePage,
   DashboardServersPage,
@@ -88,12 +88,19 @@ export function App() {
         <Route path="dashboard/quests" element={<QuestsPage />} />
         <Route path="dashboard/sparks-shop" element={<SparksShopPage />} />
         <Route path="dashboard/leaderboards" element={<LeaderboardsPage />} />
-        <Route path="dashboard/community" element={<CommunityPage />} />
+        <Route path="dashboard/community" element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard/referrals" element={<ReferralsPage />} />
         <Route path="dashboard/profile" element={<ProfilePage />} />
         <Route path="dashboard/settings" element={<PlaceholderDashboardPage title="Settings" description="Profile, notifications, privacy, Sparks preferences, and security." />} />
         <Route path="owner" element={<OwnerPlatform />} />
-        <Route path="owner/servers/new" element={<OwnerPlatform />} />
+        <Route
+          path="owner/servers/new"
+          element={
+            <RequireAccount reason="server">
+              <OwnerPlatform />
+            </RequireAccount>
+          }
+        />
         <Route path="owner/campaigns/new" element={<OwnerPlatform />} />
         <Route path="owner/analytics" element={<OwnerPlatform />} />
         <Route path="owner/balance" element={<OwnerPlatform />} />
