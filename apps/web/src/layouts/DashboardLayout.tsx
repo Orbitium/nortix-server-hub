@@ -26,14 +26,14 @@ import {
   WalletCards,
   Zap,
 } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { useUiStore } from "../app/store";
 
 const playerNav = [
   ["/dashboard", "Home", Home],
-  ["/dashboard/servers", "Servers", Compass],
-  ["/dashboard/campaigns", "Campaigns", Gamepad2],
+  ["/servers", "Servers", Compass],
+  ["/campaigns", "Campaigns", Gamepad2],
   ["/dashboard/progress", "My Progress", LayoutDashboard],
   ["/dashboard/quests", "Quests", Zap],
   ["/dashboard/sparks-shop", "Sparks Shop", Sparkles],
@@ -62,10 +62,12 @@ const railLeaders = [
 export function DashboardLayout() {
   const { navCollapsed, toggleNav, theme, toggleTheme, mobileNavOpen, setMobileNavOpen } =
     useUiStore();
+  const location = useLocation();
+  const showRightRail = location.pathname === "/dashboard";
 
   return (
     <div
-      className={`dashboard-shell ${navCollapsed ? "dashboard-shell--collapsed" : ""} theme-${theme}`}
+      className={`dashboard-shell ${navCollapsed ? "dashboard-shell--collapsed" : ""} ${showRightRail ? "" : "dashboard-shell--wide"} theme-${theme}`}
     >
       <aside className={`sidebar ${mobileNavOpen ? "sidebar--open" : ""}`}>
         <div className="sidebar__brand">
@@ -171,7 +173,7 @@ export function DashboardLayout() {
         <Outlet />
       </main>
 
-      <aside className="right-rail">
+      {showRightRail && <aside className="right-rail">
         <div className="rail-balances">
           <div className="rail-balance rail-balance--earnings">
             <span>
@@ -267,14 +269,14 @@ export function DashboardLayout() {
             View full leaderboard
           </NavLink>
         </div>
-      </aside>
+      </aside>}
 
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         <NavLink to="/dashboard">
           <Home />
           <span>Home</span>
         </NavLink>
-        <NavLink to="/dashboard/campaigns">
+        <NavLink to="/campaigns">
           <Gamepad2 />
           <span>Playtests</span>
         </NavLink>

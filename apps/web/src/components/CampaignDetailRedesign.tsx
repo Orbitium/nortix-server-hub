@@ -9,7 +9,6 @@ import {
   Sparkles,
   Star,
   Users,
-  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -186,45 +185,6 @@ export function CampaignDetailRedesign() {
           </section>
         </aside>
       </div>
-
-      <section className="campaign-v2__trust">
-        <div>
-          <span>
-            <ShieldCheck />
-          </span>
-          <p>
-            <strong>Secure & verified</strong>
-            Every campaign is reviewed for safety and quality.
-          </p>
-        </div>
-        <div>
-          <span>
-            <Users />
-          </span>
-          <p>
-            <strong>Real player feedback</strong>
-            Your input helps servers build better experiences.
-          </p>
-        </div>
-        <div>
-          <span>
-            <Zap />
-          </span>
-          <p>
-            <strong>Fair rewards</strong>
-            Earn Sparks and real money for your time.
-          </p>
-        </div>
-        <div>
-          <span>
-            <Globe2 />
-          </span>
-          <p>
-            <strong>Global community</strong>
-            Join campaigns from servers around the world.
-          </p>
-        </div>
-      </section>
 
       {joining && (
         <Modal title="Join this playtest" onClose={() => setJoining(false)}>

@@ -1,12 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { PublicLayout } from "../layouts/PublicLayout";
 import { DashboardLayout } from "../layouts/DashboardLayout";
 import {
-  BrowseCampaignsPage,
-  BrowseServersPage,
   CampaignDetailPage,
   ContactPage,
-  HomePage,
   HowItWorksPage,
   LegalPage,
   ServerDetailPage,
@@ -46,12 +42,12 @@ import { AuthPage } from "../routes/AuthPages";
 export function App() {
   return (
     <Routes>
-      <Route element={<PublicLayout />}>
+      <Route element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="welcome" element={<HomePage />} />
-        <Route path="servers" element={<BrowseServersPage />} />
+        <Route path="welcome" element={<Navigate to="/dashboard" replace />} />
+        <Route path="servers" element={<DashboardServersPage />} />
         <Route path="servers/:slug" element={<ServerDetailPage />} />
-        <Route path="campaigns" element={<BrowseCampaignsPage />} />
+        <Route path="campaigns" element={<DashboardCampaignsPage />} />
         <Route path="campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="how-it-works" element={<HowItWorksPage />} />
         <Route path="for-server-owners" element={<HowItWorksPage owners />} />
@@ -60,13 +56,9 @@ export function App() {
         <Route path="terms" element={<LegalPage type="terms" />} />
         <Route path="privacy" element={<LegalPage type="privacy" />} />
         <Route path="contact" element={<ContactPage />} />
-      </Route>
-      <Route path="sign-in" element={<AuthPage mode="sign-in" />} />
-      <Route path="register" element={<AuthPage mode="register" />} />
-      <Route element={<DashboardLayout />}>
         <Route path="dashboard" element={<DashboardHomePage />} />
-        <Route path="dashboard/servers" element={<DashboardServersPage />} />
-        <Route path="dashboard/campaigns" element={<DashboardCampaignsPage />} />
+        <Route path="dashboard/servers" element={<Navigate to="/servers" replace />} />
+        <Route path="dashboard/campaigns" element={<Navigate to="/campaigns" replace />} />
         <Route path="dashboard/progress" element={<ProgressPage />} />
         <Route path="dashboard/earnings" element={<EarningsPage />} />
         <Route path="dashboard/quests" element={<QuestsPage />} />
@@ -92,6 +84,8 @@ export function App() {
         <Route path="owner/integrations" element={<IntegrationsPage />} />
         <Route path="owner/settings" element={<OwnerSettingsPage />} />
       </Route>
+      <Route path="sign-in" element={<AuthPage mode="sign-in" />} />
+      <Route path="register" element={<AuthPage mode="register" />} />
       <Route
         path="/admin/*"
         element={
