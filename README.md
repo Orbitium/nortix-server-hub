@@ -135,7 +135,7 @@ No public A record, API port, or database port is required.
 Start the complete public stack:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+docker compose up -d --build
 ```
 
 The tunnel stack does not publish a host HTTP port. Cloudflared reaches Nginx at
@@ -145,9 +145,9 @@ already used by a host web server or another container.
 Check tunnel readiness with:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.tunnel.yml ps
-docker compose -f docker-compose.yml -f docker-compose.tunnel.yml logs --tail=100 cloudflared
-docker compose -f docker-compose.yml -f docker-compose.tunnel.yml exec cloudflared \
+docker compose ps
+docker compose logs --tail=100 cloudflared
+docker compose exec cloudflared \
   cloudflared tunnel ready --metrics 127.0.0.1:2000
 ```
 
