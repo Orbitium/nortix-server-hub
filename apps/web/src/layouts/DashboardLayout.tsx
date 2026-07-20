@@ -48,7 +48,7 @@ const ownerNav = [
   ["/owner", "Dashboard", Crown],
   ["/owner/analytics", "Analytics", BarChart3],
   ["/owner/balance", "Sparks Settings", Sparkles],
-  ["/owner/integrations", "Plugin", Gamepad2],
+  ["/owner/integrations", "Plugin & Servers", Gamepad2],
   ["/owner/settings", "Settings", Settings],
 ] as const;
 

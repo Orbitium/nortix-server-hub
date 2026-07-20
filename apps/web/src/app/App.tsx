@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { UnifiedInfoPage, OwnerWorkspace } from "../components/UnifiedPages";
+import { UnifiedInfoPage } from "../components/UnifiedPages";
+import { OwnerPlatform } from "../components/OwnerWorkspace";
 import { DashboardLayout } from "../layouts/DashboardLayout";
 import { CampaignDetailPage, ContactPage, ServerDetailPage } from "../routes/PublicPages";
 import {
@@ -91,13 +92,13 @@ export function App() {
         <Route path="dashboard/referrals" element={<ReferralsPage />} />
         <Route path="dashboard/profile" element={<ProfilePage />} />
         <Route path="dashboard/settings" element={<PlaceholderDashboardPage title="Settings" description="Profile, notifications, privacy, Sparks preferences, and security." />} />
-        <Route path="owner" element={<OwnerWorkspace />} />
-        <Route path="owner/servers/new" element={<OwnerWorkspace />} />
-        <Route path="owner/campaigns/new" element={<OwnerWorkspace />} />
-        <Route path="owner/analytics" element={<OwnerWorkspace />} />
-        <Route path="owner/balance" element={<OwnerWorkspace />} />
-        <Route path="owner/integrations" element={<OwnerWorkspace />} />
-        <Route path="owner/settings" element={<OwnerWorkspace />} />
+        <Route path="owner" element={<OwnerPlatform />} />
+        <Route path="owner/servers/new" element={<OwnerPlatform />} />
+        <Route path="owner/campaigns/new" element={<OwnerPlatform />} />
+        <Route path="owner/analytics" element={<OwnerPlatform />} />
+        <Route path="owner/balance" element={<OwnerPlatform />} />
+        <Route path="owner/integrations" element={<OwnerPlatform />} />
+        <Route path="owner/settings" element={<OwnerPlatform />} />
       </Route>
       <Route path="sign-in" element={<AuthPage mode="sign-in" />} />
       <Route path="register" element={<AuthPage mode="register" />} />
