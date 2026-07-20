@@ -7038,3 +7038,233 @@ td > small {
     flex: 1;
   }
 }
+
+/* Readability pass: keep dense dashboard and admin text comfortably legible. */
+.global-search input {
+  font-size: 13px;
+}
+
+.global-search kbd {
+  font-size: 10px;
+}
+
+.profile-trigger strong {
+  font-size: 13px;
+}
+
+.profile-trigger small {
+  font-size: 11px;
+}
+
+.rail-balance > span,
+.rail-balance > a {
+  font-size: 12px;
+}
+
+.rail-card__heading {
+  font-size: 13px;
+}
+
+.rail-card__heading > b,
+.rail-card__heading button {
+  font-size: 11px;
+}
+
+.quest-row,
+.rail-card--quest p,
+.streak-card p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.quest-row .rail-title {
+  font-size: 13px !important;
+}
+
+.streak-days i,
+.mini-leaderboard > div > b,
+.mini-leaderboard .avatar--small,
+.mini-leaderboard > div > span:nth-child(3),
+.mini-leaderboard em,
+.leaderboard-link {
+  font-size: 11px;
+}
+
+.home-hero__copy h1 {
+  font-size: 22px;
+}
+
+.home-hero__copy p {
+  max-width: 410px;
+  font-size: 14px;
+}
+
+.home-hero .button {
+  font-size: 12px;
+}
+
+.home-section__heading h2 {
+  font-size: 18px;
+}
+
+.home-section__heading p {
+  font-size: 12px;
+}
+
+.home-section__heading > a {
+  font-size: 11px;
+}
+
+.featured-label {
+  font-size: 9px;
+}
+
+.featured-tile__body h3,
+.campaign-row__copy h3 {
+  font-size: 13px;
+}
+
+.featured-tile__tags span,
+.campaign-row__tags span {
+  font-size: 10px;
+}
+
+.featured-tile__meta strong {
+  font-size: 14px;
+}
+
+.featured-tile__meta strong::after {
+  font-size: 9px;
+}
+
+.featured-tile__meta span,
+.campaign-row__players {
+  font-size: 11px;
+}
+
+.campaign-filters button,
+.campaign-filters label,
+.campaign-filters input {
+  font-size: 11px;
+}
+
+.campaign-row__copy p {
+  font-size: 11px;
+}
+
+.campaign-row > strong {
+  font-size: 12px;
+}
+
+.campaign-row .button,
+.load-campaigns {
+  font-size: 11px;
+}
+
+.admin-v2 .admin-banner > div {
+  font-size: 12px;
+}
+
+.admin-v2 .admin-banner strong {
+  font-size: 13px;
+}
+
+.admin-v2 .admin-layout > aside > label,
+.admin-v2 .admin-layout > aside input,
+.admin-v2 .admin-layout > aside nav a {
+  font-size: 12px;
+}
+
+.admin-v2 .admin-layout > aside nav a {
+  min-height: 39px;
+  padding: 10px;
+}
+
+.admin-v2 .admin-layout > aside nav svg {
+  width: 17px;
+  height: 17px;
+}
+
+.admin-v2-heading > div > p,
+.admin-v2 .data-card__header p,
+.admin-v2 .card > p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.admin-v2 .admin-kpi-grid small,
+.admin-v2 .admin-kpi-grid span {
+  font-size: 12px;
+}
+
+.admin-v2 .admin-kpi-grid strong {
+  font-size: 30px;
+}
+
+.admin-v2 .admin-signal-grid strong,
+.admin-v2 .admin-toggle-row strong,
+.admin-v2 .live-event-stream strong {
+  font-size: 13px;
+}
+
+.admin-v2 .admin-signal-grid small,
+.admin-v2 .admin-toggle-row small,
+.admin-v2 .live-event-stream small {
+  font-size: 12px;
+}
+
+.admin-v2 .admin-signal-grid b,
+.admin-v2 .analytics-route,
+.admin-v2 .permission-row,
+.admin-v2 .termination-options {
+  font-size: 13px;
+}
+
+.admin-v2 table th {
+  font-size: 11px;
+}
+
+.admin-v2 table td,
+.admin-v2 .table-search,
+.admin-v2 .table-search input,
+.admin-v2 .form-grid label,
+.admin-v2 .form-grid input,
+.admin-v2 .form-grid select,
+.admin-v2 .form-grid textarea {
+  font-size: 13px;
+}
+
+.admin-v2 .admin-status,
+.admin-v2 .live-pill,
+.admin-v2 .admin-role {
+  font-size: 11px;
+}
+
+.admin-v2 .review-queue-card__header h2 {
+  font-size: 18px;
+}
+
+.admin-v2 .review-queue-card__header p,
+.admin-v2 .review-card-stats small,
+.admin-v2 .review-card-stats strong,
+.admin-v2 .review-queue-card__footer {
+  font-size: 12px;
+}
+
+.admin-v2 .button,
+.admin-v2 button {
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .home-hero__copy h1 {
+    font-size: 20px;
+  }
+
+  .home-hero__copy p,
+  .admin-v2-heading > div > p,
+  .admin-v2 .data-card__header p,
+  .admin-v2 .card > p {
+    font-size: 12px;
+  }
+}
