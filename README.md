@@ -135,12 +135,28 @@ No public A record, API port, or database port is required.
 Start the complete public stack:
 
 ```bash
-docker compose --profile tunnel up -d --build
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
 ```
 
 The tunnel stack does not publish a host HTTP port. Cloudflared reaches Nginx at
 `http://web:80` over the private Compose network, avoiding conflicts with ports
 already used by a host web server or another container.
+
+Check tunnel readiness with:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml ps
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml logs --tail=100 cloudflared
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml exec cloudflared \
+  cloudflared tunnel ready --metrics 127.0.0.1:2000
+```
+
+An unhealthy or restarting `cloudflared` container means Cloudflare has no active
+connector and may return error 1033. In the Cloudflare dashboard, the tunnel must
+show **Healthy** and the `hub.nortixlabs.com` public hostname must belong to the
+same tunnel token stored in `.env`. If the logs report connectivity pre-check
+failures, allow outbound UDP and TCP port 7844; cloudflared automatically selects
+QUIC or HTTP/2 from the available paths.
 
 For local Docker testing without Cloudflare:
 

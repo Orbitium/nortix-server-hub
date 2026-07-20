@@ -1,0 +1,25 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.2
+    restart: unless-stopped
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --loglevel
+      - info
+      - --metrics
+      - 127.0.0.1:2000
+      - run
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "ready", "--metrics", "127.0.0.1:2000"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 15s
+    networks:
+      - edge

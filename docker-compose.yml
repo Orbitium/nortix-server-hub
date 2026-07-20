@@ -96,22 +96,6 @@ services:
       - backend
       - edge
 
-  cloudflared:
-    image: cloudflare/cloudflared:2026.7.2
-    restart: unless-stopped
-    profiles: ["tunnel"]
-    command:
-      - tunnel
-      - --no-autoupdate
-      - run
-      - --token
-      - ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    depends_on:
-      web:
-        condition: service_healthy
-    networks:
-      - edge
-
 volumes:
   nortix-postgres:
 
