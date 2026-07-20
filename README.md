@@ -139,6 +139,15 @@ Start the complete public stack:
 docker compose up -d --build
 ```
 
+Docker caches the dependency installation separately from application source and
+exports one production-only API image shared by the migration and API services.
+After the first build, source-only changes reuse the dependency layer. When no
+source or dependency changed, omit `--build` for the fastest restart:
+
+```bash
+docker compose up -d
+```
+
 The tunnel stack does not publish a host HTTP port. Cloudflared reaches Nginx at
 `http://web:80` over the private Compose network, avoiding conflicts with ports
 already used by a host web server or another container.
@@ -195,6 +204,33 @@ docker compose run --rm migrate pnpm --filter @nortix/database seed
 ```
 
 Never run that seed command against a persistent or production database.
+
+### Production public-server catalog
+
+The `20260722010000_discovered_servers` migration safely adds 50 public Minecraft
+server listings with `INSERT ... ON CONFLICT DO NOTHING`. It does not delete or
+replace existing data, create users, or create campaigns. These records live in a
+separate discovery table and are shown as unverified public listings until an
+owner registers and verifies a Nortix server.
+
+The API refreshes their status through the
+[mcsrvstat.us API](https://api.mcsrvstat.us/) using one request at a time, spaced
+12 seconds apart (at most five starts per minute). Each listing is scheduled every
+10 minutes. Requests have an eight-second timeout and are not retried; an HTTP 429
+pauses the complete scanner for ten minutes.
+
+Compose enables the scanner by default. Its production settings are:
+
+```dotenv
+DISCOVERY_SCAN_ENABLED=true
+DISCOVERY_SCAN_INTERVAL_MINUTES=10
+DISCOVERY_SCAN_SPACING_MS=12000
+MCSRVSTAT_USER_AGENT=NortixServerHub/1.0 (+https://hub.nortixlabs.com/contact)
+```
+
+Set a descriptive `MCSRVSTAT_USER_AGENT` with a real project contact URL or email
+before release. Applying normal Prisma migrations is the only seed step required;
+do not run the destructive development seed command.
 
 Do not expose ports 4000 or 5432 in production. Rotate the database password,
 integration secret, payment webhook secret, Firebase credentials, and tunnel token

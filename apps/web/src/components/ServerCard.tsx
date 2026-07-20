@@ -17,7 +17,11 @@ export function ServerCard({ server }: { server: PublicServer }) {
       <div className="server-card__content">
         <div className="server-card__heading">
           <Link to={`/servers/${server.slug}`}>{server.name}</Link>
-          <VerifiedBadge />
+          {server.source === "DISCOVERED" ? (
+            <Badge tone="neutral">Public listing</Badge>
+          ) : (
+            <VerifiedBadge />
+          )}
         </div>
         <p>{server.description}</p>
         <div className="chip-row">

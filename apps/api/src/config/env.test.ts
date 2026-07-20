@@ -55,4 +55,12 @@ describe("production environment policy", () => {
       parseEnv({ ...production, INTEGRATION_SIGNING_SECRET: "local-integration-secret" }),
     ).toThrow(/explicitly configured/i);
   });
+
+  it("enforces a gentle discovery scan rate", () => {
+    expect(() =>
+      parseEnv({ ...production, DISCOVERY_SCAN_SPACING_MS: "11999" }),
+    ).toThrow(/DISCOVERY_SCAN_SPACING_MS/i);
+    expect(parseEnv(production).DISCOVERY_SCAN_SPACING_MS).toBe(12_000);
+    expect(parseEnv(production).DISCOVERY_SCAN_INTERVAL_MINUTES).toBe(10);
+  });
 });

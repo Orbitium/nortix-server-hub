@@ -15,6 +15,7 @@ export type PublicServer = {
   id: string;
   name: string;
   slug: string;
+  source?: "NORTIX" | "DISCOVERED";
   description: string;
   versions: string[];
   edition: "JAVA" | "BEDROCK";
@@ -33,6 +34,9 @@ export type PublicServer = {
   reviewCount?: number;
   hostname?: string;
   port?: number;
+  activeCampaignCount?: number;
+  crackedAccountLinkingAvailable?: boolean;
+  lastCheckedAt?: string | null;
   campaigns?: PublicCampaign[];
   reviews?: PublicReview[];
 };

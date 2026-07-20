@@ -250,7 +250,7 @@ export function DashboardServersPage() {
     <div className="dashboard-page">
       <PageHeading
         title="Servers"
-        description="Explore verified Minecraft communities across Java and Bedrock."
+        description="Explore live public Minecraft servers and verified Nortix communities."
       />
       <div className="dashboard-filter">
         <label>
@@ -265,9 +265,9 @@ export function DashboardServersPage() {
         <button className="button button--secondary">All editions</button>
       </div>
       <div className="server-grid">
-        {isLoading ? <Card><p>Loading seeded servers…</p></Card> : null}
-        {isError ? <Card><p>Seeded servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
-        {!isLoading && !isError && filtered.length === 0 ? <Card><p>No seeded servers match this search.</p></Card> : null}
+        {isLoading ? <Card><p>Loading servers…</p></Card> : null}
+        {isError ? <Card><p>Servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {!isLoading && !isError && filtered.length === 0 ? <Card><p>No servers match this search.</p></Card> : null}
         {filtered.map((server) => <ServerCard server={server} key={server.id} />)}
       </div>
     </div>

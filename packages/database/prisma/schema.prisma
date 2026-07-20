@@ -432,6 +432,31 @@ model Server {
   @@index([publicListing, moderationStatus])
 }
 
+model DiscoveredServer {
+  id                  String        @id
+  slug                String        @unique
+  displayName         String
+  hostname            String
+  port                Int
+  edition             ServerEdition
+  enabled             Boolean       @default(true)
+  online              Boolean       @default(false)
+  playerCount         Int?
+  maxPlayers          Int?
+  version             String?
+  lastCheckedAt       DateTime?
+  lastOnlineAt        DateTime?
+  nextCheckAt         DateTime       @default(now())
+  consecutiveFailures Int            @default(0)
+  lastErrorCode       String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([edition, hostname, port])
+  @@index([enabled, nextCheckAt])
+  @@index([online, playerCount])
+}
+
 model ServerActivitySample {
   id            String   @id
   serverId      String

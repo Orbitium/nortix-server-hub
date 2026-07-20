@@ -15,6 +15,17 @@ const EnvSchema = z.object({
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default("local-payment-secret"),
   IDENTITY_VERIFICATION_SECRET: z.string().min(32).default("local-identity-verification-secret"),
   MIN_WITHDRAWAL_USD: z.coerce.number().int().min(1).default(10),
+  DISCOVERY_SCAN_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  DISCOVERY_SCAN_INTERVAL_MINUTES: z.coerce.number().int().min(10).default(10),
+  DISCOVERY_SCAN_SPACING_MS: z.coerce.number().int().min(12_000).default(12_000),
+  MCSRVSTAT_USER_AGENT: z
+    .string()
+    .trim()
+    .min(10)
+    .default("NortixServerHub/1.0 (+https://hub.nortixlabs.com/contact)"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

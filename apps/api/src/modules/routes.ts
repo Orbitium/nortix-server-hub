@@ -14,6 +14,7 @@ import { WithdrawalService } from "./withdrawals/service.js";
 import { ServerVerificationService } from "./server-verification/service.js";
 import { MinecraftIdentityService } from "./minecraft-identities/service.js";
 import { createNotification, NotificationService } from "./notifications/service.js";
+import { ServerDiscoveryService } from "./server-discovery/service.js";
 
 const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
@@ -100,6 +101,8 @@ const publicServerSelect = {
   online: true,
   playerCount: true,
   maxPlayers: true,
+  hostname: true,
+  port: true,
 } as const;
 
 const publicMilestoneSelect = {
@@ -167,12 +170,17 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   const paymentProvider = new MockPaymentProvider(env.PAYMENT_WEBHOOK_SECRET);
   const payoutProvider = new MockPayoutProvider();
   const identityCleanupTimer = setInterval(() => minecraftIdentityService.cleanup().catch((error) => app.log.error({ err: error }, "minecraft identity cleanup failed")), 5 * 60_000);
+  const serverDiscoveryService = new ServerDiscoveryService(env, app.log);
+  serverDiscoveryService.start();
   identityCleanupTimer.unref();
-  app.addHook("onClose", async () => clearInterval(identityCleanupTimer));
+  app.addHook("onClose", async () => {
+    clearInterval(identityCleanupTimer);
+    serverDiscoveryService.stop();
+  });
   app.get("/health", async () => ({ status: "ok", service: "nortix-api" }));
   app.get("/sitemap.xml", async (_request, reply) => {
     const now = new Date();
-    const [servers, campaigns] = await prisma.$transaction([
+    const [servers, campaigns, discoveredServers] = await prisma.$transaction([
       prisma.server.findMany({
         where: { publicListing: true, moderationStatus: "APPROVED" },
         select: { slug: true, updatedAt: true },
@@ -186,6 +194,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           server: { publicListing: true, moderationStatus: "APPROVED" },
         },
         select: { id: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.discoveredServer.findMany({
+        where: { enabled: true },
+        select: { slug: true, updatedAt: true },
         orderBy: { updatedAt: "desc" },
       }),
     ]);
@@ -209,6 +222,10 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       ...servers.map(
         (server) =>
           `<url><loc>${origin}/servers/${encodeURIComponent(server.slug)}</loc><lastmod>${server.updatedAt.toISOString()}</lastmod><changefreq>daily</changefreq><priority>0.9</priority></url>`,
+      ),
+      ...discoveredServers.map(
+        (server) =>
+          `<url><loc>${origin}/servers/${encodeURIComponent(server.slug)}</loc><lastmod>${server.updatedAt.toISOString()}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>`,
       ),
       ...campaigns.map(
         (campaign) =>
@@ -360,7 +377,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           }
         : {}),
     };
-    const [items, total] = await prisma.$transaction([
+    const [items, ownedTotal, discoveredItems] = await Promise.all([
       prisma.server.findMany({
         where,
         select: {
@@ -370,29 +387,31 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           reviews: { select: { rating: true } },
         },
         orderBy: [{ online: "desc" }, { playerCount: "desc" }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
       }),
       prisma.server.count({ where }),
+      serverDiscoveryService.list(search),
     ]);
+    const ownedItems = items.map(({ playerHistorySyncedAt, reviews, _count, ...server }) => ({
+      ...server,
+      source: "NORTIX" as const,
+      rating:
+        reviews.length > 0
+          ? Number(
+              (
+                reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+              ).toFixed(1),
+            )
+          : null,
+      reviewCount: _count.reviews,
+      activeCampaignCount: _count.campaigns,
+      crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
+    }));
+    const combined = [...ownedItems, ...discoveredItems];
     return {
-      items: items.map(({ playerHistorySyncedAt, reviews, _count, ...server }) => ({
-        ...server,
-        rating:
-          reviews.length > 0
-            ? Number(
-                (
-                  reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
-                ).toFixed(1),
-              )
-            : null,
-        reviewCount: _count.reviews,
-        activeCampaignCount: _count.campaigns,
-        crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
-      })),
+      items: combined.slice((page - 1) * pageSize, page * pageSize),
       page,
       pageSize,
-      total,
+      total: ownedTotal + discoveredItems.length,
     };
   });
   app.get("/v1/servers/:slug", async (request, reply) => {
@@ -438,10 +457,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       },
     });
     if (!server) {
-      return reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
+      const discoveredServer = await serverDiscoveryService.getBySlug(slug);
+      return (
+        discoveredServer ??
+        reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." })
+      );
     }
     return {
       ...server,
+      source: "NORTIX",
       rating:
         server.reviews.length > 0
           ? Number(

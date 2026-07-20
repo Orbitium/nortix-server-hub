@@ -1,10 +1,6 @@
 name: nortix-hub
 
-x-api-image: &api-image
-  image: ${NORTIX_API_IMAGE:-nortix-hub-api:local}
-  build:
-    context: .
-    dockerfile: docker/api.Dockerfile
+x-api-image: &api-image ${NORTIX_API_IMAGE:-nortix-hub-api:local}
 
 services:
   postgres:
@@ -26,12 +22,17 @@ services:
       - backend
 
   migrate:
-    <<: *api-image
+    image: *api-image
     restart: "no"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-nortix}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-nortix}?schema=public
-    command: ["pnpm", "--filter", "@nortix/database", "migrate:deploy"]
+    command:
+      - ./node_modules/.bin/prisma
+      - migrate
+      - deploy
+      - --schema
+      - node_modules/@nortix/database/prisma/schema.prisma
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,7 +40,10 @@ services:
       - backend
 
   api:
-    <<: *api-image
+    image: *api-image
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -54,6 +58,10 @@ services:
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?Set PAYMENT_WEBHOOK_SECRET in .env}
       IDENTITY_VERIFICATION_SECRET: ${IDENTITY_VERIFICATION_SECRET:?Set IDENTITY_VERIFICATION_SECRET in .env}
       MIN_WITHDRAWAL_USD: ${MIN_WITHDRAWAL_USD:-10}
+      DISCOVERY_SCAN_ENABLED: ${DISCOVERY_SCAN_ENABLED:-true}
+      DISCOVERY_SCAN_INTERVAL_MINUTES: ${DISCOVERY_SCAN_INTERVAL_MINUTES:-10}
+      DISCOVERY_SCAN_SPACING_MS: ${DISCOVERY_SCAN_SPACING_MS:-12000}
+      MCSRVSTAT_USER_AGENT: ${MCSRVSTAT_USER_AGENT:-NortixServerHub/1.0 (+https://hub.nortixlabs.com/contact)}
     expose:
       - "4000"
     secrets:
@@ -65,10 +73,10 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:4000/health >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
     networks:
       - backend
       - egress
@@ -92,9 +100,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/healthz >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
     networks:
       - backend
       - edge

@@ -447,11 +447,12 @@ export function ServerDetailPage() {
   const { slug } = useParams();
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
   const { data: campaignData } = usePublicCampaigns();
+  const [addressCopied, setAddressCopied] = useState(false);
   if (isLoading) {
     return (
       <div className="detail-page">
         <Card>
-          <p>Loading seeded server…</p>
+          <p>Loading server…</p>
         </Card>
       </div>
     );
@@ -460,7 +461,7 @@ export function ServerDetailPage() {
     return (
       <div className="detail-page">
         <Card>
-          <p>The seeded server could not be loaded.</p>
+          <p>The server could not be loaded.</p>
           <Button onClick={() => refetch()}>Retry</Button>
         </Card>
       </div>
@@ -469,6 +470,21 @@ export function ServerDetailPage() {
   const related = (campaignData?.items ?? []).filter(
     (campaign) => campaign.server.id === server.id,
   );
+  const isDiscovered = server.source === "DISCOVERED";
+  const defaultPort = server.edition === "BEDROCK" ? 19132 : 25565;
+  const serverAddress = server.hostname
+    ? `${server.hostname}${server.port && server.port !== defaultPort ? `:${server.port}` : ""}`
+    : "";
+  const copyServerAddress = async () => {
+    if (!serverAddress) return;
+    try {
+      await navigator.clipboard.writeText(serverAddress);
+      setAddressCopied(true);
+      window.setTimeout(() => setAddressCopied(false), 2_000);
+    } catch {
+      setAddressCopied(false);
+    }
+  };
   const canonicalPath = `/servers/${server.slug}`;
   const serverSchema = {
     "@context": "https://schema.org",
@@ -504,7 +520,7 @@ export function ServerDetailPage() {
         <div>
           <div className="detail-title-row">
             <h1>{server.name}</h1>
-            <VerifiedBadge />
+            {isDiscovered ? <Badge tone="neutral">Public listing</Badge> : <VerifiedBadge />}
           </div>
           <p>{server.description}</p>
           <div className="chip-row">
@@ -518,29 +534,53 @@ export function ServerDetailPage() {
           </div>
         </div>
         <div className="server-connect">
-          <span className="online">
-            <i /> Online · {(server.playerCount ?? 0).toLocaleString()} players
+          <span className={server.online ? "online" : undefined}>
+            <i /> {server.online ? "Online" : "Offline"} ·{" "}
+            {(server.playerCount ?? 0).toLocaleString()} players
           </span>
-          <button className="button button--primary">Copy server address</button>
+          <button
+            className="button button--primary"
+            disabled={!serverAddress}
+            onClick={() => void copyServerAddress()}
+          >
+            {addressCopied ? "Address copied" : "Copy server address"}
+          </button>
         </div>
       </div>
       <div className="detail-columns">
         <div className="detail-content">
           <Card>
             <h2>About {server.name}</h2>
-            <p>
-              {server.description} The server team has completed Nortix ownership verification and
-              follows the community guidelines for public listings and campaigns.
-            </p>
+            <p>{server.description}</p>
+            {!isDiscovered ? (
+              <p>
+                The server team has completed Nortix ownership verification and follows the
+                guidelines for public listings and campaigns.
+              </p>
+            ) : null}
             <div className="feature-list">
+              {isDiscovered ? (
+                <span>
+                  <Globe2 /> Public server listing
+                </span>
+              ) : (
+                <span>
+                  <ShieldCheck /> Verified ownership
+                </span>
+              )}
               <span>
-                <ShieldCheck /> Verified ownership
+                <Users /> Live server status
               </span>
               <span>
-                <Users /> Active community
-              </span>
-              <span>
-                <MessageSquareText /> Player feedback welcomed
+                {isDiscovered ? (
+                  <>
+                    <ShieldCheck /> Not yet Nortix verified
+                  </>
+                ) : (
+                  <>
+                    <MessageSquareText /> Player feedback welcomed
+                  </>
+                )}
               </span>
             </div>
           </Card>
@@ -555,7 +595,11 @@ export function ServerDetailPage() {
               related.map((campaign) => <CampaignCard campaign={campaign} key={campaign.id} />)
             ) : (
               <Card>
-                <p>No active campaign right now. You can still join and review this server.</p>
+                <p>
+                  {isDiscovered
+                    ? "This public listing has no Nortix campaigns. Its owner can register and verify it to create campaigns."
+                    : "No active campaign right now. You can still join and review this server."}
+                </p>
               </Card>
             )}
           </section>
@@ -565,7 +609,11 @@ export function ServerDetailPage() {
               <strong>{server.rating ?? "New"}</strong>
               <span>
                 <span className="stars">★★★★★</span>
-                <small>Based on verified community reviews</small>
+                <small>
+                  {isDiscovered
+                    ? "Reviews become available after Nortix verification"
+                    : "Based on verified community reviews"}
+                </small>
               </span>
             </div>
             {(server.reviews ?? []).map((review) => (
@@ -581,7 +629,13 @@ export function ServerDetailPage() {
                 </div>
               </div>
             ))}
-            {(server.reviews ?? []).length === 0 ? <p>No approved reviews yet.</p> : null}
+            {(server.reviews ?? []).length === 0 ? (
+              <p>
+                {isDiscovered
+                  ? "This listing has not been claimed and verified on Nortix."
+                  : "No approved reviews yet."}
+              </p>
+            ) : null}
           </Card>
         </div>
         <aside className="detail-aside">
@@ -592,6 +646,12 @@ export function ServerDetailPage() {
                 <dt>Edition</dt>
                 <dd>{server.edition}</dd>
               </div>
+              {serverAddress ? (
+                <div>
+                  <dt>Address</dt>
+                  <dd>{serverAddress}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Versions</dt>
                 <dd>{server.versions.join(", ")}</dd>
@@ -604,6 +664,12 @@ export function ServerDetailPage() {
                 <dt>Community rating</dt>
                 <dd>{server.rating == null ? "No reviews yet" : `${server.rating}/5`}</dd>
               </div>
+              {isDiscovered && server.lastCheckedAt ? (
+                <div>
+                  <dt>Status checked</dt>
+                  <dd>{new Date(server.lastCheckedAt).toLocaleString()}</dd>
+                </div>
+              ) : null}
             </dl>
           </Card>
           <Card className="report-card">
