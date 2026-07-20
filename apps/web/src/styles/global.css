@@ -9225,3 +9225,52 @@ td > small {
 .owner-platform .retention-chart b {
   font-size: 10px;
 }
+
+/* Consistent owner-widget insets. Base Card is intentionally unpadded elsewhere. */
+.owner-platform .card:not(.owner-kpi) {
+  box-sizing: border-box;
+  padding: 20px;
+}
+
+.owner-platform .owner-kpi {
+  padding: 18px;
+}
+
+.owner-platform .owner-context-strip {
+  padding: 11px 14px;
+}
+
+.owner-platform .owner-trend-card,
+.owner-platform .owner-funnel-card,
+.owner-platform .owner-insight-card {
+  overflow: hidden;
+}
+
+.owner-platform .owner-bar-chart,
+.owner-platform .owner-dual-trend {
+  margin-inline: -2px;
+}
+
+.owner-platform .owner-chart-axis {
+  padding-inline: 2px;
+  padding-bottom: 2px;
+}
+
+.owner-platform .owner-table-wrap {
+  margin-top: 2px;
+}
+
+.owner-platform .owner-funnel-card > a,
+.owner-platform .owner-text-button {
+  margin-bottom: 0;
+}
+
+@media (max-width: 780px) {
+  .owner-platform .card:not(.owner-kpi) {
+    padding: 16px;
+  }
+
+  .owner-platform .owner-kpi {
+    padding: 16px;
+  }
+}
