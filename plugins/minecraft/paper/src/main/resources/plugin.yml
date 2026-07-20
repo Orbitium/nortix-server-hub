@@ -2,15 +2,15 @@ name: NortixVerification
 version: ${version}
 main: com.nortix.paper.NortixPaperPlugin
 api-version: "1.16"
-description: Publishes a short-lived Nortix ownership code in the server-list MOTD.
+description: Verifies servers and reports privacy-conscious campaign milestone progress.
 author: Nortix
+softdepend: [PlaceholderAPI, BentoBox, Level, SuperiorSkyblock2, IridiumSkyblock, ASkyBlock, uSkyBlock, LifeStealZ, LifestealCore, CombatLogX, PvPManager, mcMMO]
 commands:
   nortix:
     description: Manage Nortix server ownership verification.
-    usage: /nortix <verify CODE|status|clear>
-    permission: nortix.verify
+    usage: /nortix <verify|connect|capabilities|status|clear>
+    permission: nortix.admin
 permissions:
-  nortix.verify:
-    description: Manage the Nortix ownership challenge.
+  nortix.admin:
+    description: Manage Nortix verification and milestone tracking.
     default: op
-

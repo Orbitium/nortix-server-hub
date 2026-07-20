@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma } from "@nortix/database";
 import {
   AnalyticsEventSchema,
@@ -15,8 +15,10 @@ import {
 import {
   CreateServerVerificationSchema,
   IntegrationEventSchema,
+  PluginCapabilitiesHandshakeSchema,
   PluginVerificationHandshakeSchema,
   PluginVerificationStatusSchema,
+  ServerPluginEventSchema,
 } from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
@@ -40,6 +42,19 @@ const requireOwnedServer = async (serverId: string, userId: string) => {
   const server = await prisma.server.findFirst({ where: { id: serverId, ownerId: userId } });
   if (!server) throw new Error("Only the server owner can manage team access.");
   return server;
+};
+
+const hashPluginToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+const authenticateServerPlugin = async (authorization: string | undefined, serverId: string) => {
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!token.startsWith("npx_")) throw new Error("A valid server plugin token is required.");
+  const credential = await prisma.integrationApiKey.findFirst({
+    where: { serverId, keyHash: hashPluginToken(token), revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+  });
+  if (!credential || !credential.scopes.includes("plugin:events")) throw new Error("The server plugin token is invalid or revoked.");
+  await prisma.integrationApiKey.update({ where: { id: credential.id }, data: { lastUsedAt: new Date() } });
+  return credential;
 };
 
 const parsePagination = (query: Record<string, unknown>) => ({
@@ -241,6 +256,117 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/plugin/verifications/status", async (request) => {
     const input = PluginVerificationStatusSchema.parse(request.query);
     return serverVerificationService.pluginStatus(input.code.toUpperCase(), input.platform);
+  });
+
+  app.post("/v1/owner/servers/:id/plugin-token", { preHandler: app.authenticate }, async (request) => {
+    const { id } = request.params as { id: string };
+    const server = await requireOwnedServer(id, request.user!.id);
+    if (!server.claimed || server.verificationStatus !== "VERIFIED") {
+      throw new Error("Server verification is required before connecting milestone tracking.");
+    }
+    const token = `npx_${randomBytes(32).toString("base64url")}`;
+    await prisma.$transaction([
+      prisma.integrationApiKey.updateMany({ where: { serverId: id, name: "Nortix Paper milestone plugin", revokedAt: null }, data: { revokedAt: new Date() } }),
+      prisma.integrationApiKey.create({
+        data: { serverId: id, name: "Nortix Paper milestone plugin", keyHash: hashPluginToken(token), scopes: ["plugin:events", "plugin:capabilities"], lastFour: token.slice(-4) },
+      }),
+    ]);
+    return { serverId: id, serverName: server.name, token, shownOnce: true };
+  });
+
+  app.get("/v1/owner/servers/:id/plugin-capabilities", { preHandler: app.authenticate }, async (request) => {
+    const { id } = request.params as { id: string };
+    const server = await prisma.server.findFirst({
+      where: { id, OR: [{ ownerId: request.user!.id }, { teamMembers: { some: { userId: request.user!.id } } }] },
+      select: { id: true, name: true, verificationParentId: true, pluginCapabilities: true, pluginLastSeenAt: true, pluginInstanceId: true },
+    });
+    if (!server) throw new Error("Server plugin capabilities not found.");
+    return server;
+  });
+
+  app.post("/v1/plugin/capabilities", async (request) => {
+    const input = PluginCapabilitiesHandshakeSchema.parse(request.body);
+    await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    const server = await prisma.server.update({
+      where: { id: input.serverId },
+      data: { pluginCapabilities: input.capabilities, pluginLastSeenAt: new Date(), pluginInstanceId: input.instanceId },
+      select: { id: true, name: true, verificationParentId: true },
+    });
+    return { accepted: true, serverId: server.id, networkId: server.verificationParentId ?? server.id, capabilities: input.capabilities.length };
+  });
+
+  app.post("/v1/plugin/events", { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } }, async (request, reply) => {
+    const input = ServerPluginEventSchema.parse(request.body);
+    await authenticateServerPlugin(request.headers.authorization, input.serverId);
+    const server = await prisma.server.findUniqueOrThrow({ where: { id: input.serverId }, select: { id: true, verificationParentId: true } });
+    const stored = await prisma.analyticsEvent.upsert({
+      where: { id: input.id },
+      update: {},
+      create: {
+        id: input.id,
+        serverId: input.serverId,
+        source: "SERVER_PLUGIN",
+        type: input.type,
+        occurredAt: new Date(input.occurredAt),
+        metadata: { ...input.metadata, minecraftUuid: input.minecraftUuid, instanceId: input.instanceId },
+      },
+    });
+
+    const identity = await prisma.minecraftIdentity.findUnique({ where: { uuid: input.minecraftUuid } });
+    if (!identity) return reply.code(202).send({ accepted: true, eventId: stored.id, matchedParticipations: 0 });
+    const serverIds = [server.id];
+    if (server.verificationParentId) serverIds.push(server.verificationParentId);
+    else {
+      const children = await prisma.server.findMany({ where: { verificationParentId: server.id }, select: { id: true } });
+      serverIds.push(...children.map((item) => item.id));
+    }
+    const participations = await prisma.campaignParticipation.findMany({
+      where: { minecraftIdentityId: identity.id, status: { in: ["JOINED", "ACTIVE"] }, campaign: { serverId: { in: serverIds } } },
+      include: { campaign: { include: { milestones: true } } },
+    });
+    let completed = 0;
+    for (const participation of participations) {
+      for (const milestone of participation.campaign.milestones) {
+        if (milestone.verificationMethod !== "SERVER_PLUGIN") continue;
+        const config = { ...(milestone.verificationConfig as Record<string, unknown>), ...(milestone.completionRequirements as Record<string, unknown>) };
+        const metric = String(config.metric ?? milestone.templateType).toUpperCase();
+        const target = Math.max(1, Number(config.target ?? 1));
+        const scopedIds = config.scope === "PROXY_NETWORK" ? serverIds : [input.serverId];
+        const events = await prisma.analyticsEvent.findMany({
+          where: { serverId: { in: scopedIds }, occurredAt: { gte: participation.joinedAt }, metadata: { path: ["minecraftUuid"], equals: input.minecraftUuid } },
+          select: { type: true, metadata: true, occurredAt: true },
+          orderBy: { occurredAt: "desc" },
+          take: 10_000,
+        });
+        const relevant = events.filter((item) => {
+          const data = item.metadata as Record<string, unknown>;
+          if (metric === "PLAYER_KILLS" || metric === "UNIQUE_PLAYER_KILLS" || metric === "PVP_STREAK") return item.type === "PLAYER_KILL";
+          if (metric === "MOB_KILLS") return item.type === "MOB_KILL" && (!config.entityType || data.entityType === config.entityType);
+          if (metric === "BLOCKS_BROKEN") return item.type === "BLOCK_BREAK" && (!config.material || data.material === config.material);
+          if (metric === "PLAYTIME_SECONDS") return item.type === "PLAYTIME";
+          return item.type === "METRIC_SNAPSHOT" && data.metric === metric;
+        });
+        let value = relevant.length;
+        if (metric === "UNIQUE_PLAYER_KILLS") value = new Set(relevant.map((item) => String((item.metadata as Record<string, unknown>).victimUuid ?? ""))).size;
+        else if (metric === "PLAYTIME_SECONDS") value = relevant.reduce((total, item) => total + Number((item.metadata as Record<string, unknown>).seconds ?? 0), 0);
+        else if (["SKYBLOCK_LEVEL", "ISLAND_WORTH", "LIFESTEAL_HEARTS", "SKILL_LEVEL"].includes(metric)) value = Number((relevant[0]?.metadata as Record<string, unknown> | undefined)?.value ?? 0);
+        else if (metric === "PVP_STREAK") {
+          value = 0;
+          for (const item of relevant) value = Math.max(value, Number((item.metadata as Record<string, unknown>).streak ?? 0));
+        }
+        if (value >= target) {
+          await prisma.milestoneCompletion.upsert({
+            where: { participationId_milestoneId: { participationId: participation.id, milestoneId: milestone.id } },
+            update: { evidence: { metric, target, observed: value, serverIds: scopedIds }, verificationSource: "SERVER_PLUGIN" },
+            create: { participationId: participation.id, milestoneId: milestone.id, evidence: { metric, target, observed: value, serverIds: scopedIds }, verificationSource: "SERVER_PLUGIN", status: "PENDING" },
+          });
+          completed++;
+        }
+      }
+      await prisma.campaignParticipation.update({ where: { id: participation.id }, data: { status: "ACTIVE", lastActivityAt: new Date() } });
+    }
+    await prisma.server.update({ where: { id: input.serverId }, data: { pluginLastSeenAt: new Date(), pluginInstanceId: input.instanceId } });
+    return reply.code(202).send({ accepted: true, eventId: stored.id, matchedParticipations: participations.length, milestonesReached: completed });
   });
 
   app.get("/v1/campaigns", async (request) => {

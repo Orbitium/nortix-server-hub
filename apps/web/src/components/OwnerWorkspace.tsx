@@ -82,6 +82,15 @@ type TeamOverview = {
   invites: Array<{ id: string; role: TeamInvite["role"]; expiresAt: string; invitee: { id: string; username: string; displayName: string; avatarUrl?: string } }>;
 };
 
+type PluginCapabilityInfo = {
+  id: string;
+  provider: string;
+  category: "CORE" | "PVP" | "LIFESTEAL" | "SKYBLOCK" | "SKILLS";
+  metrics: string[];
+  version?: string;
+  available: boolean;
+};
+
 const registeredServers: ServerRecord[] = [
   {
     id: "skyblock-x",
@@ -507,9 +516,28 @@ function PluginServers({
   const [servers, setServers] = useState(accessibleServers);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState("");
+  const [connectionToken, setConnectionToken] = useState<{ serverId: string; token: string } | null>(null);
+  const [connectionMessage, setConnectionMessage] = useState("");
+  const [capabilities, setCapabilities] = useState<PluginCapabilityInfo[]>([]);
   const filtered = useMemo(() => servers.filter((item) => `${item.name} ${item.address} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [query, servers]);
   const togglePause = (id: string) => setServers((items) => items.map((item) => item.id === id ? { ...item, status: item.status === "Paused" ? "Live" : "Paused" } : item));
   useEffect(() => setServers(accessibleServers), [accessibleServers]);
+  useEffect(() => {
+    setConnectionToken(null);
+    api<{ pluginCapabilities: PluginCapabilityInfo[] }>(`/owner/servers/${server.id}/plugin-capabilities`)
+      .then((result) => setCapabilities(result.pluginCapabilities ?? []))
+      .catch(() => setCapabilities([]));
+  }, [server.id]);
+
+  const generatePluginToken = async () => {
+    setConnectionMessage("");
+    try {
+      const result = await api<{ serverId: string; token: string }>(`/owner/servers/${server.id}/plugin-token`, { method: "POST" });
+      setConnectionToken(result);
+    } catch (error) {
+      setConnectionMessage(error instanceof Error ? error.message : "A plugin token could not be generated.");
+    }
+  };
 
   return (
     <div className="dashboard-page owner-platform">
@@ -549,12 +577,31 @@ function PluginServers({
         ))}
       </section>
 
+      <section className="card owner-milestone-connect">
+        <div className="owner-card-heading">
+          <div><h2>Milestone tracking connection</h2><p>Connect the Paper plugin separately on this server. Proxy child servers inherit ownership verification, but keep isolated tokens, events, and milestone capabilities.</p></div>
+          {server.accessType === "TEAM" ? <span className="owner-team-chip">Only the server owner can rotate its plugin token</span> : <button className="button button--primary" onClick={generatePluginToken}><KeyRound /> Generate connection token</button>}
+        </div>
+        {connectionMessage && <div className="owner-team-message">{connectionMessage}</div>}
+        {connectionToken && (
+          <div className="owner-token-panel">
+            <div><strong>Copy this command now</strong><small>The token is shown once. Generating another token immediately revokes this one.</small></div>
+            <code>/nortix connect {connectionToken.serverId} {connectionToken.token}</code>
+            <button onClick={() => { navigator.clipboard.writeText(`/nortix connect ${connectionToken.serverId} ${connectionToken.token}`); setCopied("token"); }}><Copy />{copied === "token" ? "Copied" : "Copy"}</button>
+          </div>
+        )}
+        <div className="owner-capability-list">
+          <div className="owner-capability-list__heading"><strong>Detected milestone providers</strong><span>{capabilities.length ? `${capabilities.length} connected` : "Waiting for plugin heartbeat"}</span></div>
+          {capabilities.length ? capabilities.map((capability) => <article key={capability.id}><span><Plug /></span><div><strong>{capability.provider}</strong><small>{capability.category.toLowerCase()} · {capability.version || "detected"}</small></div><p>{capability.metrics.map((metric) => metric.toLowerCase().replaceAll("_", " ")).join(" · ")}</p><i>Available</i></article>) : <div className="owner-team-empty"><Radio /><span><strong>No capability report yet</strong><small>Install plugin v0.2.0, run the connection command, and the campaign builder will update automatically.</small></span></div>}
+        </div>
+      </section>
+
       <div className="owner-dashboard-grid">
         <section className="card owner-plugin-install">
           <div className="owner-card-heading"><div><h2>Ownership verification plugins</h2><p>Use Paper for a standalone server or Velocity for the public entry point to a network.</p></div><Plug /></div>
           <ol>
-            <li><b>1</b><span><strong>Paper 1.16 and newer</strong><small>For a normal server. Uses Java 8 bytecode and the Paper 1.16 API baseline.</small></span><a className="button" href="/downloads/nortix-paper-verification-0.1.0.jar" download><Download /> Paper .jar</a></li>
-            <li><b>2</b><span><strong>Velocity 3.x proxy</strong><small>For one public proxy and all backend servers behind it. Backend servers do not need individual claims.</small></span><a className="button" href="/downloads/nortix-velocity-verification-0.1.0.jar" download><Download /> Velocity .jar</a></li>
+            <li><b>1</b><span><strong>Paper 1.16 and newer</strong><small>Install on every backend that should verify milestones. Each backend reports its own installed plugin capabilities.</small></span><a className="button" href="/downloads/nortix-paper-0.2.0.jar" download><Download /> Paper .jar</a></li>
+            <li><b>2</b><span><strong>Velocity 3.x proxy</strong><small>Verify the public proxy once. Backend servers inherit the claim and use separate Paper connection tokens.</small></span><a className="button" href="/downloads/nortix-velocity-0.2.0.jar" download><Download /> Velocity .jar</a></li>
             <li><b>3</b><span><strong>Generate a one-time code</strong><small>Register the public address, then copy the 15-minute code into the matching plugin command.</small></span><Link className="button" to="/owner/servers/new"><KeyRound /> Register server</Link></li>
             <li><b>4</b><span><strong>Let Nortix read the MOTD</strong><small>The plugin publishes the code temporarily; an independent public status ping completes the claim.</small></span><button onClick={() => setCopied("flow")}><Copy />{copied === "flow" ? "Ready" : "View flow"}</button></li>
           </ol>
@@ -820,7 +867,83 @@ function OwnerSparks({
 
 function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [builderMessage, setBuilderMessage] = useState("");
   const [step, setStep] = useState(1);
+  const [campaignTitle, setCampaignTitle] = useState("First island experience");
+  const [objective, setObjective] = useState("Understand where new players hesitate or leave during the first island selection and objective flow.");
+  const [capacity, setCapacity] = useState(500);
+  const [capabilities, setCapabilities] = useState<PluginCapabilityInfo[]>([]);
+  const [metric, setMetric] = useState("UNIQUE_PLAYER_KILLS");
+  const [target, setTarget] = useState(10);
+  const [scope, setScope] = useState<"SERVER" | "PROXY_NETWORK">("SERVER");
+  const [milestones, setMilestones] = useState<Array<{ id: string; metric: string; target: number; scope: string; title: string }>>([]);
+  const milestonePresets = [
+    ["UNIQUE_PLAYER_KILLS", "Defeat unique players", 10, "Count each opponent once to discourage farming."],
+    ["PLAYER_KILLS", "Defeat players", 25, "Count verified player-versus-player eliminations."],
+    ["PVP_STREAK", "Reach a PvP streak", 5, "Reach the configured elimination streak without dying."],
+    ["MOB_KILLS", "Defeat mobs", 50, "Count mobs defeated on the selected backend."],
+    ["BLOCKS_BROKEN", "Break blocks", 500, "Track legitimate block breaks by material or across all blocks."],
+    ["PLAYTIME_SECONDS", "Stay active", 1800, "Accumulate active server time in seconds."],
+    ["SKYBLOCK_LEVEL", "Reach island level", 100, "Read island level from a detected Skyblock provider."],
+    ["ISLAND_WORTH", "Reach island worth", 100000, "Read island worth from a detected Skyblock provider."],
+    ["LIFESTEAL_HEARTS", "Reach a heart total", 20, "Read the current heart total from a detected Lifesteal provider."],
+    ["SKILL_LEVEL", "Reach a skill level", 100, "Read a supported aggregate skill or power level."],
+  ] as const;
+
+  useEffect(() => {
+    api<{ pluginCapabilities: PluginCapabilityInfo[] }>(`/owner/servers/${server.id}/plugin-capabilities`)
+      .then((result) => setCapabilities(result.pluginCapabilities ?? []))
+      .catch(() => setCapabilities([]));
+  }, [server.id]);
+
+  const availableMetrics = new Set(["PLAYER_KILLS", "UNIQUE_PLAYER_KILLS", "MOB_KILLS", "BLOCKS_BROKEN", "PLAYTIME_SECONDS", "PVP_STREAK", ...capabilities.flatMap((item) => item.metrics)]);
+  const selectedPreset = milestonePresets.find((item) => item[0] === metric) ?? milestonePresets[0];
+  const addMilestone = () => {
+    setMilestones((items) => [...items, { id: crypto.randomUUID(), metric, target: Math.max(1, target), scope, title: `${selectedPreset[1]} · ${Math.max(1, target).toLocaleString()}` }]);
+  };
+
+  const submitCampaign = async () => {
+    if (!milestones.length) {
+      setBuilderMessage("Add at least one plugin milestone before submitting.");
+      setStep(3);
+      return;
+    }
+    setSaving(true);
+    setBuilderMessage("");
+    try {
+      const created = await api<{ id: string }>("/owner/campaigns", {
+        method: "POST",
+        body: JSON.stringify({
+          serverId: server.id,
+          title: campaignTitle,
+          description: objective,
+          category: "Feature evaluation",
+          startsAt: new Date().toISOString(),
+          endsAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+          maxParticipants: capacity,
+          regionRestrictions: [],
+          versionRequirements: [server.version],
+          milestones: milestones.map((item) => ({
+            templateType: item.metric,
+            title: item.title,
+            instructions: `${item.title} on ${item.scope === "SERVER" ? server.name : "any eligible server in this proxy network"}. Progress is verified by the Nortix server plugin.`,
+            rewardCents: 0,
+            sparksReward: 10,
+            verificationMethod: "SERVER_PLUGIN",
+            config: { metric: item.metric, target: item.target, scope: item.scope },
+          })),
+        }),
+      });
+      await api(`/owner/campaigns/${created.id}/submit`, { method: "POST" });
+      setSaved(true);
+      setBuilderMessage("Campaign submitted for Nortix review with plugin-verified milestones.");
+    } catch (error) {
+      setBuilderMessage(error instanceof Error ? error.message : "The campaign could not be submitted.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div className="dashboard-page owner-platform">
       <OwnerHeader eyebrow="CAMPAIGN BUILDER" title="Create a research campaign" description="Define the audience, required activity, evidence, questions, and a cautious verification-dependent Sparks limit." server={server} setServer={setServer} action={<Link className="button button--secondary" to="/owner">Exit builder</Link>} />
@@ -830,17 +953,38 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
         </aside>
         <section className="card owner-builder-form">
           <header><span>STEP {step} OF 6</span><h2>{["Campaign basics", "Audience definition", "Milestones & evidence", "Feedback design", "Sparks & capacity", "Review & submit"][step - 1]}</h2><p>Configure clear, measurable research inputs. Players should understand what may be required before joining.</p></header>
-          <div className="form-grid form-grid--two">
-            <label>Campaign title<input defaultValue="First island experience" /></label>
+          {step === 3 ? <div className="owner-milestone-builder">
+            <div className="owner-capability-summary">
+              <span><Plug /></span><div><strong>{capabilities.length ? `${capabilities.length} providers detected on ${server.name}` : `Core Paper milestones available on ${server.name}`}</strong><small>{capabilities.length ? capabilities.map((item) => item.provider).join(" · ") : "Connect the Paper plugin to unlock Skyblock, Lifesteal, PvP, and skills integrations."}</small></div><Link to="/owner/integrations">Manage plugin</Link>
+            </div>
+            <div className="owner-preset-grid">
+              {milestonePresets.map(([presetMetric, label, presetTarget, description]) => {
+                const available = availableMetrics.has(presetMetric);
+                return <button type="button" disabled={!available} className={metric === presetMetric ? "active" : ""} onClick={() => { setMetric(presetMetric); setTarget(presetTarget); }} key={presetMetric}><span>{available ? <CheckCircle2 /> : <LockKeyhole />}</span><strong>{label}</strong><small>{description}</small><i>{available ? "Available" : "Needs compatible plugin"}</i></button>;
+              })}
+            </div>
+            <div className="owner-milestone-config">
+              <div><span><Zap /></span><div><strong>{selectedPreset[1]}</strong><small>{selectedPreset[3]}</small></div></div>
+              <label>Target<input type="number" min="1" value={target} onChange={(event) => setTarget(Number(event.target.value))} /></label>
+              <label>Tracking scope<select value={scope} onChange={(event) => setScope(event.target.value as "SERVER" | "PROXY_NETWORK")}><option value="SERVER">This backend only</option><option value="PROXY_NETWORK">Entire proxy network</option></select></label>
+              <button type="button" className="button button--primary" onClick={addMilestone}><Plus /> Add milestone</button>
+            </div>
+            <div className="owner-configured-milestones">
+              <div><strong>Campaign milestones</strong><span>{milestones.length} configured</span></div>
+              {milestones.length === 0 ? <p>Choose a preset above. Nortix will save the metric, target, server scope, and plugin verification method automatically.</p> : milestones.map((item, index) => <article key={item.id}><b>{index + 1}</b><span><strong>{item.title}</strong><small>{item.metric.toLowerCase().replaceAll("_", " ")} · {item.scope === "SERVER" ? server.name : "Entire proxy network"} · server plugin verification</small></span><button onClick={() => setMilestones((items) => items.filter((milestone) => milestone.id !== item.id))} aria-label={`Remove ${item.title}`}><X /></button></article>)}
+            </div>
+          </div> : <div className="form-grid form-grid--two">
+            <label>Campaign title<input value={campaignTitle} onChange={(event) => setCampaignTitle(event.target.value)} /></label>
             <label>Research category<select><option>Onboarding</option><option>Retention</option><option>Feature evaluation</option><option>Usability</option></select></label>
-            <label className="span-two">Research objective<textarea rows={4} defaultValue="Understand where new players hesitate or leave during the first island selection and objective flow." /></label>
+            <label className="span-two">Research objective<textarea rows={4} value={objective} onChange={(event) => setObjective(event.target.value)} /></label>
             <label>Potential Sparks limit<select><option>Up to 25 Sparks</option><option>Up to 50 Sparks</option><option>Up to 75 Sparks</option><option>Up to 100 Sparks</option></select></label>
-            <label>Participant capacity<input type="number" defaultValue="500" /></label>
+            <label>Participant capacity<input type="number" min="1" value={capacity} onChange={(event) => setCapacity(Number(event.target.value))} /></label>
             <label>Target edition<select><option>Java and Bedrock</option><option>Java</option><option>Bedrock</option></select></label>
             <label>Target player type<select><option>New to this server</option><option>Returning after 30+ days</option><option>Active regulars</option></select></label>
-          </div>
+          </div>}
           <div className="owner-builder-preview"><Eye /><span><strong>Player-facing preview</strong><small>Eligible verified activity may receive up to the configured Sparks limit. Published amounts are upper limits, not promises.</small></span></div>
-          <footer><button onClick={() => setStep(Math.max(1, step - 1))}>Back</button><span>Draft autosaved just now</span><button className="button button--primary" onClick={() => step === 6 ? setSaved(true) : setStep(step + 1)}>{saved ? "Submitted for review" : step === 6 ? "Submit for review" : "Save and continue"}</button></footer>
+          {builderMessage && <div className="owner-team-message" role="status">{builderMessage}</div>}
+          <footer><button onClick={() => setStep(Math.max(1, step - 1))}>Back</button><span>{milestones.length} plugin milestone{milestones.length === 1 ? "" : "s"} configured</span><button className="button button--primary" disabled={saving || saved} onClick={() => step === 6 ? submitCampaign() : setStep(step + 1)}>{saved ? "Submitted for review" : saving ? "Submitting…" : step === 6 ? "Submit for review" : "Save and continue"}</button></footer>
         </section>
       </div>
     </div>

@@ -76,6 +76,9 @@ export const buildApp = async (env: Env) => {
       "already",
       "expired",
       "server owner",
+      "plugin token",
+      "milestone tracking",
+      "plugin capabilities",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),

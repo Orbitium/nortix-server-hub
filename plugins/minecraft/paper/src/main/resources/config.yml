@@ -2,3 +2,17 @@ api-base-url: "https://hub.nortixlabs.com/api/v1"
 public-address: ""
 verification-code: ""
 plugin-motd: true
+server-id: ""
+server-token: ""
+proxy-server-name: ""
+metric-poll-seconds: 30
+max-queued-events: 5000
+adapter-placeholders:
+  bentobox-level: "%Level_bskyblock_island_level%"
+  superior-skyblock-2: "%superior_island_level%"
+  iridium-skyblock: "%iridiumskyblock_island_value%"
+  askyblock: "%askyblock_island_level%"
+  uskyblock: "%uskyblock_island_level%"
+  lifestealz: "%lifestealz_hearts%"
+  lifesteal-core: "%lifesteal_hearts%"
+  mcmmo: "%mcmmo_power_level%"

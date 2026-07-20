@@ -4752,6 +4752,128 @@ td > small {
   }
 }
 
+.owner-milestone-connect { margin-top: 14px; padding: 18px; }
+.owner-token-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(300px, 1.5fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 15px 0;
+  padding: 14px;
+  border: 1px solid #4f7134;
+  border-radius: 9px;
+  background: #15251a;
+}
+.owner-token-panel > div { display: grid; }
+.owner-token-panel strong { font-size: 12px; }
+.owner-token-panel small { margin-top: 3px; color: #91a498; font-size: 10px; line-height: 1.4; }
+.owner-token-panel code { overflow: auto; padding: 10px; border-radius: 7px; color: #baf497; background: #09130d; font-size: 10px; white-space: nowrap; }
+.owner-token-panel button { display: flex; align-items: center; gap: 5px; padding: 9px 11px; border: 1px solid #4d6a3b; border-radius: 7px; color: #cbf7b2; background: #1e3622; font-size: 10px; }
+.owner-token-panel button svg { width: 14px; }
+
+.owner-capability-list { margin-top: 16px; border-top: 1px solid var(--border); }
+.owner-capability-list__heading { display: flex; justify-content: space-between; padding: 14px 0 10px; font-size: 11px; }
+.owner-capability-list__heading span { color: #8f9da7; }
+.owner-capability-list article {
+  display: grid;
+  grid-template-columns: auto minmax(140px, .65fr) minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.owner-capability-list article > span { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 7px; color: #9bec70; background: #193223; }
+.owner-capability-list article svg { width: 15px; }
+.owner-capability-list article > div { display: grid; }
+.owner-capability-list article strong { font-size: 11px; }
+.owner-capability-list article small,
+.owner-capability-list article p { margin: 2px 0 0; color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.owner-capability-list article i { color: #91e568; font-size: 9px; font-style: normal; }
+
+.owner-milestone-builder { display: grid; gap: 14px; }
+.owner-capability-summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #34523b;
+  border-radius: 9px;
+  background: #12251a;
+}
+.owner-capability-summary > span { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 8px; color: #9beb70; background: #1b3824; }
+.owner-capability-summary svg { width: 17px; }
+.owner-capability-summary > div { display: grid; }
+.owner-capability-summary strong { font-size: 11px; }
+.owner-capability-summary small { margin-top: 3px; color: #8ea096; font-size: 9px; }
+.owner-capability-summary a { color: #9bea72; font-size: 10px; }
+
+.owner-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.owner-preset-grid button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 9px;
+  padding: 12px;
+  border: 1px solid #263845;
+  border-radius: 9px;
+  color: #d8dfe4;
+  background: #0f1c26;
+  text-align: left;
+}
+.owner-preset-grid button > span { grid-row: 1 / 4; display: grid; width: 29px; height: 29px; place-items: center; border-radius: 7px; color: #95e969; background: #193224; }
+.owner-preset-grid button svg { width: 14px; }
+.owner-preset-grid button strong { font-size: 11px; }
+.owner-preset-grid button small { color: var(--muted); font-size: 9px; line-height: 1.35; }
+.owner-preset-grid button i { color: #7fb865; font-size: 8px; font-style: normal; }
+.owner-preset-grid button.active { border-color: #66bb43; box-shadow: 0 0 0 1px #66bb43 inset; }
+.owner-preset-grid button:disabled { opacity: .42; cursor: not-allowed; }
+
+.owner-milestone-config {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 110px 175px auto;
+  align-items: end;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #2a3c48;
+  border-radius: 9px;
+  background: #0b1720;
+}
+.owner-milestone-config > div { display: flex; align-items: center; gap: 9px; }
+.owner-milestone-config > div > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 8px; color: #b77af3; background: #261b3b; }
+.owner-milestone-config > div svg { width: 16px; }
+.owner-milestone-config > div > div { display: grid; }
+.owner-milestone-config strong { font-size: 11px; }
+.owner-milestone-config small { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.owner-milestone-config label { display: grid; gap: 5px; color: #8e9ba5; font-size: 9px; }
+.owner-milestone-config input,
+.owner-milestone-config select { width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid #2d3e4b; border-radius: 7px; color: var(--text); background: #101e29; font-size: 10px; }
+.owner-milestone-config .button { min-height: 36px; white-space: nowrap; }
+
+.owner-configured-milestones { padding: 13px; border: 1px solid var(--border); border-radius: 9px; }
+.owner-configured-milestones > div { display: flex; justify-content: space-between; font-size: 11px; }
+.owner-configured-milestones > div span { color: var(--muted); font-size: 9px; }
+.owner-configured-milestones > p { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
+.owner-configured-milestones article { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding: 10px 0; border-top: 1px solid var(--border); }
+.owner-configured-milestones article:first-of-type { margin-top: 10px; }
+.owner-configured-milestones article b { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; color: #a1ed78; background: #193023; font-size: 9px; }
+.owner-configured-milestones article span { display: grid; }
+.owner-configured-milestones article strong { font-size: 10px; }
+.owner-configured-milestones article small { margin-top: 3px; color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.owner-configured-milestones article button { border: 0; color: #8c99a3; background: transparent; }
+.owner-configured-milestones article button svg { width: 15px; }
+
+@media (max-width: 900px) {
+  .owner-token-panel,
+  .owner-milestone-config { grid-template-columns: 1fr; }
+  .owner-capability-list article { grid-template-columns: auto 1fr; }
+  .owner-capability-list article p,
+  .owner-capability-list article i { grid-column: 2; }
+}
+
+@media (max-width: 620px) {
+  .owner-preset-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 430px) {
   .public-header {
     padding-inline: 15px;

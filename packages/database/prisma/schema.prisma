@@ -257,6 +257,9 @@ model Server {
   publicListing      Boolean             @default(false)
   playerCount        Int?
   maxPlayers         Int?
+  pluginCapabilities Json               @default("[]")
+  pluginLastSeenAt   DateTime?
+  pluginInstanceId   String?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   verifications      ServerVerification[]
@@ -626,6 +629,7 @@ model IntegrationApiKey {
   createdAt    DateTime @default(now())
 
   @@index([serverId])
+  @@index([keyHash])
 }
 
 model PaymentEvent {

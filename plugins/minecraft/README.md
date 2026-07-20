@@ -1,49 +1,77 @@
-# Nortix Minecraft ownership plugins
+# Nortix Minecraft plugins
 
-This directory contains two deliberately small plugins. They only implement server
-registration and ownership verification.
+The Paper plugin supports Minecraft 1.16 through current Paper releases with
+Java 8-compatible bytecode. The Velocity 3.x plugin verifies one public proxy;
+Paper backends report milestones independently.
 
-- `paper`: a standalone Paper plugin compiled against the 1.16.5 API with Java 8
-  bytecode, using APIs available from Minecraft 1.16 onward.
-- `velocity`: a Velocity 3.x proxy plugin compiled with Java 11 bytecode. One
-  successful proxy claim covers the proxy network; backend servers do not need
-  separate public ownership checks.
+## Ownership verification
 
-## Verification flow
+1. Register the public address in Nortix.
+2. Choose Paper for a standalone server or Velocity for a proxy network.
+3. Run `/nortix verify CODE` or `/nortixproxy verify CODE`.
+4. The plugin temporarily adds the code to the public ping MOTD.
+5. Nortix independently pings the address and completes the claim.
 
-1. Sign in to Nortix and open **Server owners → Plugin & Servers → Register server**.
-2. Enter the public Java server address and choose Paper or Velocity.
-3. Nortix creates a 15-minute code such as `NORTIX-A1B2-C3D4`.
-4. Put the appropriate JAR in `plugins/`, restart, and run:
-   - Paper: `/nortix verify NORTIX-A1B2-C3D4`
-   - Velocity: `/nortixproxy verify NORTIX-A1B2-C3D4`
-5. The plugin sends a handshake to the configured backend and temporarily adds
-   `[NORTIX-A1B2-C3D4]` to the public ping MOTD.
-6. Click **Check verification** on the website. Nortix independently sends a
-   Minecraft status ping to the registered address. The claim succeeds only if
-   that public response contains the matching code.
+A verified Velocity proxy covers its registered child servers. Those backends
+do not need public addresses or separate MOTD verification.
 
-Server owners may skip the plugin and add `[CODE]` to the MOTD manually. Plugin
-handshakes never claim a server by themselves.
+## Milestone tracking
+
+After verification, open **Plugin & Servers**, select the exact server, and
+generate a one-time connection token. On that Paper backend run:
+
+```text
+/nortix connect SERVER_ID TOKEN
+```
+
+For a proxy network, register each backend as a child of the verified proxy and
+run its own connection command on each Paper backend. Each child keeps separate
+credentials, capability reports, event data, and campaigns. Campaigns can track
+one backend or aggregate the whole proxy network.
+
+Native Paper milestones include:
+
+- player kills and unique opponents;
+- PvP kill streaks;
+- mob kills, optionally by entity type;
+- block breaks, optionally by material;
+- active playtime.
+
+Soft adapters cover ten widely used plugin ecosystems:
+
+- BentoBox + Level
+- SuperiorSkyblock2
+- IridiumSkyblock
+- ASkyBlock
+- uSkyBlock
+- LifeStealZ
+- LifestealCore
+- CombatLogX
+- PvPManager
+- mcMMO
+
+Optional numeric metrics use PlaceholderAPI's supported integration surface.
+Missing plugins or placeholders remain unavailable in the web milestone picker
+and never prevent Paper from starting.
 
 ## Build
-
-The repository includes a Gradle wrapper:
 
 ```powershell
 .\gradlew.bat clean build
 ```
 
-Built JARs are copied to `plugins/minecraft/dist/`.
+Built JARs are copied to `plugins/minecraft/dist/` and the web downloads folder.
 
-## Configuration
+## Paper configuration
 
-Paper writes `plugins/NortixVerification/config.yml`. Velocity writes
-`plugins/nortix-verification/config.properties`. Both support:
+- `api-base-url`: Nortix API base URL.
+- `public-address`: optional verification diagnostic.
+- `verification-code`: active temporary ownership code.
+- `plugin-motd`: publish the ownership code in ping responses.
+- `server-id` / `server-token`: backend-specific milestone connection.
+- `proxy-server-name`: optional proxy backend name for diagnostics.
+- `metric-poll-seconds`: optional plugin-metric and playtime interval.
+- `max-queued-events`: bounded outage queue.
+- `adapter-placeholders`: per-provider overrides for API/expansion version changes.
 
-- `api-base-url`: Nortix API origin, without a trailing slash.
-- `verification-code`: current one-time code; normally set by the command.
-- `public-address`: optional address echoed in the handshake for diagnostics.
-- `plugin-motd` / `base-motd`: whether and how the plugin publishes the proof.
-
-The plugin removes its active proof after the backend reports `VERIFIED`.
+The TypeScript contracts in `@nortix/plugin-sdk` are canonical.

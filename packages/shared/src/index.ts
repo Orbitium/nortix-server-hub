@@ -52,6 +52,16 @@ export const milestoneTypes = [
   "SUBMIT_FEEDBACK",
   "SUBMIT_BUG_REPORT",
   "JOIN_COMMUNITY",
+  "PLAYER_KILLS",
+  "UNIQUE_PLAYER_KILLS",
+  "MOB_KILLS",
+  "BLOCKS_BROKEN",
+  "PLAYTIME_SECONDS",
+  "SKYBLOCK_LEVEL",
+  "ISLAND_WORTH",
+  "LIFESTEAL_HEARTS",
+  "PVP_STREAK",
+  "SKILL_LEVEL",
   "CUSTOM_MANUAL",
 ] as const;
 export const MilestoneTypeSchema = z.enum(milestoneTypes);

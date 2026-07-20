@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = "com.nortix"
-    version = "0.1.0"
+    version = "0.2.0"
 
     repositories {
         mavenCentral()
@@ -20,7 +20,7 @@ subprojects {
     }
 
     tasks.withType(Jar).configureEach {
-        archiveBaseName = "nortix-${project.name}-verification"
+        archiveBaseName = "nortix-${project.name}"
     }
 }
 
