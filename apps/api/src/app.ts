@@ -70,6 +70,12 @@ export const buildApp = async (env: Env) => {
       "status ping",
       "public server MOTD",
       "verified proxy network",
+      "invite",
+      "team member",
+      "username",
+      "already",
+      "expired",
+      "server owner",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),

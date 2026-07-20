@@ -70,6 +70,21 @@ export const ServerInputSchema = z.object({
   discordUrl: z.string().url().optional(),
 });
 
+export const serverTeamRoles = ["ADMIN", "MANAGER", "OPERATOR", "ANALYST"] as const;
+export const ServerTeamRoleSchema = z.enum(serverTeamRoles);
+export type ServerTeamRole = z.infer<typeof ServerTeamRoleSchema>;
+
+export const ServerTeamInviteInputSchema = z.object({
+  username: z.string().trim().min(2).max(32),
+  role: ServerTeamRoleSchema,
+});
+
+export const TeamInviteResponseSchema = z.object({
+  action: z.enum(["ACCEPT", "DECLINE"]),
+});
+
+export const TeamMemberRoleInputSchema = z.object({ role: ServerTeamRoleSchema });
+
 export const CampaignMilestoneInputSchema = z.object({
   templateType: MilestoneTypeSchema,
   title: z.string().min(3).max(100),

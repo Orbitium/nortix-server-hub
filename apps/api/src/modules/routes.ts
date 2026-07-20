@@ -6,7 +6,11 @@ import {
   JoinCampaignSchema,
   MilestoneSubmissionSchema,
   ServerInputSchema,
+  ServerTeamInviteInputSchema,
+  TeamInviteResponseSchema,
+  TeamMemberRoleInputSchema,
   WithdrawalInputSchema,
+  type ServerTeamRole,
 } from "@nortix/shared";
 import {
   CreateServerVerificationSchema,
@@ -24,6 +28,19 @@ import { ServerVerificationService } from "./server-verification/service.js";
 const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
 const serverVerificationService = new ServerVerificationService();
+
+const teamPermissions: Record<ServerTeamRole, string[]> = {
+  ADMIN: ["analytics", "campaigns", "integrations", "settings", "team"],
+  MANAGER: ["analytics", "campaigns"],
+  OPERATOR: ["integrations", "settings"],
+  ANALYST: ["analytics"],
+};
+
+const requireOwnedServer = async (serverId: string, userId: string) => {
+  const server = await prisma.server.findFirst({ where: { id: serverId, ownerId: userId } });
+  if (!server) throw new Error("Only the server owner can manage team access.");
+  return server;
+};
 
 const parsePagination = (query: Record<string, unknown>) => ({
   page: Math.max(1, Number(query.page) || 1),
@@ -403,13 +420,122 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
 
   app.get(
     "/v1/owner/servers",
-    { preHandler: app.requirePermission("server:manage") },
-    async (request) =>
-      prisma.server.findMany({
-        where: { ownerId: request.user!.id },
-        include: { campaigns: true },
-      }),
+    { preHandler: app.authenticate },
+    async (request) => {
+      const userId = request.user!.id;
+      const servers = await prisma.server.findMany({
+        where: { OR: [{ ownerId: userId }, { teamMembers: { some: { userId } } }] },
+        include: {
+          campaigns: true,
+          owner: { select: { id: true, username: true, displayName: true } },
+          teamMembers: { where: { userId }, select: { role: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+      return servers.map(({ teamMembers, ...server }) => {
+        const membership = teamMembers[0];
+        return {
+          ...server,
+          access: server.ownerId === userId
+            ? { type: "OWNER", role: "OWNER", permissions: ["analytics", "campaigns", "integrations", "settings", "team"] }
+            : { type: "TEAM", role: membership!.role, permissions: teamPermissions[membership!.role] },
+        };
+      });
+    },
   );
+  app.get("/v1/team/invites", { preHandler: app.authenticate }, async (request) => {
+    const now = new Date();
+    await prisma.serverTeamInvite.updateMany({
+      where: { inviteeId: request.user!.id, status: "PENDING", expiresAt: { lte: now } },
+      data: { status: "EXPIRED" },
+    });
+    return prisma.serverTeamInvite.findMany({
+      where: { inviteeId: request.user!.id, status: "PENDING", expiresAt: { gt: now } },
+      include: {
+        server: { select: { id: true, name: true, hostname: true, owner: { select: { username: true, displayName: true } } } },
+        inviter: { select: { username: true, displayName: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  });
+  app.post("/v1/owner/servers/:serverId/team/invites", { preHandler: app.authenticate }, async (request, reply) => {
+    const { serverId } = request.params as { serverId: string };
+    const input = ServerTeamInviteInputSchema.parse(request.body);
+    const server = await requireOwnedServer(serverId, request.user!.id);
+    const invitee = await prisma.user.findFirst({
+      where: { username: { equals: input.username, mode: "insensitive" } },
+      select: { id: true, username: true, displayName: true, avatarUrl: true },
+    });
+    if (!invitee) return reply.code(404).send({ code: "NOT_FOUND", message: "No Nortix account has that username." });
+    if (invitee.id === request.user!.id) throw new Error("The server owner already has full access.");
+    const member = await prisma.serverTeamMember.findUnique({ where: { serverId_userId: { serverId, userId: invitee.id } } });
+    if (member) throw new Error("That user is already a team member.");
+    const pending = await prisma.serverTeamInvite.findFirst({
+      where: { serverId, inviteeId: invitee.id, status: "PENDING", expiresAt: { gt: new Date() } },
+    });
+    if (pending) throw new Error("That user already has a pending invite for this server.");
+    const invite = await prisma.serverTeamInvite.create({
+      data: { serverId, inviterId: request.user!.id, inviteeId: invitee.id, role: input.role, expiresAt: new Date(Date.now() + 604_800_000) },
+      include: { invitee: { select: { username: true, displayName: true, avatarUrl: true } } },
+    });
+    return reply.code(201).send({ ...invite, server: { id: server.id, name: server.name } });
+  });
+  app.patch("/v1/team/invites/:inviteId", { preHandler: app.authenticate }, async (request) => {
+    const { inviteId } = request.params as { inviteId: string };
+    const { action } = TeamInviteResponseSchema.parse(request.body);
+    return prisma.$transaction(async (tx) => {
+      const invite = await tx.serverTeamInvite.findFirst({ where: { id: inviteId, inviteeId: request.user!.id } });
+      if (!invite) throw new Error("Team invite not found.");
+      if (invite.status !== "PENDING") throw new Error("This team invite has already been answered.");
+      if (invite.expiresAt <= new Date()) {
+        await tx.serverTeamInvite.update({ where: { id: invite.id }, data: { status: "EXPIRED", respondedAt: new Date() } });
+        throw new Error("This team invite has expired.");
+      }
+      const claimed = await tx.serverTeamInvite.updateMany({
+        where: { id: invite.id, status: "PENDING" },
+        data: { status: action === "ACCEPT" ? "ACCEPTED" : "DECLINED", respondedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new Error("This team invite has already been answered.");
+      if (action === "ACCEPT") {
+        await tx.serverTeamMember.upsert({
+          where: { serverId_userId: { serverId: invite.serverId, userId: request.user!.id } },
+          create: { serverId: invite.serverId, userId: request.user!.id, invitedById: invite.inviterId, role: invite.role },
+          update: { role: invite.role, invitedById: invite.inviterId, acceptedAt: new Date() },
+        });
+      }
+      return tx.serverTeamInvite.findUniqueOrThrow({
+        where: { id: invite.id },
+        include: { server: { select: { id: true, name: true, hostname: true } } },
+      });
+    });
+  });
+  app.get("/v1/owner/servers/:serverId/team", { preHandler: app.authenticate }, async (request) => {
+    const { serverId } = request.params as { serverId: string };
+    const server = await requireOwnedServer(serverId, request.user!.id);
+    const [members, invites] = await Promise.all([
+      prisma.serverTeamMember.findMany({ where: { serverId }, include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: "asc" } }),
+      prisma.serverTeamInvite.findMany({ where: { serverId, status: "PENDING", expiresAt: { gt: new Date() } }, include: { invitee: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: "desc" } }),
+    ]);
+    return { server: { id: server.id, name: server.name }, owner: request.user, members, invites };
+  });
+  app.patch("/v1/owner/servers/:serverId/team/members/:memberId", { preHandler: app.authenticate }, async (request) => {
+    const { serverId, memberId } = request.params as { serverId: string; memberId: string };
+    await requireOwnedServer(serverId, request.user!.id);
+    const { role } = TeamMemberRoleInputSchema.parse(request.body);
+    return prisma.serverTeamMember.update({ where: { id: memberId, serverId }, data: { role } });
+  });
+  app.delete("/v1/owner/servers/:serverId/team/members/:memberId", { preHandler: app.authenticate }, async (request, reply) => {
+    const { serverId, memberId } = request.params as { serverId: string; memberId: string };
+    await requireOwnedServer(serverId, request.user!.id);
+    await prisma.serverTeamMember.delete({ where: { id: memberId, serverId } });
+    return reply.code(204).send();
+  });
+  app.delete("/v1/owner/servers/:serverId/team/invites/:inviteId", { preHandler: app.authenticate }, async (request, reply) => {
+    const { serverId, inviteId } = request.params as { serverId: string; inviteId: string };
+    await requireOwnedServer(serverId, request.user!.id);
+    await prisma.serverTeamInvite.update({ where: { id: inviteId, serverId }, data: { status: "REVOKED", respondedAt: new Date() } });
+    return reply.code(204).send();
+  });
   app.get(
     "/v1/owner/campaigns",
     { preHandler: app.requirePermission("campaign:create") },

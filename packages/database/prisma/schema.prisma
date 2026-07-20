@@ -145,6 +145,21 @@ enum RiskState {
   RESOLVED
 }
 
+enum ServerTeamRole {
+  ADMIN
+  MANAGER
+  OPERATOR
+  ANALYST
+}
+
+enum TeamInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+  EXPIRED
+}
+
 model User {
   id                     String                    @id @default(cuid())
   firebaseUid            String                    @unique
@@ -168,6 +183,10 @@ model User {
   lastActiveAt           DateTime                  @default(now())
   minecraftIdentities    MinecraftIdentity[]
   ownedServers           Server[]                  @relation("ServerOwner")
+  serverMemberships      ServerTeamMember[]        @relation("ServerTeamUser")
+  invitedServerMembers   ServerTeamMember[]        @relation("ServerTeamInviter")
+  sentServerInvites      ServerTeamInvite[]        @relation("ServerInviteSender")
+  receivedServerInvites  ServerTeamInvite[]        @relation("ServerInviteRecipient")
   ownedCampaigns         Campaign[]                @relation("CampaignOwner")
   participations         CampaignParticipation[]
   reviews                Review[]
@@ -245,10 +264,48 @@ model Server {
   reviews            Review[]
   analyticsEvents    AnalyticsEvent[]
   integrationKeys    IntegrationApiKey[]
+  teamMembers        ServerTeamMember[]
+  teamInvites        ServerTeamInvite[]
 
   @@index([ownerId])
   @@index([verificationParentId])
   @@index([publicListing, moderationStatus])
+}
+
+model ServerTeamMember {
+  id          String         @id @default(cuid())
+  serverId    String
+  server      Server         @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation("ServerTeamUser", fields: [userId], references: [id], onDelete: Cascade)
+  role        ServerTeamRole
+  invitedById String
+  invitedBy   User           @relation("ServerTeamInviter", fields: [invitedById], references: [id])
+  acceptedAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([serverId, userId])
+  @@index([userId])
+}
+
+model ServerTeamInvite {
+  id          String           @id @default(cuid())
+  serverId    String
+  server      Server           @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  inviterId   String
+  inviter     User             @relation("ServerInviteSender", fields: [inviterId], references: [id])
+  inviteeId   String
+  invitee     User             @relation("ServerInviteRecipient", fields: [inviteeId], references: [id], onDelete: Cascade)
+  role        ServerTeamRole
+  status      TeamInviteStatus @default(PENDING)
+  expiresAt   DateTime
+  respondedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([inviteeId, status, createdAt])
+  @@index([serverId, status])
 }
 
 model ServerVerification {

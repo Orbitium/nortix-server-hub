@@ -33,9 +33,10 @@ import {
   TrendingUp,
   UserPlus,
   Users,
+  X,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 
@@ -50,6 +51,35 @@ type ServerRecord = {
   heartbeat: string;
   events: string;
   discovery: boolean;
+  accessType?: "OWNER" | "TEAM";
+  teamRole?: "OWNER" | "ADMIN" | "MANAGER" | "OPERATOR" | "ANALYST";
+  permissions?: string[];
+};
+
+type AccessibleServer = {
+  id: string;
+  name: string;
+  hostname: string;
+  port: number;
+  online: boolean;
+  playerCount: number | null;
+  versions: string[];
+  publicListing: boolean;
+  access: { type: "OWNER" | "TEAM"; role: ServerRecord["teamRole"]; permissions: string[] };
+};
+
+type TeamInvite = {
+  id: string;
+  role: "ADMIN" | "MANAGER" | "OPERATOR" | "ANALYST";
+  expiresAt: string;
+  server: { id: string; name: string; hostname: string; owner: { username: string; displayName: string } };
+  inviter: { username: string; displayName: string; avatarUrl?: string };
+};
+
+type TeamOverview = {
+  owner: { id: string; username: string; displayName: string };
+  members: Array<{ id: string; role: TeamInvite["role"]; user: { id: string; username: string; displayName: string; avatarUrl?: string } }>;
+  invites: Array<{ id: string; role: TeamInvite["role"]; expiresAt: string; invitee: { id: string; username: string; displayName: string; avatarUrl?: string } }>;
 };
 
 const registeredServers: ServerRecord[] = [
@@ -90,6 +120,27 @@ const registeredServers: ServerRecord[] = [
     discovery: false,
   },
 ];
+
+const OwnerServersContext = createContext<{ servers: ServerRecord[]; refreshServers: () => Promise<void> }>({
+  servers: registeredServers,
+  refreshServers: async () => undefined,
+});
+
+const mapAccessibleServer = (server: AccessibleServer): ServerRecord => ({
+  id: server.id,
+  name: server.name,
+  address: `${server.hostname}${server.port === 25565 ? "" : `:${server.port}`}`,
+  status: server.online ? "Live" : "Attention",
+  players: server.playerCount ?? 0,
+  version: server.versions[0] ?? "Unknown",
+  plugin: "Connected",
+  heartbeat: server.online ? "Live" : "Awaiting signal",
+  events: "—",
+  discovery: server.publicListing,
+  accessType: server.access.type,
+  teamRole: server.access.role,
+  permissions: server.access.permissions,
+});
 
 const trendBars = [42, 48, 44, 58, 64, 61, 74, 71, 83, 78, 91, 88, 96, 92];
 const retentionBars = [100, 72, 58, 49, 43, 39, 36];
@@ -137,6 +188,7 @@ function OwnerHeader({
   action?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const { servers } = useContext(OwnerServersContext);
   return (
     <>
       <div className="owner-page-header">
@@ -157,7 +209,7 @@ function OwnerHeader({
             </button>
             {open && (
               <div>
-                {registeredServers.map((item) => (
+                {servers.map((item) => (
                   <button
                     className={item.id === server.id ? "active" : ""}
                     key={item.id}
@@ -167,7 +219,7 @@ function OwnerHeader({
                     }}
                   >
                     <span className="owner-server-mark">{item.name.slice(0, 2).toUpperCase()}</span>
-                    <span><strong>{item.name}</strong><small>{item.address}</small></span>
+                    <span><strong>{item.name}</strong><small>{item.address}</small>{item.accessType === "TEAM" && <em className="owner-team-chip">Team · {item.teamRole?.toLowerCase()}</em>}</span>
                     <StatusDot status={item.status} />
                   </button>
                 ))}
@@ -192,15 +244,25 @@ function OwnerHeader({
 export function OwnerPlatform() {
   const location = useLocation();
   const [server, setServer] = useState(registeredServers[0]!);
+  const [servers, setServers] = useState(registeredServers);
   const path = location.pathname;
 
-  if (path.includes("campaigns/new")) return <CampaignBuilder server={server} setServer={setServer} />;
-  if (path.includes("servers/new")) return <RegisterServer server={server} setServer={setServer} />;
-  if (path.includes("analytics")) return <OwnerAnalytics server={server} setServer={setServer} />;
-  if (path.includes("integrations")) return <PluginServers server={server} setServer={setServer} />;
-  if (path.includes("balance")) return <OwnerSparks server={server} setServer={setServer} />;
-  if (path.includes("settings")) return <OwnerSettings server={server} setServer={setServer} />;
-  return <OwnerDashboard server={server} setServer={setServer} />;
+  const refreshServers = async () => {
+    const mapped = (await api<AccessibleServer[]>("/owner/servers")).map(mapAccessibleServer);
+    setServers(mapped);
+    if (mapped.length && !mapped.some((item) => item.id === server.id)) setServer(mapped[0]!);
+  };
+
+  useEffect(() => { refreshServers().catch(() => undefined); }, []);
+
+  const content = path.includes("campaigns/new") ? <CampaignBuilder server={server} setServer={setServer} />
+    : path.includes("servers/new") ? <RegisterServer server={server} setServer={setServer} />
+    : path.includes("analytics") ? <OwnerAnalytics server={server} setServer={setServer} />
+    : path.includes("integrations") ? <PluginServers server={server} setServer={setServer} />
+    : path.includes("balance") ? <OwnerSparks server={server} setServer={setServer} />
+    : path.includes("settings") ? <OwnerSettings server={server} setServer={setServer} />
+    : <OwnerDashboard server={server} setServer={setServer} />;
+  return <OwnerServersContext.Provider value={{ servers, refreshServers }}>{content}</OwnerServersContext.Provider>;
 }
 
 function OwnerDashboard({
@@ -441,11 +503,13 @@ function PluginServers({
   server: ServerRecord;
   setServer: (server: ServerRecord) => void;
 }) {
-  const [servers, setServers] = useState(registeredServers);
+  const { servers: accessibleServers } = useContext(OwnerServersContext);
+  const [servers, setServers] = useState(accessibleServers);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState("");
   const filtered = useMemo(() => servers.filter((item) => `${item.name} ${item.address} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [query, servers]);
   const togglePause = (id: string) => setServers((items) => items.map((item) => item.id === id ? { ...item, status: item.status === "Paused" ? "Live" : "Paused" } : item));
+  useEffect(() => setServers(accessibleServers), [accessibleServers]);
 
   return (
     <div className="dashboard-page owner-platform">
@@ -472,7 +536,7 @@ function PluginServers({
         {filtered.map((item) => (
           <article className="owner-registry-row" key={item.id}>
             <button className="owner-server-mark" onClick={() => setServer(item)}>{item.name.slice(0, 2).toUpperCase()}</button>
-            <div className="owner-registry-row__identity"><strong>{item.name}</strong><span>{item.address} · Minecraft {item.version}</span><StatusDot status={item.status} /></div>
+            <div className="owner-registry-row__identity"><strong>{item.name}</strong><span>{item.address} · Minecraft {item.version}</span><StatusDot status={item.status} />{item.accessType === "TEAM" && <i className="owner-access-label">Team access · {item.teamRole?.toLowerCase()}</i>}</div>
             <div><small>Plugin</small><strong>{item.plugin}</strong><span>{item.id === "factions-legacy" ? "Update available" : "Current"}</span></div>
             <div><small>Last heartbeat</small><strong>{item.heartbeat}</strong><span>{item.status === "Attention" ? "Delayed" : "Normal"}</span></div>
             <div><small>Events this month</small><strong>{item.events}</strong><span>{item.id === "skyblock-x" ? "99.9% accepted" : "99.7% accepted"}</span></div>
@@ -531,6 +595,77 @@ function OwnerSettings({
   const [incidentAlerts, setIncidentAlerts] = useState(true);
   const [saved, setSaved] = useState(false);
   const [section, setSection] = useState("Discovery");
+  const [teamInvites, setTeamInvites] = useState<TeamInvite[]>([]);
+  const [team, setTeam] = useState<TeamOverview | null>(null);
+  const [inviteUsername, setInviteUsername] = useState("");
+  const [inviteRole, setInviteRole] = useState<TeamInvite["role"]>("MANAGER");
+  const [teamMessage, setTeamMessage] = useState("");
+  const [teamBusy, setTeamBusy] = useState("");
+  const { refreshServers } = useContext(OwnerServersContext);
+
+  const loadTeam = async () => {
+    const invitations = await api<TeamInvite[]>("/team/invites");
+    setTeamInvites(invitations);
+    if (server.accessType !== "TEAM") {
+      const overview = await api<TeamOverview>(`/owner/servers/${server.id}/team`).catch(() => null);
+      setTeam(overview);
+    } else setTeam(null);
+  };
+
+  useEffect(() => { loadTeam().catch(() => undefined); }, [server.id, server.accessType]);
+
+  const answerInvite = async (inviteId: string, action: "ACCEPT" | "DECLINE") => {
+    setTeamBusy(inviteId);
+    setTeamMessage("");
+    try {
+      await api(`/team/invites/${inviteId}`, { method: "PATCH", body: JSON.stringify({ action }) });
+      setTeamMessage(action === "ACCEPT" ? "Invite accepted. The server is now available in your management workspace." : "Invite declined.");
+      await Promise.all([loadTeam(), refreshServers()]);
+    } catch (error) { setTeamMessage(error instanceof Error ? error.message : "The invite could not be updated."); }
+    finally { setTeamBusy(""); }
+  };
+
+  const sendInvite = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setTeamBusy("send");
+    setTeamMessage("");
+    try {
+      await api(`/owner/servers/${server.id}/team/invites`, { method: "POST", body: JSON.stringify({ username: inviteUsername.replace(/^@/, ""), role: inviteRole }) });
+      setInviteUsername("");
+      setTeamMessage("Invite sent. It will remain available for seven days.");
+      await loadTeam();
+    } catch (error) { setTeamMessage(error instanceof Error ? error.message : "The invite could not be sent."); }
+    finally { setTeamBusy(""); }
+  };
+
+  const changeMemberRole = async (memberId: string, role: TeamInvite["role"]) => {
+    setTeamBusy(memberId);
+    try {
+      await api(`/owner/servers/${server.id}/team/members/${memberId}`, { method: "PATCH", body: JSON.stringify({ role }) });
+      await loadTeam();
+    } catch (error) { setTeamMessage(error instanceof Error ? error.message : "The member role could not be changed."); }
+    finally { setTeamBusy(""); }
+  };
+
+  const removeMember = async (memberId: string) => {
+    setTeamBusy(memberId);
+    try {
+      await api(`/owner/servers/${server.id}/team/members/${memberId}`, { method: "DELETE" });
+      setTeamMessage("Team access revoked.");
+      await loadTeam();
+    } catch (error) { setTeamMessage(error instanceof Error ? error.message : "Access could not be revoked."); }
+    finally { setTeamBusy(""); }
+  };
+
+  const revokeInvite = async (inviteId: string) => {
+    setTeamBusy(inviteId);
+    try {
+      await api(`/owner/servers/${server.id}/team/invites/${inviteId}`, { method: "DELETE" });
+      setTeamMessage("Pending invite revoked.");
+      await loadTeam();
+    } catch (error) { setTeamMessage(error instanceof Error ? error.message : "The invite could not be revoked."); }
+    finally { setTeamBusy(""); }
+  };
 
   const groups = ["Discovery", "Sparks", "Notifications", "Data & privacy", "Team access", "Security"];
   return (
@@ -579,13 +714,35 @@ function OwnerSettings({
           )}
           {section === "Team access" && (
             <>
-              <SettingsHeading icon={Users} title="Team access" description="Invite teammates and restrict sensitive analytics or configuration capabilities." />
-              {([
-                ["Samet W.", "Owner", "All servers", "Active"],
-                ["Maya Chen", "Analyst", "Skyblock X, PrisonCraft", "Active"],
-                ["Leo Parks", "Campaign manager", "Skyblock X", "Invited"],
-              ] as const).map(([name, role, scope, state]) => <div className="owner-team-row" key={name}><span className="avatar avatar--small">{name.slice(0, 2)}</span><span><strong>{name}</strong><small>{scope}</small></span><select defaultValue={role}><option>Owner</option><option>Analyst</option><option>Campaign manager</option><option>Server operator</option></select><i>{state}</i><button><MoreHorizontal /></button></div>)}
-              <button className="owner-settings-action"><UserPlus /> Invite team member</button>
+              <SettingsHeading icon={Users} title="Team access" description="Accept invitations sent to you or invite Nortix users by username to this server." />
+              <section className="owner-team-section">
+                <div className="owner-team-section__heading"><div><h3>Your invitations</h3><p>Accepted servers appear in the server picker and connected-server registry even when you are not the owner.</p></div><span>{teamInvites.length} pending</span></div>
+                {teamInvites.length === 0 ? <div className="owner-team-empty"><CheckCircle2 /><span><strong>No pending invitations</strong><small>New team invitations for your account will appear here.</small></span></div> : teamInvites.map((invite) => (
+                  <div className="owner-invite-row" key={invite.id}>
+                    <span className="owner-server-mark">{invite.server.name.slice(0, 2).toUpperCase()}</span>
+                    <span><strong>{invite.server.name}</strong><small>@{invite.inviter.username} invited you as {invite.role.toLowerCase()} · expires {new Date(invite.expiresAt).toLocaleDateString()}</small></span>
+                    <button className="owner-invite-decline" disabled={teamBusy === invite.id} onClick={() => answerInvite(invite.id, "DECLINE")}><X /> Decline</button>
+                    <button className="button button--primary" disabled={teamBusy === invite.id} onClick={() => answerInvite(invite.id, "ACCEPT")}><Check /> Accept</button>
+                  </div>
+                ))}
+              </section>
+              {teamMessage && <div className="owner-team-message" role="status">{teamMessage}</div>}
+              {server.accessType === "TEAM" ? (
+                <div className="owner-setting-note"><Users /><span><strong>You manage {server.name} as a {server.teamRole?.toLowerCase()}.</strong><p>This server is owned by another Nortix user. Your available workspace areas are based on the role they assigned.</p></span></div>
+              ) : (
+                <section className="owner-team-section">
+                  <div className="owner-team-section__heading"><div><h3>{server.name} team</h3><p>Only the owner can invite, change roles, or revoke access. Invitees must already have a Nortix account.</p></div></div>
+                  <form className="owner-invite-form" onSubmit={sendInvite}>
+                    <label><span>Username</span><div><b>@</b><input required minLength={2} maxLength={32} value={inviteUsername} onChange={(event) => setInviteUsername(event.target.value)} placeholder="nortix_username" /></div></label>
+                    <label><span>Role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TeamInvite["role"])}><option value="ADMIN">Admin</option><option value="MANAGER">Campaign manager</option><option value="OPERATOR">Server operator</option><option value="ANALYST">Analyst</option></select></label>
+                    <button className="button button--primary" disabled={teamBusy === "send"}><UserPlus />{teamBusy === "send" ? "Sending…" : "Send invite"}</button>
+                  </form>
+                  <div className="owner-role-guide"><span><strong>Admin</strong><small>All management areas and team controls</small></span><span><strong>Manager</strong><small>Campaigns and analytics</small></span><span><strong>Operator</strong><small>Server settings and integrations</small></span><span><strong>Analyst</strong><small>Analytics only</small></span></div>
+                  <div className="owner-team-row"><span className="avatar avatar--small">{team?.owner.displayName.slice(0, 2).toUpperCase() ?? "OW"}</span><span><strong>{team?.owner.displayName ?? "Server owner"}</strong><small>@{team?.owner.username ?? "owner"}</small></span><b>Owner</b><i>Active</i><span /></div>
+                  {team?.members.map((member) => <div className="owner-team-row" key={member.id}><span className="avatar avatar--small">{member.user.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{member.user.displayName}</strong><small>@{member.user.username}</small></span><select disabled={teamBusy === member.id} value={member.role} onChange={(event) => changeMemberRole(member.id, event.target.value as TeamInvite["role"])}><option value="ADMIN">Admin</option><option value="MANAGER">Campaign manager</option><option value="OPERATOR">Server operator</option><option value="ANALYST">Analyst</option></select><i>Active</i><button disabled={teamBusy === member.id} onClick={() => removeMember(member.id)} aria-label={`Revoke ${member.user.displayName}'s access`}><X /></button></div>)}
+                  {team?.invites.map((invite) => <div className="owner-team-row is-pending" key={invite.id}><span className="avatar avatar--small">{invite.invitee.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{invite.invitee.displayName}</strong><small>@{invite.invitee.username}</small></span><b>{invite.role.toLowerCase()}</b><i>Pending</i><button disabled={teamBusy === invite.id} onClick={() => revokeInvite(invite.id)} aria-label={`Revoke invitation for ${invite.invitee.displayName}`}><X /></button></div>)}
+                </section>
+              )}
             </>
           )}
           {section === "Security" && (
