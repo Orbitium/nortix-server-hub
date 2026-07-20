@@ -232,15 +232,14 @@ const titles = [
 
 export const campaigns: DemoCampaign[] = titles.map((title, index) => {
   const server = servers[index]!;
-  const rewardCents = 300 + index * 40;
   return {
     id: `campaign-${index + 1}`,
     title,
     description: `Help ${server.name} test its first-session experience and share specific, useful feedback.`,
     server,
     version: server.versions.at(-1)!,
-    rewardCents,
-    sparks: 1000 + index * 150,
+    rewardCents: 0,
+    sparks: Math.max(65, 100 - index * 5),
     duration: `${35 + index * 5}–${55 + index * 5} min`,
     participants: 42 + index * 17,
     difficulty: index < 3 ? "Easy" : index < 6 ? "Moderate" : "Advanced",
@@ -253,24 +252,24 @@ export const campaigns: DemoCampaign[] = titles.map((title, index) => {
         id: `m-${index}-1`,
         title: "Connect and begin",
         description: "Join using the provided server address and start the welcome path.",
-        rewardCents: 50,
-        sparks: 150,
+        rewardCents: 0,
+        sparks: 25,
         duration: "5 min",
       },
       {
         id: `m-${index}-2`,
         title: "Complete the welcome path",
         description: "Finish the guided tutorial and submit the completion screen.",
-        rewardCents: 125 + index * 10,
-        sparks: 350,
+        rewardCents: 0,
+        sparks: 35,
         duration: `${20 + index * 3} min`,
       },
       {
         id: `m-${index}-3`,
         title: "Share structured feedback",
         description: "Tell the team what was clear, confusing, smooth, or frustrating.",
-        rewardCents: rewardCents - 175 - index * 10,
-        sparks: 500 + index * 150,
+        rewardCents: 0,
+        sparks: Math.max(5, 40 - index * 5),
         duration: "10 min",
       },
     ],
@@ -309,14 +308,6 @@ export const cosmetics = [
     price: 3200,
     rarity: "Rare",
     className: "cosmetic--forest",
-  },
-  {
-    id: "first-badge",
-    name: "Early Explorer",
-    type: "Badge",
-    price: 1500,
-    rarity: "Uncommon",
-    className: "cosmetic--badge",
   },
   {
     id: "signal-name",

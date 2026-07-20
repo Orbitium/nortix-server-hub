@@ -13,7 +13,6 @@ import {
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Button } from "@nortix/ui";
-import { formatMoney } from "@nortix/shared";
 import { campaigns } from "../features/demo-data";
 import { Modal } from "./Modal";
 
@@ -58,13 +57,13 @@ export function CampaignDetailRedesign() {
         </div>
 
         <aside className="campaign-v2__join">
-          <small>Available reward</small>
+          <small>Potential reward</small>
           <div className="campaign-v2__reward">
-            <strong>{formatMoney(campaign.rewardCents)}</strong>
+            <strong>Up to {campaign.sparks}</strong>
             <Info />
           </div>
           <span>
-            <Sparkles /> {campaign.sparks.toLocaleString()} Sparks
+            <Sparkles /> Sparks
           </span>
           <hr />
           <dl>
@@ -96,7 +95,7 @@ export function CampaignDetailRedesign() {
               Join campaign <ChevronRight />
             </button>
           )}
-          <small>Rewards are issued after milestone verification.</small>
+          <small>Eligible activity may receive Sparks after verification.</small>
         </aside>
       </section>
 
@@ -116,9 +115,8 @@ export function CampaignDetailRedesign() {
                   </small>
                 </div>
                 <div className="campaign-v2__milestone-reward">
-                  <strong>{formatMoney(milestone.rewardCents)}</strong>
                   <span>
-                    <Sparkles /> {milestone.sparks.toLocaleString()}
+                    <Sparkles /> Up to {milestone.sparks}
                   </span>
                 </div>
               </article>
@@ -127,8 +125,8 @@ export function CampaignDetailRedesign() {
           <div className="campaign-v2__complete">
             <Star />
             <span>
-              Complete all steps to earn <strong>{formatMoney(campaign.rewardCents)}</strong> and{" "}
-              <b>{campaign.sparks.toLocaleString()} Sparks!</b>
+              Completing all verified steps could provide{" "}
+              <b>up to {campaign.sparks.toLocaleString()} Sparks.</b>
             </span>
           </div>
         </section>
@@ -138,12 +136,8 @@ export function CampaignDetailRedesign() {
             <h2>Reward summary</h2>
             <dl>
               <div>
-                <dt>Milestone rewards</dt>
-                <dd>{formatMoney(campaign.rewardCents)}</dd>
-              </div>
-              <div>
-                <dt>Sparks</dt>
-                <dd>{campaign.sparks.toLocaleString()}</dd>
+                <dt>Potential Sparks</dt>
+                <dd>Up to {campaign.sparks.toLocaleString()}</dd>
               </div>
               <div>
                 <dt>Verification</dt>
@@ -193,10 +187,10 @@ export function CampaignDetailRedesign() {
               Review these terms before joining <strong>{campaign.title}</strong>.
             </p>
             <ul className="modal-list">
-              <li>Rewards are added only after each milestone is verified.</li>
+              <li>Verified milestones may provide Sparks up to the published limit.</li>
               <li>Duplicated, fraudulent, or incomplete submissions may be rejected.</li>
               <li>The server’s community rules still apply while you participate.</li>
-              <li>You may leave at any time; incomplete milestones are not rewarded.</li>
+              <li>You may leave at any time; incomplete milestones would not qualify.</li>
             </ul>
             <label className="checkbox-row">
               <input

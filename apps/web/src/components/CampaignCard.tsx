@@ -1,7 +1,6 @@
 import { Clock3, Gamepad2, Globe2, Signal, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, Sparks, VerifiedBadge } from "@nortix/ui";
-import { formatMoney } from "@nortix/shared";
 import type { DemoCampaign } from "../features/demo-data";
 
 export function CampaignCard({
@@ -54,10 +53,10 @@ export function CampaignCard({
         </div>
         <div className="campaign-card__footer">
           <div>
-            <small>Available reward</small>
-            <strong>{formatMoney(campaign.rewardCents)}</strong>
+            <small>Potential campaign reward</small>
+            <strong>Up to {campaign.sparks} Sparks</strong>
           </div>
-          <Sparks value={`${campaign.sparks.toLocaleString()} Sparks`} />
+          <Sparks value="Subject to verification" />
           <Link className="button button--secondary button--small" to={`/campaigns/${campaign.id}`}>
             <Gamepad2 size={15} /> View playtest
           </Link>

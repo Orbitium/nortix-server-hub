@@ -2,10 +2,10 @@ import { ArrowRight, BadgeCheck, Compass, Gamepad2, Search, Sparkles, Users } fr
 import { Link } from "react-router-dom";
 
 const featured = [
-  ["HOT", "Skyblock X", "Skyblock", "Economy", "1.20.4", "$2.50", "1,243", 0],
-  ["NEW", "PrisonCraft", "Prison", "PvP", "1.20.2", "$1.80", "982", 1],
-  ["HIGH PAYING", "Lifesteal SMP", "SMP", "PvP", "1.20.4", "$3.00", "765", 2],
-  ["TRENDING", "Factions Legacy", "Factions", "PvP", "1.20.4", "$2.10", "654", 3],
+  ["HOT", "Skyblock X", "Skyblock", "Economy", "1.20.4", "Up to 100 Sparks", "1,243", 0],
+  ["NEW", "PrisonCraft", "Prison", "PvP", "1.20.2", "Up to 95 Sparks", "982", 1],
+  ["ACTIVE", "Lifesteal SMP", "SMP", "PvP", "1.20.4", "Up to 90 Sparks", "765", 2],
+  ["TRENDING", "Factions Legacy", "Factions", "PvP", "1.20.4", "Up to 85 Sparks", "654", 3],
 ] as const;
 
 const campaignRows = [
@@ -15,7 +15,7 @@ const campaignRows = [
     "Survival",
     "Vanilla",
     "1.20.4",
-    "$0.90",
+    "Up to 65",
     "423",
     7,
   ],
@@ -25,7 +25,7 @@ const campaignRows = [
     "RPG",
     "Quests",
     "1.20.2",
-    "$1.60",
+    "Up to 80",
     "331",
     4,
   ],
@@ -35,7 +35,7 @@ const campaignRows = [
     "Minigames",
     "Bedwars",
     "1.20.4",
-    "$1.25",
+    "Up to 75",
     "812",
     5,
   ],
@@ -45,7 +45,7 @@ const campaignRows = [
     "Skyblock",
     "Survival",
     "1.20.2",
-    "$1.10",
+    "Up to 70",
     "298",
     6,
   ],
@@ -57,9 +57,9 @@ export function ReferenceDashboardHome() {
       <section className="home-hero">
         <div className="home-hero__media" aria-label="Campaign artwork placeholder" />
         <div className="home-hero__copy">
-          <span>PLAY. TEST. EARN.</span>
+          <span>PLAY. TEST. CONTRIBUTE.</span>
           <h1>Make every session count.</h1>
-          <p>Help ambitious Minecraft servers grow and earn verified rewards.</p>
+          <p>Help ambitious Minecraft servers grow. Verified activity may receive Sparks.</p>
           <div>
             <Link className="button button--primary" to="/dashboard/campaigns">
               <Gamepad2 /> Browse campaigns
@@ -77,7 +77,7 @@ export function ReferenceDashboardHome() {
             <h2>
               <Sparkles /> Featured campaigns
             </h2>
-            <p>Hand-picked campaigns with standout rewards.</p>
+            <p>Hand-picked campaigns that may offer up to 100 Sparks.</p>
           </div>
           <Link to="/dashboard/campaigns">
             View all <ArrowRight />
@@ -155,7 +155,7 @@ export function ReferenceDashboardHome() {
                   <span>{mode}</span>
                   <span>{version}</span>
                 </div>
-                <strong>{reward}</strong>
+                <strong>{reward} Sparks</strong>
                 <span className="campaign-row__players">
                   <Users /> {players}
                 </span>

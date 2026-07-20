@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  BadgeCheck,
   Check,
   CheckCircle2,
   CircleDollarSign,
@@ -15,7 +14,6 @@ import {
   Heart,
   History,
   LockKeyhole,
-  Medal,
   MessageSquareText,
   MoreHorizontal,
   Palette,
@@ -263,10 +261,10 @@ export function DashboardCampaignsPage() {
     <div className="dashboard-page">
       <PageHeading
         title="Campaigns"
-        description="Complete verified playtests and receive rewards for useful participation."
+        description="Explore optional playtests that may provide Sparks after verification."
       />
       <div className="tabs">
-        {["Recommended", "Newest", "Highest reward", "Short sessions"].map((item) => (
+        {["Recommended", "Newest", "Highest Sparks limit", "Short sessions"].map((item) => (
           <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>
             {item}
           </button>
@@ -287,7 +285,7 @@ export function ProgressPage() {
     <div className="dashboard-page">
       <PageHeading
         title="My Progress"
-        description="Track milestones, reviews, feedback, and verified rewards."
+        description="Track milestones, reviews, feedback, and potential Sparks."
       />
       <div className="summary-strip">
         <span>
@@ -299,11 +297,11 @@ export function ProgressPage() {
           <strong>14</strong>
         </span>
         <span>
-          <small>Pending earnings</small>
-          <strong>$4.60</strong>
+          <small>Potential Sparks</small>
+          <strong>Up to 100</strong>
         </span>
         <span>
-          <small>Sparks earned</small>
+          <small>Verified Sparks</small>
           <strong>18,240</strong>
         </span>
       </div>
@@ -330,11 +328,11 @@ export function ProgressPage() {
               <CheckCircle2 />
               <span>
                 <strong>Connect and begin</strong>
-                <small>Verified July 17 · Reward issued</small>
+                <small>Verified July 17 · Sparks eligibility reviewed</small>
               </span>
               <div>
-                <strong>$0.50</strong>
-                <Sparks value="150" />
+                <strong>Up to 25</strong>
+                <Sparks value="Sparks" />
               </div>
             </div>
             <div className="current">
@@ -344,8 +342,8 @@ export function ProgressPage() {
                 <small>Evidence ready to submit</small>
               </span>
               <div>
-                <strong>$1.25</strong>
-                <Sparks value="350" />
+                <strong>Up to 35</strong>
+                <Sparks value="Sparks" />
               </div>
             </div>
             <div>
@@ -355,8 +353,8 @@ export function ProgressPage() {
                 <small>Unlocks after milestone 2</small>
               </span>
               <div>
-                <strong>$1.25</strong>
-                <Sparks value="500" />
+                <strong>Up to 40</strong>
+                <Sparks value="Sparks" />
               </div>
             </div>
           </div>
@@ -554,13 +552,13 @@ export function QuestsPage() {
     <div className="dashboard-page">
       <PageHeading
         title="Quests"
-        description="Complete optional platform activities to earn Sparks and cosmetic progression."
+        description="Complete optional platform activities that may qualify for Sparks."
       />
       <Card className="quest-hero">
         <div>
           <Badge tone="purple">DAILY SET</Badge>
-          <h2>3 quests · 600 Sparks available</h2>
-          <p>Daily quests reset in 2h 18m. They never increase withdrawable earnings.</p>
+          <h2>3 quests · up to 60 Sparks may be available</h2>
+          <p>Daily quests reset in 2h 18m. Completion could require verification.</p>
         </div>
         <div className="streak-large">
           <Flame />
@@ -574,37 +572,10 @@ export function QuestsPage() {
             <span className="quest-icon">
               <Icon />
             </span>
-            <Badge tone="purple">+{reward} Sparks</Badge>
+            <Badge tone="purple">Up to {Math.min(reward, 25)} Sparks</Badge>
             <h3>{title}</h3>
             <p>{description}</p>
             <ProgressBar value={(progress / target) * 100} label={`${progress} of ${target}`} />
-          </Card>
-        ))}
-      </div>
-      <PageHeading
-        title="Achievements"
-        description="Long-term recognition for honest, useful participation."
-      />
-      <div className="badge-grid">
-        {[
-          "First Signal",
-          "Sharp Eye",
-          "Returning Player",
-          "Tutorial Guide",
-          "Ten Playtests",
-          "Community Voice",
-        ].map((name, index) => (
-          <Card key={name} className={index > 2 ? "locked" : ""}>
-            <span className="badge-medallion">
-              <Medal />
-            </span>
-            <h3>{name}</h3>
-            <p>
-              {index > 2
-                ? "Keep testing to unlock this badge."
-                : "Earned through verified participation."}
-            </p>
-            {index > 2 ? <LockKeyhole /> : <Badge tone="success">Earned</Badge>}
           </Card>
         ))}
       </div>
@@ -629,10 +600,10 @@ export function SparksShopPage() {
       <Card className="sparks-disclaimer">
         <Sparkles />
         <div>
-          <h3>Sparks are for progression, not payouts.</h3>
+          <h3>Sparks are optional platform points.</h3>
           <p>
-            Sparks have no cash value, cannot be transferred, withdrawn, or exchanged for Earnings,
-            and never guarantee higher real-money rewards.
+            Sparks have no cash value, cannot be transferred or withdrawn, and may be used only for
+            eligible platform features.
           </p>
         </div>
       </Card>
@@ -640,12 +611,11 @@ export function SparksShopPage() {
         <button className="active">Featured</button>
         <button>Frames</button>
         <button>Backgrounds</button>
-        <button>Badges</button>
         <button>Name effects</button>
         <button>Seasonal</button>
       </div>
       <div className="cosmetic-grid">
-        {cosmetics.map((item) => (
+        {cosmetics.filter((item) => item.type !== "Badge").map((item) => (
           <Card key={item.id} className="cosmetic-card">
             <div className={`cosmetic-preview ${item.className}`}>
               <Palette />
@@ -669,7 +639,7 @@ export function SparksShopPage() {
             </div>
             <p>
               This cosmetic costs <strong>{selected.price.toLocaleString()} Sparks</strong>. Your
-              Earnings balance will not be affected.
+              Your remaining Sparks balance will update after confirmation.
             </p>
             <div className="withdraw-summary">
               <span>
@@ -874,7 +844,7 @@ export function ReferralsPage() {
           <h2>Bring better testers into the loop.</h2>
           <p>
             When a referred friend verifies their profile and completes a first honest playtest, you
-            both receive 500 Sparks. Referral rewards never increase Earnings.
+            each account may receive up to 50 Sparks after eligibility checks.
           </p>
           <div className="referral-code">
             <code>NORTIX-QUARTZ-7H2K</code>
@@ -959,7 +929,7 @@ export function ProfilePage() {
     <div className="dashboard-page">
       <PageHeading
         title="Profile"
-        description="Your public tester identity, reputation, badges, and cosmetic loadout."
+        description="Your public tester identity, reputation, and cosmetic loadout."
         action={
           <button className="button button--secondary">
             <Settings /> Edit profile
@@ -973,7 +943,7 @@ export function ProfilePage() {
         <div className="profile-card__body">
           <div>
             <h1>
-              QuartzTester <BadgeCheck />
+              QuartzTester <ShieldCheck />
             </h1>
             <p>@quartztester · Joined February 2026</p>
             <div className="chip-row">
@@ -1008,18 +978,11 @@ export function ProfilePage() {
       </Card>
       <div className="profile-grid">
         <Card>
-          <h2>Badge showcase</h2>
-          <div className="profile-badges">
-            {["First Signal", "Sharp Eye", "Returning Player"].map((name) => (
-              <div key={name}>
-                <Medal />
-                <strong>{name}</strong>
-              </div>
-            ))}
-            <button>
-              <PlusPlaceholder />
-              Add slot
-            </button>
+          <h2>Participation summary</h2>
+          <p>Verified activity may contribute to reputation and future campaign matching.</p>
+          <div className="profile-stats">
+            <span><strong>14</strong><small>Campaigns reviewed</small></span>
+            <span><strong>92%</strong><small>Useful responses</small></span>
           </div>
         </Card>
         <Card>
@@ -1036,10 +999,6 @@ export function ProfilePage() {
       </div>
     </div>
   );
-}
-
-function PlusPlaceholder() {
-  return <span aria-hidden>+</span>;
 }
 
 export function PlaceholderDashboardPage({

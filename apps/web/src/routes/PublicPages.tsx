@@ -462,7 +462,7 @@ export function ServerDetailPage() {
             <div className="section-heading">
               <div>
                 <h2>Active playtests</h2>
-                <p>Earn rewards by helping this server improve.</p>
+                <p>Eligible activity may receive Sparks while helping this server improve.</p>
               </div>
             </div>
             {related.length ? (
