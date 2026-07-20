@@ -138,21 +138,32 @@ Start the complete public stack:
 docker compose --profile tunnel up -d --build
 ```
 
+The tunnel stack does not publish a host HTTP port. Cloudflared reaches Nginx at
+`http://web:80` over the private Compose network, avoiding conflicts with ports
+already used by a host web server or another container.
+
 For local Docker testing without Cloudflare:
 
 ```bash
 # Set AUTH_MODE=mock in .env for local-only evaluation.
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
 Open `http://localhost:8080`. The browser still uses `/api/v1`, so the same-origin
 proxy path is exercised locally. Check container readiness with:
 
 ```bash
-docker compose ps
-docker compose logs migrate
+docker compose -f docker-compose.yml -f docker-compose.local.yml ps
+docker compose -f docker-compose.yml -f docker-compose.local.yml logs migrate
 curl http://localhost:8080/healthz
 curl http://localhost:8080/api/health
+```
+
+If port 8080 is already used during local testing, set another loopback port without
+changing the Compose files:
+
+```bash
+HTTP_PORT=8081 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
 Prisma Client generation and all required workspace builds happen while the API
