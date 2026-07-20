@@ -126,6 +126,15 @@ export const CampaignInputSchema = z
 export const JoinCampaignSchema = z.object({
   acceptedTerms: z.literal(true),
   minecraftIdentityId: z.string().optional(),
+  crackedAccountLinkId: z.string().optional(),
+}).refine(
+  (value) => !(value.minecraftIdentityId && value.crackedAccountLinkId),
+  "Choose either a premium identity or a server-scoped cracked account.",
+);
+
+export const CrackedAccountClaimSchema = z.object({
+  serverId: z.string().min(1),
+  minecraftUsername: z.string().trim().regex(/^[A-Za-z0-9_]{3,16}$/),
 });
 
 export const MilestoneSubmissionSchema = z.object({

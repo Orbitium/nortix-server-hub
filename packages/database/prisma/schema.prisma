@@ -160,6 +160,21 @@ enum TeamInviteStatus {
   EXPIRED
 }
 
+enum IdentityClaimStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum CrackedLinkStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  RELEASED
+  PLAYED_BEFORE
+}
+
 model User {
   id                     String                    @id @default(cuid())
   firebaseUid            String                    @unique
@@ -208,6 +223,9 @@ model User {
   auditLogs              AuditLog[]                @relation("AuditActor")
   userQuests             UserQuest[]
   badgeAwards            BadgeAward[]
+  premiumIdentityClaims  PremiumIdentityClaim[]
+  crackedAccountLinks    CrackedAccountLink[]
+  minecraftIdentityActivity MinecraftIdentityActivity[]
 
   @@index([status])
   @@index([reputationScore])
@@ -226,6 +244,37 @@ model MinecraftIdentity {
   participations    CampaignParticipation[]
 
   @@index([userId])
+}
+
+model PremiumIdentityClaim {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash    String              @unique
+  status      IdentityClaimStatus @default(PENDING)
+  expiresAt   DateTime
+  completedAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@index([userId, status, createdAt])
+  @@index([status, expiresAt])
+}
+
+model MinecraftIdentityActivity {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverId          String?
+  server            Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  type              String
+  identityKind      String
+  minecraftUuid     String?
+  minecraftUsername String?
+  metadata          Json     @default("{}")
+  createdAt         DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([serverId, createdAt])
 }
 
 model Server {
@@ -260,6 +309,7 @@ model Server {
   pluginCapabilities Json               @default("[]")
   pluginLastSeenAt   DateTime?
   pluginInstanceId   String?
+  playerHistorySyncedAt DateTime?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   verifications      ServerVerification[]
@@ -269,10 +319,47 @@ model Server {
   integrationKeys    IntegrationApiKey[]
   teamMembers        ServerTeamMember[]
   teamInvites        ServerTeamInvite[]
+  crackedAccountLinks CrackedAccountLink[]
+  playerPresences    ServerPlayerPresence[]
+  minecraftIdentityActivity MinecraftIdentityActivity[]
 
   @@index([ownerId])
   @@index([verificationParentId])
   @@index([publicListing, moderationStatus])
+}
+
+model ServerPlayerPresence {
+  id                 String   @id @default(cuid())
+  serverId           String
+  server             Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  normalizedUsername String
+  minecraftUsername  String
+  firstSeenAt        DateTime @default(now())
+  lastSeenAt         DateTime @default(now())
+
+  @@unique([serverId, normalizedUsername])
+  @@index([serverId, lastSeenAt])
+}
+
+model CrackedAccountLink {
+  id                 String            @id @default(cuid())
+  userId             String
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverId           String
+  server             Server            @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  minecraftUsername  String
+  normalizedUsername String
+  status             CrackedLinkStatus @default(PENDING)
+  reservedAt         DateTime          @default(now())
+  expiresAt          DateTime
+  activatedAt        DateTime?
+  releasedAt         DateTime?
+  releaseReason      String?
+  participations     CampaignParticipation[]
+
+  @@index([userId, reservedAt])
+  @@index([serverId, normalizedUsername, status])
+  @@index([status, expiresAt])
 }
 
 model ServerTeamMember {
@@ -410,6 +497,8 @@ model CampaignParticipation {
   campaign            Campaign               @relation(fields: [campaignId], references: [id])
   minecraftIdentityId String?
   minecraftIdentity   MinecraftIdentity?     @relation(fields: [minecraftIdentityId], references: [id])
+  crackedAccountLinkId String?
+  crackedAccountLink  CrackedAccountLink?    @relation(fields: [crackedAccountLinkId], references: [id])
   status              ParticipationStatus    @default(JOINED)
   currentMilestone    Int                    @default(0)
   eligibilitySnapshot Json
@@ -425,6 +514,7 @@ model CampaignParticipation {
   @@unique([playerId, campaignId])
   @@index([campaignId, status])
   @@index([playerId, status])
+  @@index([crackedAccountLinkId])
 }
 
 model MilestoneCompletion {

@@ -11,7 +11,7 @@ import org.bukkit.event.server.ServerListPingEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class NortixPaperPlugin extends JavaPlugin implements Listener {
-    static final String VERSION = "0.2.0";
+    static final String VERSION = "0.3.0";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private volatile String verificationCode = "";
     private MilestoneReporter reporter;

@@ -9,6 +9,7 @@ import {
   TeamInviteResponseSchema,
   TeamMemberRoleInputSchema,
   WithdrawalInputSchema,
+  CrackedAccountClaimSchema,
 } from "@nortix/shared";
 import {
   CreateServerVerificationSchema,
@@ -16,6 +17,7 @@ import {
   PluginVerificationHandshakeSchema,
   PluginVerificationStatusSchema,
   ServerPluginEventSchema,
+  PluginPlayerHistorySchema,
 } from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
@@ -27,13 +29,16 @@ import {
   validatePluginEvent,
   type ServerPermission,
 } from "../security/policies.js";
+import { verifyPremiumIdentityProof } from "../security/identity-proof.js";
 import { CampaignService } from "./campaigns/service.js";
 import { WithdrawalService } from "./withdrawals/service.js";
 import { ServerVerificationService } from "./server-verification/service.js";
+import { MinecraftIdentityService } from "./minecraft-identities/service.js";
 
 const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
 const serverVerificationService = new ServerVerificationService();
+const minecraftIdentityService = new MinecraftIdentityService();
 
 const requireOwnedServer = async (serverId: string, userId: string) => {
   const server = await prisma.server.findFirst({ where: { id: serverId, ownerId: userId } });
@@ -150,6 +155,12 @@ const sparksPurchaseSchema = z.object({
   itemId: z.string().min(1).max(120),
 }).strict();
 
+const premiumIdentityCompletionSchema = z.object({
+  code: z.string().regex(/^NX-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/),
+  uuid: z.string().uuid(),
+  username: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
+}).strict();
+
 const parsePagination = (query: Record<string, unknown>) => ({
   page: Math.max(1, Number(query.page) || 1),
   pageSize: Math.min(50, Math.max(1, Number(query.pageSize) || 12)),
@@ -158,6 +169,15 @@ const parsePagination = (query: Record<string, unknown>) => ({
 export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   const paymentProvider = new MockPaymentProvider(env.PAYMENT_WEBHOOK_SECRET);
   const payoutProvider = new MockPayoutProvider();
+  const identityCleanupTimer = setInterval(
+    () => minecraftIdentityService.cleanup().catch((error) => app.log.error(
+      { err: error },
+      "minecraft identity cleanup failed",
+    )),
+    5 * 60_000,
+  );
+  identityCleanupTimer.unref();
+  app.addHook("onClose", async () => clearInterval(identityCleanupTimer));
   app.get("/health", async () => ({ status: "ok", service: "nortix-api" }));
 
   app.get("/v1/auth/me", { preHandler: app.authenticate }, async (request) =>
@@ -178,6 +198,73 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       select: selfUserSelect,
     });
   });
+  app.get("/v1/minecraft-identities", { preHandler: app.authenticate }, async (request) =>
+    minecraftIdentityService.list(request.user!.id),
+  );
+  app.post(
+    "/v1/minecraft-identities/premium/claims",
+    { preHandler: app.authenticate, config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
+    async (request, reply) =>
+      reply.code(201).send(await minecraftIdentityService.createPremiumClaim(request.user!.id)),
+  );
+  app.delete(
+    "/v1/minecraft-identities/premium/:identityId",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { identityId } = request.params as { identityId: string };
+      await minecraftIdentityService.unlinkPremium(request.user!.id, identityId);
+      return reply.code(204).send();
+    },
+  );
+  app.post(
+    "/v1/minecraft-identities/cracked/claims",
+    { preHandler: app.authenticate, config: { rateLimit: { max: 6, timeWindow: "1 hour" } } },
+    async (request, reply) => {
+      const input = CrackedAccountClaimSchema.parse(request.body);
+      return reply.code(201).send(
+        await minecraftIdentityService.reserveCracked(
+          request.user!.id,
+          input.serverId,
+          input.minecraftUsername,
+        ),
+      );
+    },
+  );
+  app.delete(
+    "/v1/minecraft-identities/cracked/:linkId",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { linkId } = request.params as { linkId: string };
+      await minecraftIdentityService.releaseCracked(request.user!.id, linkId);
+      return reply.code(204).send();
+    },
+  );
+  app.post(
+    "/v1/plugin/identity/premium/complete",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const input = premiumIdentityCompletionSchema.parse(request.body);
+      const timestamp = String(request.headers["x-nortix-timestamp"] ?? "");
+      const nonce = String(request.headers["x-nortix-nonce"] ?? "");
+      const signature = String(request.headers["x-nortix-signature"] ?? "").toLowerCase();
+      if (!verifyPremiumIdentityProof(
+        env.IDENTITY_VERIFICATION_SECRET,
+        input,
+        { timestamp, nonce, signature },
+      )) {
+        return reply.code(401).send({
+          code: "INVALID_VERIFICATION_PROOF",
+          message: "The identity verification proof is invalid or expired.",
+        });
+      }
+      const identity = await minecraftIdentityService.completePremiumClaim(
+        input.code,
+        input.uuid,
+        input.username,
+      );
+      return reply.code(201).send({ linked: true, identityId: identity.id });
+    },
+  );
   app.get("/v1/users/:username", async (request, reply) => {
     const { username } = request.params as { username: string };
     const user = await prisma.user.findUnique({
@@ -216,6 +303,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         where,
         select: {
           ...publicServerSelect,
+          playerHistorySyncedAt: true,
           _count: { select: { campaigns: true, reviews: true } },
           reviews: { select: { rating: true } },
         },
@@ -225,7 +313,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       }),
       prisma.server.count({ where }),
     ]);
-    return { items, page, pageSize, total };
+    return {
+      items: items.map(({ playerHistorySyncedAt, ...server }) => ({
+        ...server,
+        crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
+      })),
+      page,
+      pageSize,
+      total,
+    };
   });
   app.get("/v1/servers/:slug", async (request, reply) => {
     const { slug } = request.params as { slug: string };
@@ -413,6 +509,40 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     return { accepted: true, serverId: server.id, networkId: server.verificationParentId ?? server.id, capabilities: input.capabilities.length };
   });
 
+  app.post(
+    "/v1/plugin/player-history",
+    { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const input = PluginPlayerHistorySchema.parse(request.body);
+      const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
+      if (credential.server.pluginInstanceId !== input.instanceId) {
+        throw new Error("Plugin instance verification is required before syncing player history.");
+      }
+      const result = await prisma.$transaction(async (tx) => {
+        const inserted = input.players.length
+          ? await tx.serverPlayerPresence.createMany({
+              data: input.players.map((player) => ({
+                serverId: input.serverId,
+                normalizedUsername: player.minecraftUsername.toLowerCase(),
+                minecraftUsername: player.minecraftUsername,
+                firstSeenAt: new Date(player.firstSeenAt),
+                lastSeenAt: new Date(player.firstSeenAt),
+              })),
+              skipDuplicates: true,
+            })
+          : { count: 0 };
+        if (input.complete) {
+          await tx.server.update({
+            where: { id: input.serverId },
+            data: { playerHistorySyncedAt: new Date() },
+          });
+        }
+        return inserted;
+      });
+      return reply.code(202).send({ accepted: true, recorded: result.count });
+    },
+  );
+
   app.post("/v1/plugin/events", { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } }, async (request, reply) => {
     const input = ServerPluginEventSchema.parse(request.body);
     const credential = await authenticateServerPlugin(request.headers.authorization, input.serverId);
@@ -447,14 +577,34 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         metadata: {
           ...validated.metadata,
           minecraftUuid: input.minecraftUuid,
+          minecraftUsername: input.minecraftUsername,
           instanceId: input.instanceId,
           attestation: "UNTRUSTED_SERVER_PLUGIN",
         },
       },
     });
 
-    const identity = await prisma.minecraftIdentity.findUnique({ where: { uuid: input.minecraftUuid } });
-    if (!identity) return reply.code(202).send({ accepted: true, eventId: stored.id, matchedParticipations: 0 });
+    const activatedLink = input.type === "PLAYER_JOIN"
+      ? await minecraftIdentityService.observeServerJoin(
+          input.serverId,
+          input.minecraftUsername,
+          validated.occurredAt,
+        )
+      : null;
+    const [identity, existingCrackedLink] = await Promise.all([
+      prisma.minecraftIdentity.findUnique({ where: { uuid: input.minecraftUuid } }),
+      prisma.crackedAccountLink.findFirst({
+        where: {
+          serverId: input.serverId,
+          normalizedUsername: input.minecraftUsername.toLowerCase(),
+          status: "ACTIVE",
+        },
+      }),
+    ]);
+    const crackedLink = activatedLink ?? existingCrackedLink;
+    if (!identity && !crackedLink) {
+      return reply.code(202).send({ accepted: true, eventId: stored.id, matchedParticipations: 0 });
+    }
     const serverIds = [server.id];
     if (server.verificationParentId) serverIds.push(server.verificationParentId);
     else {
@@ -462,7 +612,14 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       serverIds.push(...children.map((item) => item.id));
     }
     const participations = await prisma.campaignParticipation.findMany({
-      where: { minecraftIdentityId: identity.id, status: { in: ["JOINED", "ACTIVE"] }, campaign: { serverId: { in: serverIds } } },
+      where: {
+        OR: [
+          ...(identity ? [{ minecraftIdentityId: identity.id }] : []),
+          ...(crackedLink ? [{ crackedAccountLinkId: crackedLink.id }] : []),
+        ],
+        status: { in: ["JOINED", "ACTIVE"] },
+        campaign: { serverId: { in: serverIds } },
+      },
       include: { campaign: { include: { milestones: true } } },
     });
     let completed = 0;
@@ -474,7 +631,13 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         const target = Math.max(1, Number(config.target ?? 1));
         const scopedIds = config.scope === "PROXY_NETWORK" ? serverIds : [input.serverId];
         const events = await prisma.analyticsEvent.findMany({
-          where: { serverId: { in: scopedIds }, occurredAt: { gte: participation.joinedAt }, metadata: { path: ["minecraftUuid"], equals: input.minecraftUuid } },
+          where: {
+            serverId: { in: scopedIds },
+            occurredAt: { gte: participation.joinedAt },
+            ...(participation.crackedAccountLinkId
+              ? { metadata: { path: ["minecraftUsername"], equals: input.minecraftUsername } }
+              : { metadata: { path: ["minecraftUuid"], equals: input.minecraftUuid } }),
+          },
           select: { type: true, metadata: true, occurredAt: true },
           orderBy: { occurredAt: "desc" },
           take: 10_000,
@@ -573,7 +736,12 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.post("/v1/campaigns/:id/join", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const input = JoinCampaignSchema.parse(request.body);
-    const result = await campaignService.join(request.user!.id, id, input.minecraftIdentityId);
+    const result = await campaignService.join(
+      request.user!.id,
+      id,
+      input.minecraftIdentityId,
+      input.crackedAccountLinkId,
+    );
     return reply.code(201).send(result);
   });
   app.get("/v1/campaigns/:id/participation", { preHandler: app.authenticate }, async (request) => {

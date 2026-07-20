@@ -94,6 +94,12 @@ export const buildApp = async (env: Env) => {
       "inactive campaign",
       "calculated by the backend",
       "server access",
+      "reserve",
+      "linked",
+      "played on this server",
+      "Minecraft identity",
+      "Minecraft account",
+      "syncing previous player names",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),

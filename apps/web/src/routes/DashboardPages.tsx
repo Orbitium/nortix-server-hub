@@ -14,6 +14,7 @@ import {
   Heart,
   History,
   LockKeyhole,
+  Link2,
   MessageSquareText,
   MoreHorizontal,
   Palette,
@@ -23,10 +24,11 @@ import {
   ShieldCheck,
   Sparkles,
   UserPlus,
+  Unlink2,
   Users,
   WalletCards,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
@@ -34,6 +36,7 @@ import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
 import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
 import { campaigns, cosmetics, leaderboard, servers } from "../features/demo-data";
+import { api } from "../lib/api";
 
 const PageHeading = ({
   eyebrow,
@@ -925,6 +928,95 @@ export function ReferralsPage() {
 }
 
 export function ProfilePage() {
+  type IdentityData = {
+    premium: Array<{ id: string; uuid: string; username: string; createdAt: string }>;
+    cracked: Array<{
+      id: string;
+      minecraftUsername: string;
+      status: "PENDING" | "ACTIVE";
+      expiresAt: string;
+      activatedAt?: string;
+      server: { id: string; name: string; slug: string };
+    }>;
+    activity: Array<{
+      id: string;
+      type: string;
+      identityKind: string;
+      minecraftUsername?: string;
+      createdAt: string;
+      server?: { name: string };
+    }>;
+  };
+  type ServerOption = { id: string; name: string; crackedAccountLinkingAvailable?: boolean };
+  const [identityData, setIdentityData] = useState<IdentityData>({
+    premium: [],
+    cracked: [],
+    activity: [],
+  });
+  const [serverOptions, setServerOptions] = useState<ServerOption[]>([]);
+  const [claim, setClaim] = useState<{ code: string; expiresAt: string; verificationServer: string }>();
+  const [serverId, setServerId] = useState("");
+  const [crackedName, setCrackedName] = useState("");
+  const [identityMessage, setIdentityMessage] = useState("");
+  const [identityBusy, setIdentityBusy] = useState(false);
+
+  const refreshIdentities = async () => {
+    const result = await api<IdentityData>("/minecraft-identities");
+    setIdentityData(result);
+  };
+
+  useEffect(() => {
+    refreshIdentities().catch((error: Error) => setIdentityMessage(error.message));
+    api<{ items: ServerOption[] }>("/servers?pageSize=50")
+      .then((result) => {
+        setServerOptions(result.items);
+        setServerId((current) => current || result.items.find((item) => item.crackedAccountLinkingAvailable)?.id || "");
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const createPremiumClaim = async () => {
+    setIdentityBusy(true);
+    setIdentityMessage("");
+    try {
+      setClaim(await api("/minecraft-identities/premium/claims", { method: "POST", body: "{}" }));
+      await refreshIdentities();
+    } catch (error) {
+      setIdentityMessage((error as Error).message);
+    } finally {
+      setIdentityBusy(false);
+    }
+  };
+
+  const reserveCracked = async () => {
+    setIdentityBusy(true);
+    setIdentityMessage("");
+    try {
+      await api("/minecraft-identities/cracked/claims", {
+        method: "POST",
+        body: JSON.stringify({ serverId, minecraftUsername: crackedName }),
+      });
+      setCrackedName("");
+      setIdentityMessage("Reserved. Join that server with this exact name within 30 minutes.");
+      await refreshIdentities();
+    } catch (error) {
+      setIdentityMessage((error as Error).message);
+    } finally {
+      setIdentityBusy(false);
+    }
+  };
+
+  const unlink = async (kind: "premium" | "cracked", id: string, activated = false) => {
+    const warning = kind === "cracked" && activated
+      ? "Release this server-scoped name? Because it has already played on the server, it cannot be reserved again."
+      : kind === "cracked"
+        ? "Cancel this pending name reservation?"
+        : "Unlink this premium Minecraft account? It can be verified again later.";
+    if (!window.confirm(warning)) return;
+    await api(`/minecraft-identities/${kind}/${id}`, { method: "DELETE" });
+    await refreshIdentities();
+  };
+
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -997,6 +1089,67 @@ export function ProfilePage() {
           <p>Reputation reflects verified work and cannot be purchased with Sparks.</p>
         </Card>
       </div>
+      <section className="identity-center">
+        <div className="identity-center__heading">
+          <div>
+            <span className="eyebrow">MINECRAFT IDENTITY</span>
+            <h2>Account linking</h2>
+            <p>Premium accounts are verified once on Nortix. Cracked names are private, temporary, and scoped to one server.</p>
+          </div>
+          <button className="button button--secondary" onClick={() => refreshIdentities()}>
+            <History /> Refresh status
+          </button>
+        </div>
+        {identityMessage && <div className="identity-notice" role="status">{identityMessage}</div>}
+        <div className="identity-link-grid">
+          <Card className="identity-link-card">
+            <div className="identity-link-card__title"><ShieldCheck /><div><h3>Premium Java account</h3><p>Verified through Nortix’s online-mode server. No OAuth or account password is requested.</p></div></div>
+            {identityData.premium.map((identity) => (
+              <div className="identity-record" key={identity.id}>
+                <span><strong>{identity.username}</strong><small>{identity.uuid}</small></span>
+                <Badge>Verified once</Badge>
+                <button aria-label={`Unlink ${identity.username}`} onClick={() => unlink("premium", identity.id)}><Unlink2 /></button>
+              </div>
+            ))}
+            {identityData.premium.length === 0 && <p className="identity-empty">No premium Minecraft account is linked yet.</p>}
+            {claim ? (
+              <div className="identity-claim-code">
+                <small>Join <strong>{claim.verificationServer}</strong>, then run</small>
+                <code>/nortixclaim {claim.code}</code>
+                <button onClick={() => navigator.clipboard.writeText(`/nortixclaim ${claim.code}`)}><Copy /> Copy command</button>
+                <span>Expires {new Date(claim.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+            ) : (
+              <button className="button button--primary" disabled={identityBusy} onClick={createPremiumClaim}>
+                <Link2 /> Verify a premium account
+              </button>
+            )}
+          </Card>
+          <Card className="identity-link-card">
+            <div className="identity-link-card__title"><Gamepad2 /><div><h3>Cracked server account</h3><p>Reserve the exact name before its first-ever join. This does not appear on your public profile.</p></div></div>
+            <label className="identity-field"><span>Server</span><select value={serverId} onChange={(event) => setServerId(event.target.value)}><option value="">Choose a supported server</option>{serverOptions.map((server) => <option value={server.id} key={server.id} disabled={!server.crackedAccountLinkingAvailable}>{server.name}{server.crackedAccountLinkingAvailable ? "" : " · linking unavailable"}</option>)}</select></label>
+            <label className="identity-field"><span>Exact Minecraft name</span><input value={crackedName} maxLength={16} placeholder="nortix123" onChange={(event) => setCrackedName(event.target.value)} /></label>
+            <button className="button button--primary" disabled={identityBusy || !serverId || !/^[A-Za-z0-9_]{3,16}$/.test(crackedName)} onClick={reserveCracked}><Clock3 /> Reserve for 30 minutes</button>
+            <small className="identity-rules">Up to 3 reservations per hour and 5 per rolling day. Unused reservations expire automatically.</small>
+          </Card>
+        </div>
+        {identityData.cracked.length > 0 && <Card className="identity-active-card">
+          <h3>Server-scoped links</h3>
+          {identityData.cracked.map((link) => <div className="identity-record" key={link.id}>
+            <span><strong>{link.minecraftUsername}</strong><small>{link.server.name} · {link.status === "PENDING" ? "Waiting for first join" : "First join confirmed"}</small></span>
+            <Badge tone={link.status === "ACTIVE" ? "success" : "purple"}>{link.status}</Badge>
+            <button aria-label={`Release ${link.minecraftUsername}`} onClick={() => unlink("cracked", link.id, link.status === "ACTIVE")}><Unlink2 /></button>
+          </div>)}
+        </Card>}
+        <Card className="identity-activity-card">
+          <h3>Private identity activity</h3>
+          <p>Only you and authorized Nortix safety staff can see this history.</p>
+          <div className="identity-timeline">
+            {identityData.activity.length === 0 && <span className="identity-empty">No identity activity yet.</span>}
+            {identityData.activity.map((event) => <div key={event.id}><i /><span><strong>{event.type.replaceAll("_", " ").toLowerCase()}</strong><small>{event.minecraftUsername || "Minecraft account"}{event.server ? ` · ${event.server.name}` : ""} · {new Date(event.createdAt).toLocaleString()}</small></span></div>)}
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }

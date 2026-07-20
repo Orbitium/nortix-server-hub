@@ -86,10 +86,21 @@ export const ServerPluginEventSchema = z.object({
   id: z.string().min(8).max(100),
   serverId: z.string().min(1),
   instanceId: z.string().min(8).max(100),
-  type: z.enum(["PLAYER_KILL", "MOB_KILL", "BLOCK_BREAK", "PLAYTIME", "METRIC_SNAPSHOT"]),
+  type: z.enum(["PLAYER_JOIN", "PLAYER_KILL", "MOB_KILL", "BLOCK_BREAK", "PLAYTIME", "METRIC_SNAPSHOT"]),
   occurredAt: z.string().datetime(),
   minecraftUuid: z.string().uuid(),
+  minecraftUsername: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
   metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const PluginPlayerHistorySchema = z.object({
+  serverId: z.string().min(1),
+  instanceId: z.string().min(8).max(100),
+  complete: z.boolean(),
+  players: z.array(z.object({
+    minecraftUsername: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
+    firstSeenAt: z.string().datetime(),
+  })).max(500),
 });
 
 export type PluginCapability = z.infer<typeof PluginCapabilitySchema>;

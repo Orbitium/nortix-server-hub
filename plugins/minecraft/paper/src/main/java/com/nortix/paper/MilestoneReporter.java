@@ -9,6 +9,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 import org.bukkit.entity.EntityType;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -23,6 +25,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.scheduler.BukkitTask;
 
 final class MilestoneReporter implements Listener {
@@ -50,6 +53,9 @@ final class MilestoneReporter implements Listener {
         long interval = Math.max(15L, plugin.getConfig().getLong("metric-poll-seconds", 30L));
         metricTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> pollMetrics(interval), interval * 20L, interval * 20L);
         capabilityTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, this::publishCapabilities, 80L, 20L * 300L);
+        if (plugin.getConfig().getBoolean("sync-player-history", true)) {
+            plugin.getServer().getScheduler().runTaskLater(plugin, this::syncPlayerHistory, 20L * 10L);
+        }
     }
 
     void stop() {
@@ -80,6 +86,11 @@ final class MilestoneReporter implements Listener {
 
     String capabilitySummary() {
         return adapters.capabilities().stream().map(item -> item.provider).collect(Collectors.joining(", "));
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        enqueue(event.getPlayer(), "PLAYER_JOIN", "{}");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -124,6 +135,7 @@ final class MilestoneReporter implements Listener {
         String event = "{\"id\":\"" + UUID.randomUUID() + "\",\"serverId\":\"" + json(serverId)
             + "\",\"instanceId\":\"" + instanceId + "\",\"type\":\"" + type + "\",\"occurredAt\":\""
             + Instant.now().toString() + "\",\"minecraftUuid\":\"" + player.getUniqueId()
+            + "\",\"minecraftUsername\":\"" + json(player.getName())
             + "\",\"metadata\":" + metadata + "}";
         int maxQueue = Math.max(100, plugin.getConfig().getInt("max-queued-events", 5000));
         while (queue.size() >= maxQueue) queue.poll();
@@ -158,6 +170,43 @@ final class MilestoneReporter implements Listener {
             } catch (Exception error) {
                 plugin.getLogger().warning("Could not publish Nortix capabilities: " + error.getMessage());
             }
+        });
+    }
+
+    private void syncPlayerHistory() {
+        if (!isConnected()) return;
+        List<String> players = new ArrayList<>();
+        for (OfflinePlayer player : plugin.getServer().getOfflinePlayers()) {
+            String name = player.getName();
+            if (name == null || !name.matches("^[A-Za-z0-9_]{3,16}$")) continue;
+            long firstPlayed = player.getFirstPlayed();
+            String seenAt = Instant.ofEpochMilli(firstPlayed > 0 ? firstPlayed : System.currentTimeMillis()).toString();
+            players.add("{\"minecraftUsername\":\"" + json(name) + "\",\"firstSeenAt\":\"" + seenAt + "\"}");
+        }
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (players.isEmpty()) {
+                try {
+                    request("POST", "/plugin/player-history", "{\"serverId\":\"" + json(serverId)
+                        + "\",\"instanceId\":\"" + instanceId + "\",\"complete\":true,\"players\":[]}", true);
+                } catch (Exception error) {
+                    plugin.getLogger().warning("Could not confirm empty player history: " + error.getMessage());
+                }
+                return;
+            }
+            for (int start = 0; start < players.size(); start += 250) {
+                int end = Math.min(start + 250, players.size());
+                String body = "{\"serverId\":\"" + json(serverId) + "\",\"instanceId\":\""
+                    + instanceId + "\",\"complete\":" + (end == players.size()) + ",\"players\":["
+                    + String.join(",", players.subList(start, end)) + "]}";
+                try {
+                    request("POST", "/plugin/player-history", body, true);
+                } catch (Exception error) {
+                    plugin.getLogger().warning("Could not sync existing player history: " + error.getMessage());
+                    return;
+                }
+            }
+            if (!players.isEmpty()) plugin.getLogger().info("Nortix synced " + players.size()
+                + " previously seen player names for first-join protection.");
         });
     }
 

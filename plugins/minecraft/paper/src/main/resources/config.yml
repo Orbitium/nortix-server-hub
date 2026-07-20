@@ -7,6 +7,7 @@ server-token: ""
 proxy-server-name: ""
 metric-poll-seconds: 30
 max-queued-events: 5000
+sync-player-history: true
 adapter-placeholders:
   bentobox-level: "%Level_bskyblock_island_level%"
   superior-skyblock-2: "%superior_island_level%"

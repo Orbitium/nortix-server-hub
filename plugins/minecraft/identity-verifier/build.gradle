@@ -1,0 +1,27 @@
+plugins {
+    id "java"
+}
+
+dependencies {
+    compileOnly "com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT"
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+}
+
+tasks.withType(Jar).configureEach {
+    archiveBaseName = "nortix-identity-verifier"
+}
+
+processResources {
+    filesMatching("plugin.yml") {
+        expand(version: project.version)
+    }
+}

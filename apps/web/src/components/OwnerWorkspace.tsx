@@ -600,8 +600,8 @@ function PluginServers({
         <section className="card owner-plugin-install">
           <div className="owner-card-heading"><div><h2>Ownership verification plugins</h2><p>Use Paper for a standalone server or Velocity for the public entry point to a network.</p></div><Plug /></div>
           <ol>
-            <li><b>1</b><span><strong>Paper 1.16 and newer</strong><small>Install on every backend that should verify milestones. Each backend reports its own installed plugin capabilities.</small></span><a className="button" href="/downloads/nortix-paper-0.2.0.jar" download><Download /> Paper .jar</a></li>
-            <li><b>2</b><span><strong>Velocity 3.x proxy</strong><small>Verify the public proxy once. Backend servers inherit the claim and use separate Paper connection tokens.</small></span><a className="button" href="/downloads/nortix-velocity-0.2.0.jar" download><Download /> Velocity .jar</a></li>
+            <li><b>1</b><span><strong>Paper 1.16 and newer</strong><small>Install on every backend that should verify milestones. Version 0.3 adds first-join observations for private, server-scoped cracked account links.</small></span><a className="button" href="/downloads/nortix-paper-0.3.0.jar" download><Download /> Paper .jar</a></li>
+            <li><b>2</b><span><strong>Velocity 3.x proxy</strong><small>Verify the public proxy once. Backend servers inherit the claim and use separate Paper connection tokens.</small></span><a className="button" href="/downloads/nortix-velocity-0.3.0.jar" download><Download /> Velocity .jar</a></li>
             <li><b>3</b><span><strong>Generate a one-time code</strong><small>Register the public address, then copy the 15-minute code into the matching plugin command.</small></span><Link className="button" to="/owner/servers/new"><KeyRound /> Register server</Link></li>
             <li><b>4</b><span><strong>Let Nortix read the MOTD</strong><small>The plugin publishes the code temporarily; an independent public status ping completes the claim.</small></span><button onClick={() => setCopied("flow")}><Copy />{copied === "flow" ? "Ready" : "View flow"}</button></li>
           </ol>

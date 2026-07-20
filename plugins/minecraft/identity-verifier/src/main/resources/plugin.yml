@@ -1,0 +1,14 @@
+name: NortixIdentityVerifier
+version: ${version}
+main: com.nortix.identity.NortixIdentityVerifierPlugin
+api-version: "1.16"
+description: Securely links authenticated Minecraft Java accounts on the Nortix-owned verification server.
+author: Nortix
+commands:
+  nortixclaim:
+    description: Link this authenticated Minecraft account to a pending Nortix claim.
+    usage: /nortixclaim <code>
+permissions:
+  nortix.identity.claim:
+    description: Use the Nortix account-link command.
+    default: true

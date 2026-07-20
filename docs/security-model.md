@@ -40,6 +40,15 @@ not authoritative.
 - Development signing secrets are refused in production.
 - Minecraft identities used for campaigns must be verified and owned by the
   authenticated Nortix account.
+- Premium Minecraft ownership is established only by a one-time claim consumed
+  by the Nortix-operated, fail-closed online-mode verification server. The
+  verifier authenticates its request with a dedicated HMAC secret that is never
+  available to browsers or third-party servers.
+- Cracked account names are never profile identities. They are private,
+  server-scoped reservations which must predate the first observed join, expire
+  after thirty minutes if unused, and are released after three days without a
+  milestone. Rolling backend limits allow at most three reservations per hour
+  and five per twenty-four hours.
 - Mock payment checkout and webhook routes are disabled in production until a
   production payment provider is configured.
 

@@ -34,4 +34,17 @@ describe("Minecraft milestone plugin contracts", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("accepts a first-join observation only with an exact Minecraft name", () => {
+    expect(ServerPluginEventSchema.parse({
+      id: "event-join-12345678",
+      serverId: "server",
+      instanceId: "instance-1234",
+      type: "PLAYER_JOIN",
+      occurredAt: new Date().toISOString(),
+      minecraftUuid: "123e4567-e89b-42d3-a456-426614174000",
+      minecraftUsername: "nortix123",
+      metadata: {},
+    }).minecraftUsername).toBe("nortix123");
+  });
 });

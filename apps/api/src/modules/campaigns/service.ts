@@ -79,7 +79,12 @@ export class CampaignService {
     });
   }
 
-  async join(playerId: string, campaignId: string, minecraftIdentityId?: string) {
+  async join(
+    playerId: string,
+    campaignId: string,
+    minecraftIdentityId?: string,
+    crackedAccountLinkId?: string,
+  ) {
     return prisma.$transaction(async (tx) => {
       const campaign = await tx.campaign.findFirst({
         where: {
@@ -108,20 +113,55 @@ export class CampaignService {
             where: { id: minecraftIdentityId, userId: playerId, verified: true },
             select: { id: true },
           })
-        : null;
+        : needsVerifiedIdentity
+          ? await tx.minecraftIdentity.findFirst({
+              where: { userId: playerId, verified: true },
+              select: { id: true },
+              orderBy: { createdAt: "asc" },
+            })
+          : null;
+      const crackedLink = crackedAccountLinkId
+        ? await tx.crackedAccountLink.findFirst({
+            where: {
+              id: crackedAccountLinkId,
+              userId: playerId,
+              serverId: campaign.serverId,
+              status: "ACTIVE",
+            },
+            select: { id: true },
+          })
+        : needsVerifiedIdentity && !identity
+          ? await tx.crackedAccountLink.findFirst({
+              where: {
+                userId: playerId,
+                serverId: campaign.serverId,
+                status: "ACTIVE",
+              },
+              select: { id: true },
+              orderBy: { activatedAt: "desc" },
+            })
+          : null;
       if (minecraftIdentityId && !identity) {
         throw new Error("The selected verified Minecraft identity does not belong to this account.");
       }
-      if (needsVerifiedIdentity && !identity) {
-        throw new Error("A verified Minecraft identity is required for this campaign.");
+      if (crackedAccountLinkId && !crackedLink) {
+        throw new Error("The server-scoped Minecraft account link is not active for this campaign.");
+      }
+      if (needsVerifiedIdentity && !identity && !crackedLink) {
+        throw new Error("A verified premium identity or active server account link is required.");
       }
       const participation = await tx.campaignParticipation.upsert({
         where: { playerId_campaignId: { playerId, campaignId } },
-        update: { lastActivityAt: new Date() },
+        update: {
+          lastActivityAt: new Date(),
+          minecraftIdentityId: identity?.id ?? null,
+          crackedAccountLinkId: crackedLink?.id ?? null,
+        },
         create: {
           playerId,
           campaignId,
           minecraftIdentityId: identity?.id,
+          crackedAccountLinkId: crackedLink?.id,
           eligibilitySnapshot: { capturedAt: new Date().toISOString() },
         },
         select: {

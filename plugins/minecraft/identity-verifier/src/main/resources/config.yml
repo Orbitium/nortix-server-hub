@@ -1,0 +1,4 @@
+api-base-url: "https://hub.nortixlabs.com/api/v1"
+verification-secret: "replace-with-the-same-64-character-secret-as-the-backend"
+connect-timeout-ms: 5000
+read-timeout-ms: 7000

@@ -31,11 +31,11 @@ import org.slf4j.Logger;
 @Plugin(
     id = "nortix-verification",
     name = "Nortix Proxy",
-    version = "0.2.0",
+    version = "0.3.0",
     description = "Verifies one public Velocity proxy; Paper backends report milestones separately"
 )
 public final class NortixVelocityPlugin {
-    private static final String VERSION = "0.2.0";
+    private static final String VERSION = "0.3.0";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private final ProxyServer proxy;
     private final Logger logger;

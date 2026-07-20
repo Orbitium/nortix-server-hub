@@ -10,6 +10,7 @@ const production = {
   FIREBASE_PRIVATE_KEY: "private-key",
   INTEGRATION_SIGNING_SECRET: "a-secure-integration-secret",
   PAYMENT_WEBHOOK_SECRET: "a-secure-payment-secret",
+  IDENTITY_VERIFICATION_SECRET: "a-separate-secure-identity-verification-secret",
 };
 
 describe("production environment policy", () => {

@@ -6,5 +6,4 @@ pluginManagement {
 }
 
 rootProject.name = "nortix-minecraft-verification"
-include("paper", "velocity")
-
+include("paper", "velocity", "identity-verifier")
