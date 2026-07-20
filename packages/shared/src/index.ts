@@ -13,6 +13,7 @@ export const permissions = [
   "withdrawal:request",
   "withdrawal:review",
   "user:suspend",
+  "message:send",
   "ledger:view_internal",
 ] as const;
 export type Permission = (typeof permissions)[number];
@@ -94,6 +95,46 @@ export const TeamInviteResponseSchema = z.object({
 });
 
 export const TeamMemberRoleInputSchema = z.object({ role: ServerTeamRoleSchema });
+
+export const NotificationPreferenceInputSchema = z
+  .object({
+    campaignActivity: z.boolean(),
+    questsAndStreaks: z.boolean(),
+    sparksActivity: z.boolean(),
+    serverOperations: z.boolean(),
+    teamActivity: z.boolean(),
+    productUpdates: z.boolean(),
+    emailProductUpdates: z.boolean(),
+  })
+  .strict();
+
+const SafeInternalActionUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((value) => value.startsWith("/") && !value.startsWith("//"), {
+    message: "Action URL must be an internal path.",
+  });
+
+export const AdminMessageInputSchema = z
+  .object({
+    audience: z.enum(["ALL_USERS", "PLAYERS", "SERVER_OWNERS", "LIMITED_ACCOUNTS", "USER"]),
+    targetUsername: z.string().trim().min(2).max(32).optional(),
+    severity: z.enum(["INFO", "SUCCESS", "WARNING", "CRITICAL"]).default("INFO"),
+    status: z.enum(["DRAFT", "SENT"]),
+    title: z.string().trim().min(3).max(100),
+    body: z.string().trim().min(10).max(2_000),
+    actionUrl: SafeInternalActionUrlSchema.optional(),
+  })
+  .strict()
+  .refine((value) => value.audience !== "USER" || Boolean(value.targetUsername), {
+    message: "A target username is required for a direct message.",
+    path: ["targetUsername"],
+  })
+  .refine((value) => value.audience === "USER" || !value.targetUsername, {
+    message: "A target username is only allowed for a direct message.",
+    path: ["targetUsername"],
+  });
 
 export const CampaignMilestoneInputSchema = z.object({
   templateType: MilestoneTypeSchema,

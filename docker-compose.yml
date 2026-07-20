@@ -1,5 +1,11 @@
 name: nortix-hub
 
+x-api-image: &api-image
+  image: ${NORTIX_API_IMAGE:-nortix-hub-api:local}
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
+
 services:
   postgres:
     image: postgres:16.14-alpine
@@ -19,11 +25,22 @@ services:
     networks:
       - backend
 
+  migrate:
+    <<: *api-image
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nortix}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-nortix}?schema=public
+    command: ["pnpm", "--filter", "@nortix/database", "migrate:deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
   api:
+    <<: *api-image
     restart: unless-stopped
-    build:
-      context: .
-      dockerfile: docker/api.Dockerfile
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-nortix}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-nortix}?schema=public
@@ -41,8 +58,8 @@ services:
     expose:
       - "4000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:4000/health >/dev/null || exit 1"]
       interval: 10s

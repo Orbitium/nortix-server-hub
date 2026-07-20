@@ -11,7 +11,7 @@ ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY
 ENV VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN
 ENV VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @nortix/web build
+RUN pnpm --filter @nortix/web... build
 
 FROM nginx:1.30.4-alpine
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

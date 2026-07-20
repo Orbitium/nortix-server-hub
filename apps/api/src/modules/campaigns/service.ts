@@ -10,6 +10,7 @@ import {
   estimatePotentialExposure,
   validateMilestoneTarget,
 } from "./policy.js";
+import { createNotification } from "../notifications/service.js";
 
 export class CampaignService {
   async create(ownerId: string, input: CampaignInput) {
@@ -394,6 +395,14 @@ export class CampaignService {
             occurredAt: new Date(),
             metadata: {},
           },
+        });
+        await createNotification(tx, {
+          recipientId: playerId,
+          category: "CAMPAIGN",
+          title: `Joined ${campaign.title}`,
+          body: `Your progress is ready. Eligible activity may receive up to ${campaign.maximumSparksReward} Sparks after backend verification.`,
+          actionUrl: `/campaigns/${campaign.id}`,
+          dedupeKey: `campaign-joined:${participation.id}`,
         });
         return participation;
       },

@@ -2,12 +2,13 @@ import { Activity, BarChart3, Check, ChevronRight, ClipboardCheck, Eye, Gauge, K
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Button, Card } from "@nortix/ui";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import {
   artIndexFor,
   type AdminReviewCampaign,
   useAdminOverview,
+  useAdminMessages,
   useAdminReviewCampaigns,
   useAuditLogs,
   useCurrentUser,
@@ -33,7 +34,11 @@ const sections = [
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sectionSearch, setSectionSearch] = useState("");
   const { data: currentUser, isLoading: accessLoading, isError: accessError } = useCurrentUser();
-  const visibleSections = sections.filter(([label]) => label.toLowerCase().includes(sectionSearch.toLowerCase()));
+  const visibleSections = sections.filter(
+    ([label, href]) =>
+      label.toLowerCase().includes(sectionSearch.toLowerCase()) &&
+      (href !== "/admin/messages" || currentUser?.roles.includes("ADMIN")),
+  );
   const hasAdminAccess = currentUser?.roles.some((role) => role === "ADMIN" || role === "MODERATOR");
   const staffRole = currentUser?.roles.includes("ADMIN") ? "NORTIX ADMIN" : "NORTIX MODERATOR";
 
@@ -100,6 +105,7 @@ export function AdminOverviewPage() {
   const [messageOpen, setMessageOpen] = useState(false);
   const { data: overview, isLoading, isError, refetch } = useAdminOverview();
   const { data: auditLogs } = useAuditLogs();
+  const { data: currentUser } = useCurrentUser();
   const overviewEvents = (auditLogs ?? []).slice(0, 8).map((entry) => [
     entry.actor?.displayName ?? entry.actor?.username ?? "System",
     entry.action,
@@ -112,11 +118,11 @@ export function AdminOverviewPage() {
       <AdminHeading
         title="Operations overview"
         description="Moderation, access, platform usage, live signals, Sparks policy, and system controls."
-        action={
+        action={currentUser?.roles.includes("ADMIN") ? (
           <Button onClick={() => setMessageOpen(true)}>
             <Send /> Message users
           </Button>
-        }
+        ) : undefined}
       />
       {isLoading ? <Card><p>Loading seeded operations data…</p></Card> : null}
       {isError ? <Card><p>Seeded operations data could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
@@ -603,7 +609,23 @@ function _RecordEditor({ record, onClose, onSave }: { record: ManagedRecord; onC
 
 function AdminMessagesPage() {
   const [composer, setComposer] = useState(false);
-  const [messages, setMessages] = useState<string[][]>([]);
+  const [sendingId, setSendingId] = useState("");
+  const [actionError, setActionError] = useState("");
+  const { data: messages = [], isLoading, isError, refetch } = useAdminMessages();
+  const queryClient = useQueryClient();
+
+  const sendDraft = async (id: string) => {
+    setSendingId(id);
+    setActionError("");
+    try {
+      await api(`/admin/messages/${id}/send`, { method: "POST" });
+      await queryClient.invalidateQueries({ queryKey: ["admin-messages"] });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The draft could not be sent.");
+    } finally {
+      setSendingId("");
+    }
+  };
 
   return (
     <>
@@ -617,6 +639,7 @@ function AdminMessagesPage() {
         }
       />
       <Card className="data-card">
+        {actionError ? <p className="admin-form-error" role="alert">{actionError}</p> : null}
         <div className="table-wrap">
           <table>
             <thead>
@@ -630,69 +653,137 @@ function AdminMessagesPage() {
             </thead>
             <tbody>
               {messages.map((message) => (
-                <tr key={message[0]}>
+                <tr key={message.id}>
                   <td>
-                    <strong>{message[0]}</strong>
+                    <strong>{message.title}</strong>
+                    <small className="admin-table-secondary">
+                      {message.severity.toLowerCase()} · by {message.createdBy.displayName ?? message.createdBy.username}
+                    </small>
+                    <small className="admin-table-secondary">{message.body}</small>
                   </td>
-                  <td>{message[1]}</td>
                   <td>
-                    <span className="admin-status">{message[2]}</span>
+                    {message.audience === "USER"
+                      ? `@${message.targetUser?.username ?? "account"}`
+                      : message.audience.replaceAll("_", " ").toLowerCase()}
                   </td>
-                  <td>{message[3]}</td>
                   <td>
-                    <button className="icon-button">
-                      <ChevronRight />
-                    </button>
+                    <span className="admin-status">{message.status.toLowerCase()}</span>
+                  </td>
+                  <td>
+                    {message.status === "SENT"
+                      ? `${message.deliveries.length}/${message._count.deliveries} read`
+                      : "Not delivered"}
+                  </td>
+                  <td>
+                    {message.status === "DRAFT" ? (
+                      <button className="admin-table-action" disabled={sendingId === message.id} onClick={() => sendDraft(message.id)}>
+                        <Send /> {sendingId === message.id ? "Sending…" : "Send draft"}
+                      </button>
+                    ) : (
+                      <small>{new Date(message.sentAt ?? message.createdAt).toLocaleString()}</small>
+                    )}
                   </td>
                 </tr>
               ))}
+              {isLoading ? <tr><td colSpan={5}>Loading persisted messages…</td></tr> : null}
+              {isError ? <tr><td colSpan={5}>Messages could not be loaded. <button onClick={() => refetch()}>Retry</button></td></tr> : null}
+              {!isLoading && !isError && messages.length === 0 ? <tr><td colSpan={5}>No messages or drafts yet.</td></tr> : null}
             </tbody>
           </table>
         </div>
       </Card>
-      {composer && <AdminMessageComposer onClose={() => setComposer(false)} onSend={(title) => setMessages([[title, "All players", "Sent", "just now"], ...messages])} />}
+      {composer && <AdminMessageComposer onClose={() => setComposer(false)} />}
     </>
   );
 }
 
-function AdminMessageComposer({ onClose, onSend }: { onClose: () => void; onSend?: (title: string) => void }) {
+function AdminMessageComposer({ onClose }: { onClose: () => void }) {
+  const [audience, setAudience] = useState("ALL_USERS");
+  const [targetUsername, setTargetUsername] = useState("");
+  const [severity, setSeverity] = useState("INFO");
   const [title, setTitle] = useState("Important Nortix update");
+  const [body, setBody] = useState("Nortix administrators have shared an update. Please review the latest platform guidance.");
+  const [actionUrl, setActionUrl] = useState("/dashboard/inbox");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const queryClient = useQueryClient();
+
+  const submit = async (status: "DRAFT" | "SENT") => {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/admin/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          audience,
+          ...(audience === "USER" ? { targetUsername } : {}),
+          severity,
+          status,
+          title,
+          body,
+          ...(actionUrl.trim() ? { actionUrl: actionUrl.trim() } : {}),
+        }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["admin-messages"] });
+      onClose();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "The message could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal title="Compose admin message" onClose={onClose}>
       <div className="modal__body admin-editor">
         <label>
           Audience
-          <select defaultValue="players">
-            <option value="players">All players</option>
-            <option value="owners">All server owners</option>
-            <option value="active">Active sessions</option>
-            <option value="limited">Limited accounts</option>
+          <select value={audience} onChange={(event) => setAudience(event.target.value)}>
+            <option value="ALL_USERS">All accessible accounts</option>
+            <option value="PLAYERS">Active players</option>
+            <option value="SERVER_OWNERS">Active server owners</option>
+            <option value="LIMITED_ACCOUNTS">Limited or reviewed accounts</option>
+            <option value="USER">One account by username</option>
+          </select>
+        </label>
+        {audience === "USER" ? (
+          <label>
+            Nortix username
+            <input value={targetUsername} onChange={(event) => setTargetUsername(event.target.value)} placeholder="tester5" />
+          </label>
+        ) : null}
+        <label>
+          Severity
+          <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
+            <option value="INFO">Information</option>
+            <option value="SUCCESS">Resolved or successful</option>
+            <option value="WARNING">Action recommended</option>
+            <option value="CRITICAL">Critical account notice</option>
           </select>
         </label>
         <label>
           Title
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          <input maxLength={100} value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
         <label>
           Message
-          <textarea rows={5} defaultValue="Nortix administrators have shared an update. Please review the latest platform guidance." />
+          <textarea rows={5} maxLength={2000} value={body} onChange={(event) => setBody(event.target.value)} />
         </label>
-        <label className="checkbox-row">
-          <input type="checkbox" defaultChecked />
-          <span>Show as an unread in-product message</span>
+        <label>
+          Internal action path
+          <input value={actionUrl} onChange={(event) => setActionUrl(event.target.value)} placeholder="/dashboard/inbox" />
         </label>
+        <p className="admin-editor-note">
+          Sent messages create private, persistent deliveries. Recipient selection, delivery count, and the sending administrator are written to the audit log.
+        </p>
+        {error ? <p role="alert" className="admin-form-error">{error}</p> : null}
       </div>
       <div className="modal__footer">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" disabled={busy} onClick={() => submit("DRAFT")}>
           Save draft
         </Button>
-        <Button
-          onClick={() => {
-            onSend?.(title);
-            onClose();
-          }}
-        >
-          <Send /> Send message
+        <Button disabled={busy} onClick={() => submit("SENT")}>
+          <Send /> {busy ? "Working…" : "Send message"}
         </Button>
       </div>
     </Modal>

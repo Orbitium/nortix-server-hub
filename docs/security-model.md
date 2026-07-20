@@ -62,3 +62,17 @@ cross-role response boundary. Never serialize a complete database model merely
 because the caller can access part of it. Every mutation must derive the acting
 user from verified server-side authentication and scope the database query by
 that user, an owned resource, or a permission-checked team membership.
+## Messaging and notification boundaries
+
+- Notifications and Nortix message deliveries are private account records and are always queried
+  with the authenticated local user ID.
+- The browser cannot choose a notification recipient or mark another account's delivery as read.
+- Nortix broadcasts and direct messages require the platform-level `message:send` permission.
+  Server ownership and server-team roles do not confer this permission.
+- Broadcast audiences are resolved from database roles and account status by the backend at send
+  time. Direct-message usernames are resolved server-side.
+- Message action links accept internal paths only. External or protocol-relative URLs are rejected.
+- Message creation and draft delivery are transactional, rate-limited, and recorded in the
+  append-only administrative audit log.
+- Security and account messages cannot be disabled. Optional event notifications honor persisted
+  per-account preferences when the backend creates them.

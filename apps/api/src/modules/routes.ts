@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma, type Prisma } from "@nortix/database";
-import { CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, WithdrawalInputSchema, CrackedAccountClaimSchema } from "@nortix/shared";
+import { AdminMessageInputSchema, CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, NotificationPreferenceInputSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, WithdrawalInputSchema, CrackedAccountClaimSchema } from "@nortix/shared";
 import { CreateServerVerificationSchema, PluginCapabilitiesHandshakeSchema, PluginPresenceSnapshotSchema, PluginVerificationHandshakeSchema, PluginVerificationStatusSchema, ServerPluginEventSchema, PluginPlayerHistorySchema } from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
@@ -13,11 +13,13 @@ import { CampaignService } from "./campaigns/service.js";
 import { WithdrawalService } from "./withdrawals/service.js";
 import { ServerVerificationService } from "./server-verification/service.js";
 import { MinecraftIdentityService } from "./minecraft-identities/service.js";
+import { createNotification, NotificationService } from "./notifications/service.js";
 
 const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
 const serverVerificationService = new ServerVerificationService();
 const minecraftIdentityService = new MinecraftIdentityService();
+const notificationService = new NotificationService();
 
 const requireOwnedServer = async (serverId: string, userId: string) => {
   const server = await prisma.server.findFirst({ where: { id: serverId, ownerId: userId } });
@@ -232,6 +234,51 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       select: selfUserSelect,
     });
   });
+  app.get("/v1/notifications/summary", { preHandler: app.authenticate }, async (request) =>
+    notificationService.summary(request.user!.id),
+  );
+  app.get("/v1/notifications", { preHandler: app.authenticate }, async (request) => {
+    const query = z.object({ unread: z.enum(["true", "false"]).optional() }).parse(request.query);
+    return notificationService.listNotifications(request.user!.id, query.unread === "true");
+  });
+  app.patch("/v1/notifications/:id/read", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await notificationService.markNotificationRead(request.user!.id, id);
+    return reply.code(204).send();
+  });
+  app.delete("/v1/notifications/:id", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await notificationService.archive(request.user!.id, "notification", id);
+    return reply.code(204).send();
+  });
+  app.get("/v1/messages", { preHandler: app.authenticate }, async (request) => {
+    const query = z.object({ unread: z.enum(["true", "false"]).optional() }).parse(request.query);
+    return notificationService.listMessages(request.user!.id, query.unread === "true");
+  });
+  app.patch("/v1/messages/:id/read", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await notificationService.markMessageRead(request.user!.id, id);
+    return reply.code(204).send();
+  });
+  app.delete("/v1/messages/:id", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await notificationService.archive(request.user!.id, "message", id);
+    return reply.code(204).send();
+  });
+  app.post("/v1/inbox/read-all", { preHandler: app.authenticate }, async (request, reply) => {
+    const { kind } = z.object({ kind: z.enum(["notifications", "messages", "all"]) }).parse(request.body);
+    await notificationService.markAllRead(request.user!.id, kind);
+    return reply.code(204).send();
+  });
+  app.get("/v1/notification-preferences", { preHandler: app.authenticate }, async (request) =>
+    notificationService.getPreferences(request.user!.id),
+  );
+  app.put("/v1/notification-preferences", { preHandler: app.authenticate }, async (request) =>
+    notificationService.updatePreferences(
+      request.user!.id,
+      NotificationPreferenceInputSchema.parse(request.body),
+    ),
+  );
   app.get("/v1/minecraft-identities", { preHandler: app.authenticate }, async (request) => minecraftIdentityService.list(request.user!.id));
   app.post("/v1/minecraft-identities/premium/claims", { preHandler: app.authenticate, config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => reply.code(201).send(await minecraftIdentityService.createPremiumClaim(request.user!.id)));
   app.delete("/v1/minecraft-identities/premium/:identityId", { preHandler: app.authenticate }, async (request, reply) => {
@@ -1144,9 +1191,18 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             idempotencyKey: `cosmetic:${request.user!.id}:${item.id}`,
           },
         });
-        return tx.cosmeticPurchase.create({
+        const cosmeticPurchase = await tx.cosmeticPurchase.create({
           data: { userId: request.user!.id, itemId: item.id, sparksLedgerEntryId: ledger.id },
         });
+        await createNotification(tx, {
+          recipientId: request.user!.id,
+          category: "SPARKS",
+          title: `${item.name} unlocked`,
+          body: `${item.sparksPrice.toLocaleString()} Sparks were used for this cosmetic. Sparks have no cash value.`,
+          actionUrl: "/dashboard/sparks-shop",
+          dedupeKey: `cosmetic-purchase:${cosmeticPurchase.id}`,
+        });
+        return cosmeticPurchase;
       },
       { isolationLevel: "Serializable" },
     );
@@ -1255,15 +1311,26 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       },
     });
     if (pending) throw new Error("That user already has a pending invite for this server.");
-    const invite = await prisma.serverTeamInvite.create({
-      data: {
-        serverId,
-        inviterId: request.user!.id,
-        inviteeId: invitee.id,
-        role: input.role,
-        expiresAt: new Date(Date.now() + 604_800_000),
-      },
-      include: { invitee: { select: { username: true, displayName: true, avatarUrl: true } } },
+    const invite = await prisma.$transaction(async (tx) => {
+      const created = await tx.serverTeamInvite.create({
+        data: {
+          serverId,
+          inviterId: request.user!.id,
+          inviteeId: invitee.id,
+          role: input.role,
+          expiresAt: new Date(Date.now() + 604_800_000),
+        },
+        include: { invitee: { select: { username: true, displayName: true, avatarUrl: true } } },
+      });
+      await createNotification(tx, {
+        recipientId: invitee.id,
+        category: "TEAM",
+        title: `Invitation to manage ${server.name}`,
+        body: `${request.user!.displayName} invited you as ${input.role.toLowerCase()}. Review the invitation before it expires.`,
+        actionUrl: "/owner/settings",
+        dedupeKey: `team-invite:${created.id}`,
+      });
+      return created;
     });
     return reply.code(201).send({ ...invite, server: { id: server.id, name: server.name } });
   });
@@ -1273,6 +1340,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     return prisma.$transaction(async (tx) => {
       const invite = await tx.serverTeamInvite.findFirst({
         where: { id: inviteId, inviteeId: request.user!.id },
+        include: { server: { select: { name: true } } },
       });
       if (!invite) throw new Error("Team invite not found.");
       if (invite.status !== "PENDING") throw new Error("This team invite has already been answered.");
@@ -1300,6 +1368,17 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           update: { role: invite.role, invitedById: invite.inviterId, acceptedAt: new Date() },
         });
       }
+      await createNotification(tx, {
+        recipientId: invite.inviterId,
+        category: "TEAM",
+        title: `${request.user!.displayName} ${action === "ACCEPT" ? "accepted" : "declined"} your invitation`,
+        body:
+          action === "ACCEPT"
+            ? `They can now access ${invite.server.name} with the assigned server-team permissions.`
+            : `The invitation to manage ${invite.server.name} was declined.`,
+        actionUrl: "/owner/settings",
+        dedupeKey: `team-invite-response:${invite.id}`,
+      });
       return tx.serverTeamInvite.findUniqueOrThrow({
         where: { id: invite.id },
         include: { server: { select: { id: true, name: true, hostname: true } } },
@@ -1539,6 +1618,36 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     };
   });
 
+  app.get("/v1/admin/messages", { preHandler: app.requirePermission("message:send") }, async () =>
+    notificationService.listAdminMessages(),
+  );
+  app.post(
+    "/v1/admin/messages",
+    {
+      preHandler: app.requirePermission("message:send"),
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const input = AdminMessageInputSchema.parse(request.body);
+      const message = await notificationService.createAdminMessage(
+        request.user!.id,
+        input,
+        request.id,
+      );
+      return reply.code(201).send(message);
+    },
+  );
+  app.post(
+    "/v1/admin/messages/:id/send",
+    {
+      preHandler: app.requirePermission("message:send"),
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return notificationService.sendDraft(request.user!.id, id, request.id);
+    },
+  );
   app.get("/v1/admin/overview", { preHandler: app.requirePermission("campaign:review") }, async () => {
     const [users, servers, campaigns, withdrawals, cases] = await prisma.$transaction([
       prisma.user.count(),

@@ -117,3 +117,31 @@ activity.
 List endpoints use `page` and `pageSize`; page size is capped at 50. Financial provider events,
 milestone rewards, Sparks rewards, campaign-credit purchases, withdrawals, and cosmetic purchases
 use unique idempotency keys stored in PostgreSQL.
+## Inbox, messages, and notifications
+
+Authenticated account endpoints:
+
+- `GET /v1/notifications/summary`
+- `GET /v1/notifications?unread=true|false`
+- `PATCH /v1/notifications/:id/read`
+- `DELETE /v1/notifications/:id`
+- `GET /v1/messages?unread=true|false`
+- `PATCH /v1/messages/:deliveryId/read`
+- `DELETE /v1/messages/:deliveryId`
+- `POST /v1/inbox/read-all`
+- `GET /v1/notification-preferences`
+- `PUT /v1/notification-preferences`
+
+Every read, read-state mutation, and archive operation is scoped by the authenticated local user
+ID. A delivery ID supplied by the browser is never sufficient to access another account's data.
+
+Nortix administrator endpoints:
+
+- `GET /v1/admin/messages`
+- `POST /v1/admin/messages`
+- `POST /v1/admin/messages/:id/send`
+
+These routes require the platform-level `message:send` permission, which is assigned only to
+Nortix administrators. Server-team administrator roles never grant this permission. Sending
+selects recipients on the backend, creates private delivery records transactionally, and writes an
+append-only audit event.

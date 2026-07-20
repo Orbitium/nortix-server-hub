@@ -109,7 +109,8 @@ The Docker deployment uses a single public origin:
 
 PostgreSQL and Fastify stay on a private Docker network. Nginx is the only origin
 reachable by `cloudflared`; it serves the React application and proxies `/api/` to
-Fastify. The API applies committed Prisma migrations before it starts.
+Fastify. A one-shot `migrate` container applies committed Prisma migrations after
+PostgreSQL becomes healthy. The API starts only after the migration succeeds.
 
 Copy the deployment environment and replace every production secret:
 
@@ -144,15 +145,23 @@ proxy path is exercised locally. Check container readiness with:
 
 ```bash
 docker compose ps
+docker compose logs migrate
 curl http://localhost:8080/healthz
 curl http://localhost:8080/api/health
 ```
 
-To apply seed data to a fresh local database:
+Prisma Client generation and all required workspace builds happen while the API
+image is built. Schema migrations run on every Compose startup and safely skip
+changes that are already applied.
+
+Seed data is intentionally not applied automatically because the development seed
+replaces existing records. To seed a new, disposable local database:
 
 ```bash
-docker compose exec api pnpm --filter @nortix/database seed
+docker compose run --rm migrate pnpm --filter @nortix/database seed
 ```
+
+Never run that seed command against a persistent or production database.
 
 Do not expose ports 4000 or 5432 in production. Rotate the database password,
 integration secret, payment webhook secret, Firebase credentials, and tunnel token

@@ -232,6 +232,63 @@ export type OwnerAnalytics = {
   retention: { day1: number | null; day7: number | null; label: string };
 };
 
+export type InboxSummary = {
+  unreadNotifications: number;
+  unreadMessages: number;
+};
+
+export type UserNotification = {
+  id: string;
+  category: "CAMPAIGN" | "QUEST" | "SPARKS" | "SERVER" | "TEAM" | "SECURITY" | "SYSTEM";
+  title: string;
+  body: string;
+  actionUrl?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type InboxMessage = {
+  id: string;
+  readAt?: string | null;
+  deliveredAt: string;
+  message: {
+    id: string;
+    title: string;
+    body: string;
+    severity: "INFO" | "SUCCESS" | "WARNING" | "CRITICAL";
+    actionUrl?: string | null;
+    sentAt?: string | null;
+    createdBy: { displayName: string };
+  };
+};
+
+export type NotificationPreferences = {
+  campaignActivity: boolean;
+  questsAndStreaks: boolean;
+  sparksActivity: boolean;
+  serverOperations: boolean;
+  teamActivity: boolean;
+  productUpdates: boolean;
+  emailProductUpdates: boolean;
+  updatedAt: string;
+};
+
+export type AdminMessageRecord = {
+  id: string;
+  title: string;
+  body: string;
+  actionUrl?: string | null;
+  audience: "ALL_USERS" | "PLAYERS" | "SERVER_OWNERS" | "LIMITED_ACCOUNTS" | "USER";
+  severity: "INFO" | "SUCCESS" | "WARNING" | "CRITICAL";
+  status: "DRAFT" | "SENT";
+  sentAt?: string | null;
+  createdAt: string;
+  targetUser?: { username: string; displayName?: string | null } | null;
+  createdBy: { username: string; displayName?: string | null };
+  _count: { deliveries: number };
+  deliveries: Array<{ id: string }>;
+};
+
 export const artIndexFor = (id: string) => {
   let hash = 0;
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
@@ -324,4 +381,37 @@ export const useAuditLogs = () =>
   useQuery({
     queryKey: ["admin-audit-logs"],
     queryFn: () => api<AuditLogEntry[]>("/admin/audit-logs"),
+  });
+
+export const useInboxSummary = () =>
+  useQuery({
+    queryKey: ["inbox-summary"],
+    queryFn: () => api<InboxSummary>("/notifications/summary"),
+    refetchInterval: 30_000,
+  });
+
+export const useNotifications = (unreadOnly = false) =>
+  useQuery({
+    queryKey: ["notifications", unreadOnly],
+    queryFn: () => api<UserNotification[]>(`/notifications?unread=${unreadOnly}`),
+    refetchInterval: 30_000,
+  });
+
+export const useInboxMessages = (unreadOnly = false) =>
+  useQuery({
+    queryKey: ["inbox-messages", unreadOnly],
+    queryFn: () => api<InboxMessage[]>(`/messages?unread=${unreadOnly}`),
+    refetchInterval: 30_000,
+  });
+
+export const useNotificationPreferences = () =>
+  useQuery({
+    queryKey: ["notification-preferences"],
+    queryFn: () => api<NotificationPreferences>("/notification-preferences"),
+  });
+
+export const useAdminMessages = () =>
+  useQuery({
+    queryKey: ["admin-messages"],
+    queryFn: () => api<AdminMessageRecord[]>("/admin/messages"),
   });

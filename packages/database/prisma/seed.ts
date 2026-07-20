@@ -181,6 +181,10 @@ const milestoneTemplates = [
 
 async function main() {
   await prisma.$transaction([
+    prisma.adminMessageDelivery.deleteMany(),
+    prisma.adminMessage.deleteMany(),
+    prisma.notification.deleteMany(),
+    prisma.notificationPreference.deleteMany(),
     prisma.badgeAward.deleteMany(),
     prisma.badge.deleteMany(),
     prisma.userQuest.deleteMany(),
@@ -266,6 +270,59 @@ async function main() {
       }),
     );
   }
+
+  await prisma.notificationPreference.createMany({
+    data: users.map((user) => ({ userId: user.id })),
+  });
+  await prisma.notification.createMany({
+    data: [
+      {
+        recipientId: users[4]!.id,
+        category: "CAMPAIGN",
+        title: "A campaign matches your profile",
+        body: "Skyblock X has a new first-session playtest with automatic milestone verification.",
+        actionUrl: "/campaigns",
+        dedupeKey: "seed:campaign-match",
+        createdAt: new Date(Date.now() - 25 * 60_000),
+      },
+      {
+        recipientId: users[4]!.id,
+        category: "QUEST",
+        title: "Daily quest progress updated",
+        body: "Your persisted quest progress is ready to review.",
+        actionUrl: "/dashboard/quests",
+        dedupeKey: "seed:quest-progress",
+        readAt: new Date(Date.now() - 50 * 60_000),
+        createdAt: new Date(Date.now() - 2 * 60 * 60_000),
+      },
+      {
+        recipientId: users[0]!.id,
+        category: "SERVER",
+        title: "Plugin connection is healthy",
+        body: "Skyblock X reported its latest activity sample successfully.",
+        actionUrl: "/owner/integrations",
+        dedupeKey: "seed:plugin-health",
+      },
+    ],
+  });
+  await prisma.adminMessage.create({
+    data: {
+      createdById: users[19]!.id,
+      audience: "ALL_USERS",
+      severity: "INFO",
+      status: "SENT",
+      title: "Welcome to the Nortix inbox",
+      body: "Important platform updates and account-specific notices now appear here with persistent read status.",
+      actionUrl: "/dashboard/inbox",
+      sentAt: new Date(Date.now() - 4 * 60 * 60_000),
+      deliveries: {
+        create: users.map((user, index) => ({
+          recipientId: user.id,
+          readAt: index < 4 ? new Date(Date.now() - 3 * 60 * 60_000) : null,
+        })),
+      },
+    },
+  });
 
   await prisma.milestoneTemplate.createMany({
     data: milestoneTemplates.map(([type, title, duration, min, max, risk, manual, methods]) => ({

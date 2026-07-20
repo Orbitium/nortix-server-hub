@@ -1,5 +1,6 @@
 import { BarChart3, Bell, ChevronDown, ChevronLeft, Compass, CreditCard, Crown, Gamepad2, Home, Inbox, LayoutDashboard, Menu, MessageSquare, Moon, PlusCircle, Search, Settings, ShieldCheck, Sparkles, Trophy, UserRound, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useUiStore } from "../app/store";
 import { Brand } from "../components/Brand";
@@ -7,11 +8,15 @@ import { RoleChooser } from "../components/RoleChooser";
 import {
   useCurrentUser,
   useDailyQuests,
+  useInboxMessages,
+  useInboxSummary,
   useLeaderboard,
+  useNotifications,
   usePublicCampaigns,
   usePublicServers,
   useSparksSummary,
 } from "../features/api-data";
+import { api } from "../lib/api";
 
 const playerNav = [
   ["/dashboard", "Home", Home],
@@ -39,6 +44,8 @@ export function DashboardLayout() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const queryClient = useQueryClient();
   const showRightRail = location.pathname === "/dashboard";
   const { data: serverData } = usePublicServers();
   const { data: campaignData } = usePublicCampaigns();
@@ -50,6 +57,9 @@ export function DashboardLayout() {
   const campaigns = campaignData?.items ?? [];
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
   const dailyQuest = dailyQuests[0];
+  const { data: inboxSummary } = useInboxSummary();
+  const { data: notificationItems = [] } = useNotifications(true);
+  const { data: messageItems = [] } = useInboxMessages(true);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -60,6 +70,7 @@ export function DashboardLayout() {
       if (event.key === "Escape") {
         setQuery("");
         setMessagesOpen(false);
+        setNotificationsOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -87,6 +98,28 @@ export function DashboardLayout() {
   const openResult = (href: string) => {
     setQuery("");
     navigate(href);
+  };
+
+  const refreshInbox = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+      queryClient.invalidateQueries({ queryKey: ["inbox-messages"] }),
+      queryClient.invalidateQueries({ queryKey: ["inbox-summary"] }),
+    ]);
+  };
+
+  const openNotification = async (id: string, actionUrl?: string | null) => {
+    await api(`/notifications/${id}/read`, { method: "PATCH" });
+    await refreshInbox();
+    setNotificationsOpen(false);
+    if (actionUrl) navigate(actionUrl);
+  };
+
+  const openMessage = async (id: string, actionUrl?: string | null) => {
+    await api(`/messages/${id}/read`, { method: "PATCH" });
+    await refreshInbox();
+    setMessagesOpen(false);
+    if (actionUrl) navigate(actionUrl);
   };
 
   return (
@@ -157,34 +190,69 @@ export function DashboardLayout() {
           )}
         </div>
         <div className="topbar__actions">
-          <button className="icon-button" aria-label="Notifications">
-            <Bell />
-            <span className="notification-dot" />
-          </button>
           <div className="message-center">
-            <button className="icon-button desktop-only" aria-label="Admin messages" onClick={() => setMessagesOpen((value) => !value)}>
+            <button
+              className="icon-button"
+              aria-label={`${inboxSummary?.unreadNotifications ?? 0} unread notifications`}
+              aria-expanded={notificationsOpen}
+              onClick={() => {
+                setNotificationsOpen((value) => !value);
+                setMessagesOpen(false);
+              }}
+            >
+              <Bell />
+              {(inboxSummary?.unreadNotifications ?? 0) > 0 ? <span className="notification-dot" /> : null}
+            </button>
+            {notificationsOpen && (
+              <div className="admin-message-popover inbox-popover">
+                <header>
+                  <span><Bell /> Notifications</span>
+                  <small>{inboxSummary?.unreadNotifications ?? 0} unread</small>
+                </header>
+                {notificationItems.slice(0, 4).map((item) => (
+                  <button className="inbox-popover__item" key={item.id} onClick={() => openNotification(item.id, item.actionUrl)}>
+                    <strong>{item.title}</strong>
+                    <p>{item.body}</p>
+                  </button>
+                ))}
+                {notificationItems.length === 0 ? <article><strong>You’re caught up</strong><p>No unread notifications.</p></article> : null}
+                <NavLink to="/dashboard/inbox" onClick={() => setNotificationsOpen(false)}>Open notification center</NavLink>
+              </div>
+            )}
+          </div>
+          <div className="message-center">
+            <button
+              className="icon-button desktop-only"
+              aria-label={`${inboxSummary?.unreadMessages ?? 0} unread messages from Nortix`}
+              aria-expanded={messagesOpen}
+              onClick={() => {
+                setMessagesOpen((value) => !value);
+                setNotificationsOpen(false);
+              }}
+            >
               <MessageSquare />
-              <span className="notification-dot" />
+              {(inboxSummary?.unreadMessages ?? 0) > 0 ? <span className="notification-dot" /> : null}
             </button>
             {messagesOpen && (
-              <div className="admin-message-popover">
+              <div className="admin-message-popover inbox-popover">
                 <header>
                   <span>
                     <ShieldCheck /> Messages from Nortix
                   </span>
-                  <small>Seed-backed notices</small>
+                  <small>{inboxSummary?.unreadMessages ?? 0} unread</small>
                 </header>
-                <article>
-                  <strong>No account notices</strong>
-                  <p>New service messages will appear here when stored by Nortix.</p>
-                </article>
-                <NavLink to="/dashboard/settings" onClick={() => setMessagesOpen(false)}>
-                  Message settings
-                </NavLink>
+                {messageItems.slice(0, 4).map((delivery) => (
+                  <button className="inbox-popover__item" key={delivery.id} onClick={() => openMessage(delivery.id, delivery.message.actionUrl)}>
+                    <strong>{delivery.message.title}</strong>
+                    <p>{delivery.message.body}</p>
+                  </button>
+                ))}
+                {messageItems.length === 0 ? <article><strong>You’re caught up</strong><p>No unread messages from Nortix.</p></article> : null}
+                <NavLink to="/dashboard/inbox" onClick={() => setMessagesOpen(false)}>Open message center</NavLink>
               </div>
             )}
           </div>
-          <button className="icon-button desktop-only" aria-label="Inbox">
+          <button className="icon-button desktop-only" aria-label="Open inbox" onClick={() => navigate("/dashboard/inbox")}>
             <Inbox />
           </button>
           <NavLink to="/dashboard/profile" className="profile-trigger">

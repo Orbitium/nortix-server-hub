@@ -9,7 +9,6 @@ import {
   DashboardHomePage,
   DashboardServersPage,
   LeaderboardsPage,
-  PlaceholderDashboardPage,
   ProfilePage,
   ProgressPage,
   QuestsPage,
@@ -24,6 +23,7 @@ import {
 } from "../routes/AdminPages";
 import { AuthPage } from "../routes/AuthPages";
 import { RouteSeo } from "../components/Seo";
+import { InboxPage, NotificationSettingsPage } from "../components/InboxCenter";
 
 const managedPages = [
   ["users", "Users", "Edit account data, roles, access, restrictions, and moderation context.", "users"],
@@ -93,7 +93,8 @@ export function App() {
         <Route path="dashboard/community" element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard/referrals" element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard/profile" element={<ProfilePage />} />
-        <Route path="dashboard/settings" element={<PlaceholderDashboardPage title="Settings" description="Profile, notifications, privacy, Sparks preferences, and security." />} />
+        <Route path="dashboard/inbox" element={<InboxPage />} />
+        <Route path="dashboard/settings" element={<NotificationSettingsPage />} />
         <Route path="owner" element={<OwnerPlatform />} />
         <Route
           path="owner/servers/new"

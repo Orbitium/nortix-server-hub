@@ -2,7 +2,7 @@ import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
-import { useOwnerAnalytics } from "../features/api-data";
+import { useNotificationPreferences, useOwnerAnalytics } from "../features/api-data";
 
 type ServerRecord = {
   id: string;
@@ -1168,6 +1168,36 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
   const [teamMessage, setTeamMessage] = useState("");
   const [teamBusy, setTeamBusy] = useState("");
   const { refreshServers } = useContext(OwnerServersContext);
+  const { data: notificationPreferences } = useNotificationPreferences();
+
+  useEffect(() => {
+    if (!notificationPreferences) return;
+    setSparksAlerts(notificationPreferences.sparksActivity);
+    setCampaignAlerts(notificationPreferences.campaignActivity);
+    setWeeklyDigest(notificationPreferences.productUpdates);
+    setIncidentAlerts(notificationPreferences.serverOperations);
+  }, [notificationPreferences]);
+
+  const saveSettings = async () => {
+    setSaved(false);
+    try {
+      await api("/notification-preferences", {
+        method: "PUT",
+        body: JSON.stringify({
+          campaignActivity: campaignAlerts,
+          questsAndStreaks: notificationPreferences?.questsAndStreaks ?? true,
+          sparksActivity: sparksAlerts,
+          serverOperations: incidentAlerts,
+          teamActivity: notificationPreferences?.teamActivity ?? true,
+          productUpdates: weeklyDigest,
+          emailProductUpdates: false,
+        }),
+      });
+      setSaved(true);
+    } catch (error) {
+      setTeamMessage(error instanceof Error ? error.message : "Notification preferences could not be saved.");
+    }
+  };
 
   const loadTeam = async () => {
     const invitations = await api<TeamInvite[]>("/team/invites");
@@ -1266,7 +1296,7 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
         server={server}
         setServer={setServer}
         action={
-          <button className="button button--primary" onClick={() => setSaved(true)}>
+          <button className="button button--primary" onClick={saveSettings}>
             <Save />
             {saved ? "Changes saved" : "Save changes"}
           </button>
@@ -1331,28 +1361,18 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
           )}
           {section === "Notifications" && (
             <>
-              <SettingsHeading icon={Bell} title="Owner notifications" description="Decide which operational and research updates reach your team." />
-              <SettingRow title="Campaign activity" description="New submissions, verification queues, moderation decisions, and campaign limits." checked={campaignAlerts} onChange={setCampaignAlerts} />
-              <SettingRow title="Weekly intelligence digest" description="A concise summary of acquisition, retention, sentiment, and emerging feedback themes." checked={weeklyDigest} onChange={setWeeklyDigest} />
+              <SettingsHeading icon={Bell} title="Owner notifications" description="These persisted preferences apply to your Nortix account across every server you own or help manage." />
+              <SettingRow title="Campaign activity" description="Campaign joins, milestone results, moderation decisions, and participation changes." checked={campaignAlerts} onChange={setCampaignAlerts} />
+              <SettingRow title="Product updates" description="Non-urgent Nortix feature and service announcements in your account inbox." checked={weeklyDigest} onChange={setWeeklyDigest} />
               <SettingRow title="Connection and data incidents" description="Plugin downtime, delayed heartbeats, schema mismatches, and data-quality changes." checked={incidentAlerts} onChange={setIncidentAlerts} />
-              <label className="owner-setting-field">
+              <div className="owner-setting-note">
+                <ShieldCheck />
                 <span>
-                  <strong>Digest recipients</strong>
-                  <small>Separate multiple addresses with commas.</small>
+                  <strong>Security and account notices remain enabled</strong>
+                  <p>Critical access and safety messages cannot be disabled. Email delivery remains unavailable until a verified provider is configured.</p>
                 </span>
-                <input defaultValue="owner@skyblockx.net, product@skyblockx.net" />
-              </label>
-              <label className="owner-setting-field">
-                <span>
-                  <strong>Delivery schedule</strong>
-                  <small>Times use the account timezone.</small>
-                </span>
-                <select defaultValue="Monday, 09:00">
-                  <option>Monday, 09:00</option>
-                  <option>Friday, 16:00</option>
-                  <option>Daily, 09:00</option>
-                </select>
-              </label>
+              </div>
+              <Link className="owner-text-button" to="/dashboard/inbox">Open your Nortix inbox <ArrowUpRight /></Link>
             </>
           )}
           {section === "Data & privacy" && (

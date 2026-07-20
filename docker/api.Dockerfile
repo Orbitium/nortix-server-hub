@@ -3,7 +3,7 @@ RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm db:generate && pnpm --filter @nortix/api build
+RUN pnpm --filter @nortix/api... build
 
 FROM node:22-alpine
 RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
@@ -11,4 +11,4 @@ WORKDIR /app
 COPY --from=build /app /app
 ENV NODE_ENV=production
 EXPOSE 4000
-CMD ["sh", "-c", "pnpm --filter @nortix/database migrate:deploy && exec pnpm --filter @nortix/api start"]
+CMD ["pnpm", "--filter", "@nortix/api", "start"]

@@ -175,6 +175,36 @@ enum CrackedLinkStatus {
   PLAYED_BEFORE
 }
 
+enum NotificationCategory {
+  CAMPAIGN
+  QUEST
+  SPARKS
+  SERVER
+  TEAM
+  SECURITY
+  SYSTEM
+}
+
+enum AdminMessageAudience {
+  ALL_USERS
+  PLAYERS
+  SERVER_OWNERS
+  LIMITED_ACCOUNTS
+  USER
+}
+
+enum AdminMessageSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  CRITICAL
+}
+
+enum AdminMessageStatus {
+  DRAFT
+  SENT
+}
+
 model User {
   id                        String                      @id @default(cuid())
   firebaseUid               String                      @unique
@@ -226,9 +256,82 @@ model User {
   premiumIdentityClaims     PremiumIdentityClaim[]
   crackedAccountLinks       CrackedAccountLink[]
   minecraftIdentityActivity MinecraftIdentityActivity[]
+  notificationPreference    NotificationPreference?
+  notifications             Notification[]
+  createdAdminMessages      AdminMessage[]              @relation("AdminMessageCreator")
+  targetedAdminMessages     AdminMessage[]              @relation("AdminMessageTarget")
+  adminMessageDeliveries    AdminMessageDelivery[]
 
   @@index([status])
   @@index([reputationScore])
+}
+
+model NotificationPreference {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignActivity    Boolean  @default(true)
+  questsAndStreaks    Boolean  @default(true)
+  sparksActivity      Boolean  @default(true)
+  serverOperations    Boolean  @default(true)
+  teamActivity        Boolean  @default(true)
+  productUpdates      Boolean  @default(true)
+  emailProductUpdates Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+}
+
+model Notification {
+  id          String               @id @default(cuid())
+  recipientId String
+  recipient   User                 @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  category    NotificationCategory
+  title       String
+  body        String
+  actionUrl   String?
+  dedupeKey   String?
+  readAt      DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime             @default(now())
+
+  @@unique([recipientId, dedupeKey])
+  @@index([recipientId, archivedAt, createdAt])
+  @@index([recipientId, readAt, createdAt])
+}
+
+model AdminMessage {
+  id           String                 @id @default(cuid())
+  createdById  String
+  createdBy    User                   @relation("AdminMessageCreator", fields: [createdById], references: [id])
+  targetUserId String?
+  targetUser   User?                  @relation("AdminMessageTarget", fields: [targetUserId], references: [id])
+  audience     AdminMessageAudience
+  severity     AdminMessageSeverity   @default(INFO)
+  status       AdminMessageStatus     @default(DRAFT)
+  title        String
+  body         String
+  actionUrl    String?
+  sentAt       DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  deliveries   AdminMessageDelivery[]
+
+  @@index([status, createdAt])
+  @@index([createdById, createdAt])
+}
+
+model AdminMessageDelivery {
+  id          String       @id @default(cuid())
+  messageId   String
+  message     AdminMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   User         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  readAt      DateTime?
+  archivedAt  DateTime?
+  deliveredAt DateTime     @default(now())
+
+  @@unique([messageId, recipientId])
+  @@index([recipientId, archivedAt, deliveredAt])
+  @@index([recipientId, readAt, deliveredAt])
 }
 
 model MinecraftIdentity {
@@ -330,18 +433,18 @@ model Server {
 }
 
 model ServerActivitySample {
-  id             String   @id
-  serverId       String
-  server         Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  observedAt     DateTime
-  receivedAt     DateTime @default(now())
-  onlinePlayers  Int
-  maxPlayers     Int?
-  platform       String
-  pluginVersion  String
-  serverVersion  String?
-  backendCounts  Json     @default("{}")
-  playerHashes   String[]
+  id            String   @id
+  serverId      String
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  observedAt    DateTime
+  receivedAt    DateTime @default(now())
+  onlinePlayers Int
+  maxPlayers    Int?
+  platform      String
+  pluginVersion String
+  serverVersion String?
+  backendCounts Json     @default("{}")
+  playerHashes  String[]
 
   @@index([serverId, observedAt])
 }
@@ -444,7 +547,7 @@ model Campaign {
   status                CampaignStatus          @default(DRAFT)
   category              String
   internalBudgetCents   Int
-  campaignBudgetCredits Int                    @default(0)
+  campaignBudgetCredits Int                     @default(0)
   publicRewardCents     Int
   startsAt              DateTime
   endsAt                DateTime
