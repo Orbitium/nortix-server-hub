@@ -7,8 +7,8 @@ const EnvSchema = z.object({
   WEB_ORIGIN: z.string().default("http://localhost:5173"),
   DATABASE_URL: z.string().min(1),
   AUTH_MODE: z.enum(["firebase", "mock"]).default("mock"),
-  FIREBASE_PROJECT_ID: z.string().optional(),
-  FIREBASE_CLIENT_EMAIL: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().trim().optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().trim().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),
   INTEGRATION_SIGNING_SECRET: z.string().min(16).default("local-integration-secret"),
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default("local-payment-secret"),
@@ -23,13 +23,13 @@ export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
   if (!result.success) {
     throw new Error(`Invalid environment configuration: ${z.prettifyError(result.error)}`);
   }
-  if (
-    result.data.AUTH_MODE === "firebase" &&
-    (!result.data.FIREBASE_PROJECT_ID ||
-      !result.data.FIREBASE_CLIENT_EMAIL ||
-      !result.data.FIREBASE_PRIVATE_KEY)
-  ) {
-    throw new Error("Firebase Admin credentials are required when AUTH_MODE=firebase.");
+  if (result.data.AUTH_MODE === "firebase" && !result.data.FIREBASE_PROJECT_ID) {
+    throw new Error("FIREBASE_PROJECT_ID is required when AUTH_MODE=firebase.");
+  }
+  if (Boolean(result.data.FIREBASE_CLIENT_EMAIL) !== Boolean(result.data.FIREBASE_PRIVATE_KEY)) {
+    throw new Error(
+      "FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY must either both be configured or both be omitted.",
+    );
   }
   if (result.data.NODE_ENV === "production" && result.data.AUTH_MODE !== "firebase") {
     throw new Error("Production requires AUTH_MODE=firebase; mock authentication is development-only.");

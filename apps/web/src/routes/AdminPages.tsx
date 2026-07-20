@@ -1,9 +1,34 @@
-import { Activity, BarChart3, Check, ChevronRight, ClipboardCheck, Eye, Gauge, KeyRound, LockKeyhole, MessageSquare, Pause, Radio, Save, Search, Send, Server, Settings, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Check,
+  ChevronRight,
+  ClipboardCheck,
+  Eye,
+  Gauge,
+  KeyRound,
+  LockKeyhole,
+  MessageSquare,
+  Pause,
+  Radio,
+  Save,
+  Search,
+  Send,
+  Server,
+  Settings,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Button, Card } from "@nortix/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import {
   artIndexFor,
   type AdminReviewCampaign,
@@ -39,11 +64,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       label.toLowerCase().includes(sectionSearch.toLowerCase()) &&
       (href !== "/admin/messages" || currentUser?.roles.includes("ADMIN")),
   );
-  const hasAdminAccess = currentUser?.roles.some((role) => role === "ADMIN" || role === "MODERATOR");
+  const hasAdminAccess = currentUser?.roles.some(
+    (role) => role === "ADMIN" || role === "MODERATOR",
+  );
   const staffRole = currentUser?.roles.includes("ADMIN") ? "NORTIX ADMIN" : "NORTIX MODERATOR";
 
   if (accessLoading) {
-    return <div className="admin-access-state"><ShieldCheck /><h1>Checking administrator access…</h1></div>;
+    return (
+      <div className="admin-access-state">
+        <ShieldCheck />
+        <h1>Checking administrator access…</h1>
+      </div>
+    );
   }
   if (accessError || !hasAdminAccess) {
     return (
@@ -51,7 +83,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <LockKeyhole />
         <h1>Administrator access required</h1>
         <p>This internal workspace is available only to authorized Nortix staff.</p>
-        <NavLink className="button button--primary" to="/dashboard">Return to Nortix</NavLink>
+        <NavLink className="button button--primary" to="/dashboard">
+          Return to Nortix
+        </NavLink>
       </div>
     );
   }
@@ -64,13 +98,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <strong>Nortix administration</strong>
           <small>Full actions are permission-gated, confirmed, and written to the audit log.</small>
         </div>
+        <LanguageSwitcher compact />
         <span className="admin-role">{staffRole}</span>
       </div>
       <div className="admin-layout">
         <aside>
           <label>
             <Search />
-            <input value={sectionSearch} onChange={(event) => setSectionSearch(event.target.value)} placeholder="Find a tool..." />
+            <input
+              value={sectionSearch}
+              onChange={(event) => setSectionSearch(event.target.value)}
+              placeholder="Find a tool..."
+            />
           </label>
           <nav>
             {visibleSections.map(([label, path, Icon]) => (
@@ -90,7 +129,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-const AdminHeading = ({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) => (
+const AdminHeading = ({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) => (
   <div className="dashboard-heading admin-v2-heading">
     <div>
       <span className="eyebrow">INTERNAL CONTROL CENTER</span>
@@ -106,33 +153,71 @@ export function AdminOverviewPage() {
   const { data: overview, isLoading, isError, refetch } = useAdminOverview();
   const { data: auditLogs } = useAuditLogs();
   const { data: currentUser } = useCurrentUser();
-  const overviewEvents = (auditLogs ?? []).slice(0, 8).map((entry) => [
-    entry.actor?.displayName ?? entry.actor?.username ?? "System",
-    entry.action,
-    `${entry.entityType}:${entry.entityId}`,
-    new Date(entry.createdAt).toLocaleString(),
-  ]);
+  const overviewEvents = (auditLogs ?? [])
+    .slice(0, 8)
+    .map((entry) => [
+      entry.actor?.displayName ?? entry.actor?.username ?? "System",
+      entry.action,
+      `${entry.entityType}:${entry.entityId}`,
+      new Date(entry.createdAt).toLocaleString(),
+    ]);
 
   return (
     <>
       <AdminHeading
         title="Operations overview"
         description="Moderation, access, platform usage, live signals, Sparks policy, and system controls."
-        action={currentUser?.roles.includes("ADMIN") ? (
-          <Button onClick={() => setMessageOpen(true)}>
-            <Send /> Message users
-          </Button>
-        ) : undefined}
+        action={
+          currentUser?.roles.includes("ADMIN") ? (
+            <Button onClick={() => setMessageOpen(true)}>
+              <Send /> Message users
+            </Button>
+          ) : undefined
+        }
       />
-      {isLoading ? <Card><p>Loading seeded operations data…</p></Card> : null}
-      {isError ? <Card><p>Seeded operations data could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+      {isLoading ? (
+        <Card>
+          <p>Loading seeded operations data…</p>
+        </Card>
+      ) : null}
+      {isError ? (
+        <Card>
+          <p>Seeded operations data could not be loaded.</p>
+          <Button onClick={() => refetch()}>Retry</Button>
+        </Card>
+      ) : null}
       <div className="admin-kpi-grid">
         {[
-          { Icon: Users, label: "User accounts", value: overview?.users ?? "—", note: "Database records" },
-          { Icon: Server, label: "Servers", value: overview?.servers ?? "—", note: "All moderation states" },
-          { Icon: ClipboardCheck, label: "Campaigns", value: overview?.campaigns ?? "—", note: "All lifecycle states" },
-          { Icon: ShieldAlert, label: "Open moderation", value: overview?.openCases ?? "—", note: "Cases requiring attention" },
-          { Icon: Sparkles, label: "Pending requests", value: overview?.pendingWithdrawals ?? "—", note: "Legacy review queue" },
+          {
+            Icon: Users,
+            label: "User accounts",
+            value: overview?.users ?? "—",
+            note: "Database records",
+          },
+          {
+            Icon: Server,
+            label: "Servers",
+            value: overview?.servers ?? "—",
+            note: "All moderation states",
+          },
+          {
+            Icon: ClipboardCheck,
+            label: "Campaigns",
+            value: overview?.campaigns ?? "—",
+            note: "All lifecycle states",
+          },
+          {
+            Icon: ShieldAlert,
+            label: "Open moderation",
+            value: overview?.openCases ?? "—",
+            note: "Cases requiring attention",
+          },
+          {
+            Icon: Sparkles,
+            label: "Pending requests",
+            value: overview?.pendingWithdrawals ?? "—",
+            note: "Legacy review queue",
+          },
         ].map(({ Icon, label, value, note }) => (
           <Card key={label}>
             <Icon />
@@ -148,7 +233,9 @@ export function AdminOverviewPage() {
           <div className="data-card__header">
             <div>
               <h2>Platform data monitor</h2>
-              <p>Counts below come from the seeded database through administrator-only endpoints.</p>
+              <p>
+                Counts below come from the seeded database through administrator-only endpoints.
+              </p>
             </div>
             <span className="live-pill">DATABASE</span>
           </div>
@@ -172,7 +259,10 @@ export function AdminOverviewPage() {
         </Card>
         <Card>
           <h2>System controls</h2>
-          <p>Controls remain unavailable until a persisted, audited system-settings endpoint is configured.</p>
+          <p>
+            Controls remain unavailable until a persisted, audited system-settings endpoint is
+            configured.
+          </p>
           <label className="admin-toggle-row">
             <span>
               <strong>Maintenance mode</strong>
@@ -242,59 +332,80 @@ export function CampaignReviewPage() {
 
   return (
     <>
-      <AdminHeading title="Campaign moderation" description="Review task clarity, Sparks limits, verification, safety, and owner history." />
-      {isLoading ? <Card><p>Loading seeded moderation queue…</p></Card> : null}
-      {isError ? <Card><p>The seeded moderation queue could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
-      {!isLoading && !isError && campaigns.length === 0 ? <Card><p>No seeded campaigns currently require review.</p></Card> : null}
+      <AdminHeading
+        title="Campaign moderation"
+        description="Review task clarity, Sparks limits, verification, safety, and owner history."
+      />
+      {isLoading ? (
+        <Card>
+          <p>Loading seeded moderation queue…</p>
+        </Card>
+      ) : null}
+      {isError ? (
+        <Card>
+          <p>The seeded moderation queue could not be loaded.</p>
+          <Button onClick={() => refetch()}>Retry</Button>
+        </Card>
+      ) : null}
+      {!isLoading && !isError && campaigns.length === 0 ? (
+        <Card>
+          <p>No seeded campaigns currently require review.</p>
+        </Card>
+      ) : null}
       <div className="admin-queue">
-        {campaigns
-          .slice(0, 5)
-          .map((campaign) => (
-            <Card className="review-queue-card" key={campaign.id}>
-              <div className="review-queue-card__header">
-                <span className={`server-inline__logo server-art--${artIndexFor(campaign.server.id)}`}>{campaign.server.name.slice(0, 2)}</span>
-                <div>
-                  <h2>{campaign.title}</h2>
-                  <p>
-                    {campaign.server.name} · submitted {new Date(campaign.createdAt).toLocaleString()}
-                  </p>
-                </div>
-                <span className="admin-status">{campaign.status}</span>
+        {campaigns.slice(0, 5).map((campaign) => (
+          <Card className="review-queue-card" key={campaign.id}>
+            <div className="review-queue-card__header">
+              <span
+                className={`server-inline__logo server-art--${artIndexFor(campaign.server.id)}`}
+              >
+                {campaign.server.name.slice(0, 2)}
+              </span>
+              <div>
+                <h2>{campaign.title}</h2>
+                <p>
+                  {campaign.server.name} · submitted {new Date(campaign.createdAt).toLocaleString()}
+                </p>
               </div>
-              <div className="review-card-stats">
-                <span>
-                  <small>Potential Sparks</small>
-                  <strong>
-                    {campaign.minimumSparksReward}–{campaign.maximumSparksReward}
-                  </strong>
-                </span>
-                <span>
-                  <small>Verification</small>
-                  <strong>{campaign.automaticVerification ? "Automatic checks" : "System review"}</strong>
-                </span>
-                <span>
-                  <small>Capacity</small>
-                  <strong>{campaign.maxParticipants}</strong>
-                </span>
-                <span>
-                  <small>Risk score</small>
-                  <strong>Pending assessment</strong>
-                </span>
-                <span>
-                  <small>Owner status</small>
-                  <strong>{campaign.owner.status}</strong>
-                </span>
-              </div>
-              <div className="review-queue-card__footer">
-                <span>
-                  {campaign.milestones.length} tasks · submitted {new Date(campaign.createdAt).toLocaleDateString()}
-                </span>
-                <Button variant="secondary" onClick={() => setSelected(campaign)}>
-                  Open review
-                </Button>
-              </div>
-            </Card>
-          ))}
+              <span className="admin-status">{campaign.status}</span>
+            </div>
+            <div className="review-card-stats">
+              <span>
+                <small>Potential Sparks</small>
+                <strong>
+                  {campaign.minimumSparksReward}–{campaign.maximumSparksReward}
+                </strong>
+              </span>
+              <span>
+                <small>Verification</small>
+                <strong>
+                  {campaign.automaticVerification ? "Automatic checks" : "System review"}
+                </strong>
+              </span>
+              <span>
+                <small>Capacity</small>
+                <strong>{campaign.maxParticipants}</strong>
+              </span>
+              <span>
+                <small>Risk score</small>
+                <strong>Pending assessment</strong>
+              </span>
+              <span>
+                <small>Owner status</small>
+                <strong>{campaign.owner.status}</strong>
+              </span>
+            </div>
+            <div className="review-queue-card__footer">
+              <span>
+                {campaign.milestones.length} tasks · submitted{" "}
+                {new Date(campaign.createdAt).toLocaleDateString()}
+              </span>
+              <Button variant="secondary" onClick={() => setSelected(campaign)}>
+                Open review
+              </Button>
+            </div>
+          </Card>
+        ))}
       </div>
       {selected && (
         <Modal title="Moderate campaign" onClose={() => setSelected(null)}>
@@ -323,7 +434,11 @@ export function CampaignReviewPage() {
               </label>
               <label>
                 Internal reason
-                <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for restrictive actions" />
+                <input
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Required for restrictive actions"
+                />
               </label>
             </div>
             {reviewMessage ? <p role="alert">{reviewMessage}</p> : null}
@@ -337,9 +452,7 @@ export function CampaignReviewPage() {
                 <Pause /> Pause
               </Button>
             </div>
-            <Button
-              onClick={() => review("APPROVE")}
-            >
+            <Button onClick={() => review("APPROVE")}>
               <Check /> Approve changes
             </Button>
           </div>
@@ -353,7 +466,10 @@ export function WithdrawalReviewPage() {
   const [editing, setEditing] = useState(false);
   return (
     <>
-      <AdminHeading title="Sparks adjustment review" description="Review manual Sparks corrections, reversals, limits, and policy exceptions." />
+      <AdminHeading
+        title="Sparks adjustment review"
+        description="Review manual Sparks corrections, reversals, limits, and policy exceptions."
+      />
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -435,7 +551,15 @@ type ManagedRecord = {
   updated: string;
 };
 
-export function AdminGenericPage({ title, description, type = "generic" }: { title: string; description: string; type?: string }) {
+export function AdminGenericPage({
+  title,
+  description,
+  type = "generic",
+}: {
+  title: string;
+  description: string;
+  type?: string;
+}) {
   if (type === "messages") return <AdminMessagesPage />;
   if (type === "analytics" || type === "umami") return <AdminAnalyticsPage type={type} />;
   if (type === "monitor") return <AdminMonitorPage />;
@@ -446,7 +570,15 @@ export function AdminGenericPage({ title, description, type = "generic" }: { tit
   return <EntityManagementPage title={title} description={description} type={type} />;
 }
 
-function EntityManagementPage({ title, description, type }: { title: string; description: string; type: string }) {
+function EntityManagementPage({
+  title,
+  description,
+  type,
+}: {
+  title: string;
+  description: string;
+  type: string;
+}) {
   const [query, setQuery] = useState("");
   const supportedType = type === "users" || type === "servers" ? type : null;
   const { data: entityData = [], isLoading } = useQuery({
@@ -475,8 +607,17 @@ function EntityManagementPage({ title, description, type }: { title: string; des
       updated: new Date(String(record.updatedAt)).toLocaleString(),
     };
   });
-  const scopedRows = type === "users" ? rows.filter((row) => row.type === "User") : type === "servers" ? rows.filter((row) => row.type === "Server") : rows;
-  const filtered = scopedRows.filter((row) => `${row.name} ${row.type} ${row.status} ${row.access}`.toLowerCase().includes(query.toLowerCase()));
+  const scopedRows =
+    type === "users"
+      ? rows.filter((row) => row.type === "User")
+      : type === "servers"
+        ? rows.filter((row) => row.type === "Server")
+        : rows;
+  const filtered = scopedRows.filter((row) =>
+    `${row.name} ${row.type} ${row.status} ${row.access}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
 
   return (
     <>
@@ -497,7 +638,11 @@ function EntityManagementPage({ title, description, type }: { title: string; des
           </div>
           <label className="table-search">
             <Search />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records..." />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search records..."
+            />
           </label>
         </div>
         <div className="table-wrap">
@@ -529,7 +674,12 @@ function EntityManagementPage({ title, description, type }: { title: string; des
                   <td>{row.access}</td>
                   <td>{row.updated}</td>
                   <td>
-                    <button className="icon-button" disabled title="Persisted editing endpoint not enabled" aria-label={`Editing ${row.name} is unavailable`}>
+                    <button
+                      className="icon-button"
+                      disabled
+                      title="Persisted editing endpoint not enabled"
+                      aria-label={`Editing ${row.name} is unavailable`}
+                    >
                       <ChevronRight />
                     </button>
                   </td>
@@ -539,13 +689,29 @@ function EntityManagementPage({ title, description, type }: { title: string; des
           </table>
         </div>
       </Card>
-      {isLoading && <Card><p>Loading seeded administration records…</p></Card>}
-      {!supportedType && <Card><p>This tool has no persisted data endpoint yet. No example records are shown.</p></Card>}
+      {isLoading && (
+        <Card>
+          <p>Loading seeded administration records…</p>
+        </Card>
+      )}
+      {!supportedType && (
+        <Card>
+          <p>This tool has no persisted data endpoint yet. No example records are shown.</p>
+        </Card>
+      )}
     </>
   );
 }
 
-function _RecordEditor({ record, onClose, onSave }: { record: ManagedRecord; onClose: () => void; onSave: (record: ManagedRecord) => void }) {
+function _RecordEditor({
+  record,
+  onClose,
+  onSave,
+}: {
+  record: ManagedRecord;
+  onClose: () => void;
+  onSave: (record: ManagedRecord) => void;
+}) {
   const [draft, setDraft] = useState(record);
   const [confirmation, setConfirmation] = useState("");
 
@@ -555,11 +721,17 @@ function _RecordEditor({ record, onClose, onSave }: { record: ManagedRecord; onC
         <div className="form-grid form-grid--two">
           <label>
             Display name
-            <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+            <input
+              value={draft.name}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+            />
           </label>
           <label>
             Status
-            <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
+            <select
+              value={draft.status}
+              onChange={(event) => setDraft({ ...draft, status: event.target.value })}
+            >
               <option>ACTIVE</option>
               <option>LIMITED</option>
               <option>UNDER_REVIEW</option>
@@ -569,7 +741,10 @@ function _RecordEditor({ record, onClose, onSave }: { record: ManagedRecord; onC
           </label>
           <label>
             Access role
-            <select value={draft.access} onChange={(event) => setDraft({ ...draft, access: event.target.value })}>
+            <select
+              value={draft.access}
+              onChange={(event) => setDraft({ ...draft, access: event.target.value })}
+            >
               <option>Player</option>
               <option>Owner</option>
               <option>Moderator</option>
@@ -588,9 +763,20 @@ function _RecordEditor({ record, onClose, onSave }: { record: ManagedRecord; onC
         </div>
         <div className="admin-danger-zone">
           <strong>Termination safeguard</strong>
-          <p>Type the record ID to enable termination. This would revoke access and preserve an audit record.</p>
-          <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={record.id} />
-          <Button variant="danger" disabled={confirmation !== record.id} onClick={() => setDraft({ ...draft, status: "TERMINATED", access: "No access" })}>
+          <p>
+            Type the record ID to enable termination. This would revoke access and preserve an audit
+            record.
+          </p>
+          <input
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            placeholder={record.id}
+          />
+          <Button
+            variant="danger"
+            disabled={confirmation !== record.id}
+            onClick={() => setDraft({ ...draft, status: "TERMINATED", access: "No access" })}
+          >
             <Trash2 /> Terminate record
           </Button>
         </div>
@@ -639,7 +825,11 @@ function AdminMessagesPage() {
         }
       />
       <Card className="data-card">
-        {actionError ? <p className="admin-form-error" role="alert">{actionError}</p> : null}
+        {actionError ? (
+          <p className="admin-form-error" role="alert">
+            {actionError}
+          </p>
+        ) : null}
         <div className="table-wrap">
           <table>
             <thead>
@@ -657,7 +847,8 @@ function AdminMessagesPage() {
                   <td>
                     <strong>{message.title}</strong>
                     <small className="admin-table-secondary">
-                      {message.severity.toLowerCase()} · by {message.createdBy.displayName ?? message.createdBy.username}
+                      {message.severity.toLowerCase()} · by{" "}
+                      {message.createdBy.displayName ?? message.createdBy.username}
                     </small>
                     <small className="admin-table-secondary">{message.body}</small>
                   </td>
@@ -676,18 +867,38 @@ function AdminMessagesPage() {
                   </td>
                   <td>
                     {message.status === "DRAFT" ? (
-                      <button className="admin-table-action" disabled={sendingId === message.id} onClick={() => sendDraft(message.id)}>
+                      <button
+                        className="admin-table-action"
+                        disabled={sendingId === message.id}
+                        onClick={() => sendDraft(message.id)}
+                      >
                         <Send /> {sendingId === message.id ? "Sending…" : "Send draft"}
                       </button>
                     ) : (
-                      <small>{new Date(message.sentAt ?? message.createdAt).toLocaleString()}</small>
+                      <small>
+                        {new Date(message.sentAt ?? message.createdAt).toLocaleString()}
+                      </small>
                     )}
                   </td>
                 </tr>
               ))}
-              {isLoading ? <tr><td colSpan={5}>Loading persisted messages…</td></tr> : null}
-              {isError ? <tr><td colSpan={5}>Messages could not be loaded. <button onClick={() => refetch()}>Retry</button></td></tr> : null}
-              {!isLoading && !isError && messages.length === 0 ? <tr><td colSpan={5}>No messages or drafts yet.</td></tr> : null}
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5}>Loading persisted messages…</td>
+                </tr>
+              ) : null}
+              {isError ? (
+                <tr>
+                  <td colSpan={5}>
+                    Messages could not be loaded. <button onClick={() => refetch()}>Retry</button>
+                  </td>
+                </tr>
+              ) : null}
+              {!isLoading && !isError && messages.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>No messages or drafts yet.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -702,7 +913,9 @@ function AdminMessageComposer({ onClose }: { onClose: () => void }) {
   const [targetUsername, setTargetUsername] = useState("");
   const [severity, setSeverity] = useState("INFO");
   const [title, setTitle] = useState("Important Nortix update");
-  const [body, setBody] = useState("Nortix administrators have shared an update. Please review the latest platform guidance.");
+  const [body, setBody] = useState(
+    "Nortix administrators have shared an update. Please review the latest platform guidance.",
+  );
   const [actionUrl, setActionUrl] = useState("/dashboard/inbox");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -727,7 +940,9 @@ function AdminMessageComposer({ onClose }: { onClose: () => void }) {
       await queryClient.invalidateQueries({ queryKey: ["admin-messages"] });
       onClose();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "The message could not be saved.");
+      setError(
+        submitError instanceof Error ? submitError.message : "The message could not be saved.",
+      );
     } finally {
       setBusy(false);
     }
@@ -749,7 +964,11 @@ function AdminMessageComposer({ onClose }: { onClose: () => void }) {
         {audience === "USER" ? (
           <label>
             Nortix username
-            <input value={targetUsername} onChange={(event) => setTargetUsername(event.target.value)} placeholder="tester5" />
+            <input
+              value={targetUsername}
+              onChange={(event) => setTargetUsername(event.target.value)}
+              placeholder="tester5"
+            />
           </label>
         ) : null}
         <label>
@@ -767,16 +986,30 @@ function AdminMessageComposer({ onClose }: { onClose: () => void }) {
         </label>
         <label>
           Message
-          <textarea rows={5} maxLength={2000} value={body} onChange={(event) => setBody(event.target.value)} />
+          <textarea
+            rows={5}
+            maxLength={2000}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+          />
         </label>
         <label>
           Internal action path
-          <input value={actionUrl} onChange={(event) => setActionUrl(event.target.value)} placeholder="/dashboard/inbox" />
+          <input
+            value={actionUrl}
+            onChange={(event) => setActionUrl(event.target.value)}
+            placeholder="/dashboard/inbox"
+          />
         </label>
         <p className="admin-editor-note">
-          Sent messages create private, persistent deliveries. Recipient selection, delivery count, and the sending administrator are written to the audit log.
+          Sent messages create private, persistent deliveries. Recipient selection, delivery count,
+          and the sending administrator are written to the audit log.
         </p>
-        {error ? <p role="alert" className="admin-form-error">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="admin-form-error">
+            {error}
+          </p>
+        ) : null}
       </div>
       <div className="modal__footer">
         <Button variant="ghost" disabled={busy} onClick={() => submit("DRAFT")}>
@@ -800,7 +1033,11 @@ function AdminAnalyticsPage({ type }: { type: string }) {
         title={type === "umami" ? "Umami usage analytics" : "Product analytics"}
         description="Privacy-conscious traffic, engagement, campaign, search, and retention signals."
         action={
-          <select className="admin-range" value={range} onChange={(event) => setRange(event.target.value)}>
+          <select
+            className="admin-range"
+            value={range}
+            onChange={(event) => setRange(event.target.value)}
+          >
             <option>24 hours</option>
             <option>7 days</option>
             <option>30 days</option>
@@ -844,7 +1081,11 @@ function AdminAnalyticsPage({ type }: { type: string }) {
       </div>
       <Card>
         <h2>{type === "umami" ? "Umami integration" : "Measurement controls"}</h2>
-        <p>{type === "umami" ? "Connect a self-hosted Umami instance with a site ID and endpoint. No tracking script is enabled in this prototype." : "Event names, retention windows, and privacy rules could be configured here."}</p>
+        <p>
+          {type === "umami"
+            ? "Connect a self-hosted Umami instance with a site ID and endpoint. No tracking script is enabled in this prototype."
+            : "Event names, retention windows, and privacy rules could be configured here."}
+        </p>
         <div className="form-grid form-grid--two">
           <label>
             Endpoint
@@ -929,14 +1170,30 @@ function AdminAuditPage() {
     .filter((row) => row.join(" ").toLowerCase().includes(filter.toLowerCase()));
   return (
     <>
-      <AdminHeading title="Activity logs" description="Search administrative, moderation, security, and system events." />
-      {isLoading ? <Card><p>Loading seeded audit records…</p></Card> : null}
-      {isError ? <Card><p>Seeded audit records could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+      <AdminHeading
+        title="Activity logs"
+        description="Search administrative, moderation, security, and system events."
+      />
+      {isLoading ? (
+        <Card>
+          <p>Loading seeded audit records…</p>
+        </Card>
+      ) : null}
+      {isError ? (
+        <Card>
+          <p>Seeded audit records could not be loaded.</p>
+          <Button onClick={() => refetch()}>Retry</Button>
+        </Card>
+      ) : null}
       <Card className="data-card">
         <div className="data-card__header">
           <label className="table-search">
             <Search />
-            <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter logs..." />
+            <input
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Filter logs..."
+            />
           </label>
           <Button variant="secondary">Export filtered log</Button>
         </div>
@@ -979,7 +1236,10 @@ function AdminAccessPage() {
   const [saved, setSaved] = useState(false);
   return (
     <>
-      <AdminHeading title="Nortix staff access" description="Control platform staff roles with least-privilege defaults and audited changes. Server-team roles never grant access here." />
+      <AdminHeading
+        title="Nortix staff access"
+        description="Control platform staff roles with least-privilege defaults and audited changes. Server-team roles never grant access here."
+      />
       <Card className="permission-matrix">
         <div className="permission-row permission-row--head">
           <b>Capability</b>
@@ -987,7 +1247,15 @@ function AdminAccessPage() {
           <b>Analyst</b>
           <b>Nortix admin</b>
         </div>
-        {["Review reports", "Edit servers", "Edit users", "Send messages", "View analytics", "Terminate access", "Manage admin roles"].map((capability, index) => (
+        {[
+          "Review reports",
+          "Edit servers",
+          "Edit users",
+          "Send messages",
+          "View analytics",
+          "Terminate access",
+          "Manage admin roles",
+        ].map((capability, index) => (
           <div className="permission-row" key={capability}>
             <strong>{capability}</strong>
             <input type="checkbox" defaultChecked={index < 2} />
@@ -1009,14 +1277,24 @@ function AdminTerminationPage() {
   const [completed, setCompleted] = useState(false);
   return (
     <>
-      <AdminHeading title="Termination tools" description="Revoke access, terminate records, invalidate sessions, or remove published entities with safeguards." />
+      <AdminHeading
+        title="Termination tools"
+        description="Revoke access, terminate records, invalidate sessions, or remove published entities with safeguards."
+      />
       <Card className="termination-console">
         <ShieldAlert />
         <h2>Protected destructive action</h2>
-        <p>Enter an exact user, server, campaign, or session ID. The action would require a reason, typed confirmation, role permission, and an immutable audit event.</p>
+        <p>
+          Enter an exact user, server, campaign, or session ID. The action would require a reason,
+          typed confirmation, role permission, and an immutable audit event.
+        </p>
         <label>
           Target ID
-          <input value={target} onChange={(event) => setTarget(event.target.value)} placeholder="usr_102 or srv_014" />
+          <input
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+            placeholder="usr_102 or srv_014"
+          />
         </label>
         <label>
           Reason
@@ -1040,7 +1318,11 @@ function AdminTerminationPage() {
             <input type="checkbox" /> Schedule data retention review
           </label>
         </div>
-        <Button variant="danger" disabled={!target || confirmation !== `TERMINATE ${target}`} onClick={() => setCompleted(true)}>
+        <Button
+          variant="danger"
+          disabled={!target || confirmation !== `TERMINATE ${target}`}
+          onClick={() => setCompleted(true)}
+        >
           <Trash2 /> {completed ? "Termination recorded" : "Execute termination"}
         </Button>
       </Card>

@@ -33,6 +33,7 @@ import {
   usePublicServer,
   usePublicServers,
 } from "../features/api-data";
+import { useI18n } from "../lib/i18n";
 
 export function HomePage() {
   const { data: campaignData } = usePublicCampaigns();
@@ -314,6 +315,7 @@ export function HomePage() {
 }
 
 export function BrowseServersPage() {
+  const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
   const [edition, setEdition] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicServers();
@@ -332,11 +334,9 @@ export function BrowseServersPage() {
   return (
     <div className="listing-page">
       <div className="listing-hero">
-        <span className="eyebrow">SERVER DISCOVERY</span>
-        <h1>Discover Minecraft servers worth playing.</h1>
-        <p>
-          Browse verified communities across Java and Bedrock, with or without an active playtest.
-        </p>
+        <span className="eyebrow">{t("listing.serverEyebrow")}</span>
+        <h1>{t("listing.serverTitle")}</h1>
+        <p>{t("listing.serverDescription")}</p>
       </div>
       <div className="filter-bar">
         <label>
@@ -344,7 +344,7 @@ export function BrowseServersPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search servers or categories"
+            placeholder={t("listing.searchServers")}
           />
         </label>
         <div className="segmented">
@@ -354,15 +354,24 @@ export function BrowseServersPage() {
               onClick={() => setEdition(item)}
               key={item}
             >
-              {item === "ALL" ? "All editions" : item}
+              {item === "ALL" ? t("listing.allEditions") : item}
             </button>
           ))}
         </div>
-        <span>{visible.length} servers</span>
+        <span>{t("listing.serverCount", { count: formatNumber(visible.length) })}</span>
       </div>
       <div className="server-grid">
-        {isLoading ? <Card><p>Loading seeded servers…</p></Card> : null}
-        {isError ? <Card><p>Seeded servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {isLoading ? (
+          <Card>
+            <p>{t("listing.loadingServers")}</p>
+          </Card>
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>{t("listing.serverError")}</p>
+            <Button onClick={() => refetch()}>{t("listing.retry")}</Button>
+          </Card>
+        ) : null}
         {visible.map((server) => (
           <ServerCard server={server} key={server.id} />
         ))}
@@ -372,14 +381,15 @@ export function BrowseServersPage() {
 }
 
 export function BrowseCampaignsPage() {
+  const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
+  const [category, setCategory] = useState("__all__");
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
   const campaigns = data?.items ?? [];
-  const categories = ["All", ...new Set(campaigns.map((campaign) => campaign.category))];
+  const categories = ["__all__", ...new Set(campaigns.map((campaign) => campaign.category))];
   const visible = campaigns.filter(
     (campaign) =>
-      (category === "All" || campaign.category === category) &&
+      (category === "__all__" || campaign.category === category) &&
       `${campaign.title} ${campaign.server.name} ${campaign.category}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -387,12 +397,9 @@ export function BrowseCampaignsPage() {
   return (
     <div className="listing-page">
       <div className="listing-hero listing-hero--campaigns">
-        <span className="eyebrow">VERIFIED PLAYTESTS</span>
-        <h1>Play. Test. Earn rewards.</h1>
-        <p>
-          Join moderated campaigns, complete clear milestones, and receive rewards from Nortix after
-          verification.
-        </p>
+        <span className="eyebrow">{t("listing.campaignEyebrow")}</span>
+        <h1>{t("listing.campaignTitle")}</h1>
+        <p>{t("listing.campaignDescription")}</p>
       </div>
       <div className="filter-bar">
         <label>
@@ -400,7 +407,7 @@ export function BrowseCampaignsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search campaigns or servers"
+            placeholder={t("listing.searchCampaigns")}
           />
         </label>
         <div className="segmented">
@@ -410,15 +417,24 @@ export function BrowseCampaignsPage() {
               onClick={() => setCategory(item)}
               key={item}
             >
-              {item}
+              {item === "__all__" ? t("listing.all") : item}
             </button>
           ))}
         </div>
-        <span>{visible.length} playtests</span>
+        <span>{t("listing.playtestCount", { count: formatNumber(visible.length) })}</span>
       </div>
       <div className="campaign-grid campaign-grid--listing">
-        {isLoading ? <Card><p>Loading seeded campaigns…</p></Card> : null}
-        {isError ? <Card><p>Seeded campaigns could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {isLoading ? (
+          <Card>
+            <p>{t("home.loading")}</p>
+          </Card>
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>{t("listing.campaignError")}</p>
+            <Button onClick={() => refetch()}>{t("listing.retry")}</Button>
+          </Card>
+        ) : null}
         {visible.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
@@ -432,10 +448,23 @@ export function ServerDetailPage() {
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
   const { data: campaignData } = usePublicCampaigns();
   if (isLoading) {
-    return <div className="detail-page"><Card><p>Loading seeded server…</p></Card></div>;
+    return (
+      <div className="detail-page">
+        <Card>
+          <p>Loading seeded server…</p>
+        </Card>
+      </div>
+    );
   }
   if (isError || !server) {
-    return <div className="detail-page"><Card><p>The seeded server could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card></div>;
+    return (
+      <div className="detail-page">
+        <Card>
+          <p>The seeded server could not be loaded.</p>
+          <Button onClick={() => refetch()}>Retry</Button>
+        </Card>
+      </div>
+    );
   }
   const related = (campaignData?.items ?? []).filter(
     (campaign) => campaign.server.id === server.id,
@@ -447,7 +476,8 @@ export function ServerDetailPage() {
     name: server.name,
     description: server.description,
     url: `https://hub.nortixlabs.com${canonicalPath}`,
-    gamePlatform: server.edition === "JAVA" ? "Minecraft: Java Edition" : "Minecraft: Bedrock Edition",
+    gamePlatform:
+      server.edition === "JAVA" ? "Minecraft: Java Edition" : "Minecraft: Bedrock Edition",
     applicationCategory: server.categories.join(", "),
     aggregateRating:
       server.rating != null && server.reviewCount

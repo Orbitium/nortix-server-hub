@@ -47,7 +47,10 @@ and minimized rather than exposing raw identifiers broadly.
 ## Production checklist
 
 - Replace all placeholder secrets.
-- Set `AUTH_MODE=firebase`; disable mock headers.
+- Set `AUTH_MODE=firebase`; disable mock headers. `FIREBASE_PROJECT_ID` is required
+  for public-key ID-token verification. Configure both optional Firebase Admin
+  service-account fields when immediate Firebase revocation and disabled-user
+  checks are required.
 - Configure exact production CORS origins.
 - Require TLS at the proxy and database.
 - Use a provider-managed encrypted secret store.

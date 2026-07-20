@@ -62,10 +62,12 @@ Read operations use realistic product fixtures; authenticated writes require the
 ## Firebase
 
 1. Create a Firebase project and enable Email/Password and Google providers.
-2. Add the `VITE_FIREBASE_*` web values to `.env`.
-3. Create a Firebase Admin service account and set `FIREBASE_PROJECT_ID`,
-   `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
-4. Change `AUTH_MODE=firebase`.
+2. Add the public `VITE_FIREBASE_*` web values to `.env`.
+3. Set `FIREBASE_PROJECT_ID` for backend ID-token verification.
+4. Optionally create a Firebase Admin service account and set both
+   `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` to add immediate
+   Firebase-side revocation and disabled-user checks.
+5. Change `AUTH_MODE=firebase`.
 5. Add the production web origin to Firebase authorized domains and `WEB_ORIGIN`.
 
 The backend verifies ID tokens, resolves or creates a local user, then uses local roles,
@@ -118,9 +120,12 @@ Copy the deployment environment and replace every production secret:
 cp .env.example .env
 ```
 
-For a production account, set `AUTH_MODE=firebase` and provide both the Firebase
-browser values and Admin service-account values. `AUTH_MODE=mock` is only intended
-for local evaluation.
+For a production account, set `AUTH_MODE=firebase` and provide the Firebase browser
+values plus `FIREBASE_PROJECT_ID`. The API verifies token signature, issuer,
+audience, expiry, and project binding using Firebase's public keys. Supplying both
+optional Admin service-account values additionally enables immediate Firebase
+revocation and disabled-user checks. `AUTH_MODE=mock` is only intended for local
+evaluation.
 
 Create a remotely managed Cloudflare Tunnel in the Cloudflare dashboard, add a
 published application route for `hub.nortixlabs.com`, and set its service URL to
@@ -174,5 +179,6 @@ if an environment file is ever disclosed.
 - [Security model](docs/security.md)
 - [Minecraft integration contract](docs/integrations.md)
 - [Product and financial language](docs/product-language.md)
+- [Frontend localization](docs/localization.md)
 
 Nortix Playtests is not affiliated with Mojang Studios or Microsoft.

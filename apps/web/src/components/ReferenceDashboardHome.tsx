@@ -2,36 +2,34 @@ import { ArrowRight, BadgeCheck, Compass, Gamepad2, Search, Sparkles, Users } fr
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { artIndexFor, usePublicCampaigns } from "../features/api-data";
+import { useI18n } from "../lib/i18n";
 
 export function ReferenceDashboardHome() {
+  const { t, formatNumber } = useI18n();
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
   const campaigns = data?.items ?? [];
-  const categories = ["All categories", ...new Set(campaigns.map((item) => item.category))];
-  const versions = [
-    "All versions",
-    ...new Set(campaigns.flatMap((item) => item.versionRequirements)),
-  ];
-  const sorts = ["Recommended", "Highest Sparks", "Most active"] as const;
-  const [categoryFilter, setCategoryFilter] = useState("All categories");
-  const [versionFilter, setVersionFilter] = useState("All versions");
-  const [sort, setSort] = useState<(typeof sorts)[number]>("Recommended");
+  const categories = ["__all__", ...new Set(campaigns.map((item) => item.category))];
+  const versions = ["__all__", ...new Set(campaigns.flatMap((item) => item.versionRequirements))];
+  const sorts = ["recommended", "sparks", "active"] as const;
+  const [categoryFilter, setCategoryFilter] = useState("__all__");
+  const [versionFilter, setVersionFilter] = useState("__all__");
+  const [sort, setSort] = useState<(typeof sorts)[number]>("recommended");
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(4);
   const matchingCampaigns = campaigns
     .filter(
       (campaign) =>
-        (categoryFilter === "All categories" || campaign.category === categoryFilter) &&
-        (versionFilter === "All versions" ||
-          campaign.versionRequirements.includes(versionFilter)) &&
+        (categoryFilter === "__all__" || campaign.category === categoryFilter) &&
+        (versionFilter === "__all__" || campaign.versionRequirements.includes(versionFilter)) &&
         `${campaign.title} ${campaign.description} ${campaign.category} ${campaign.server.name}`
           .toLowerCase()
           .includes(search.trim().toLowerCase()),
     )
     .sort((left, right) => {
-      if (sort === "Highest Sparks") {
+      if (sort === "sparks") {
         return right.maximumSparksReward - left.maximumSparksReward;
       }
-      if (sort === "Most active") {
+      if (sort === "active") {
         return right._count.participations - left._count.participations;
       }
       return 0;
@@ -43,17 +41,17 @@ export function ReferenceDashboardHome() {
   return (
     <div className="dashboard-page dashboard-home">
       <section className="home-hero">
-        <div className="home-hero__media" aria-label="Campaign artwork placeholder" />
+        <div className="home-hero__media" aria-label={t("home.artPlaceholder")} />
         <div className="home-hero__copy">
-          <span>PLAY. TEST. CONTRIBUTE.</span>
-          <h1>Make every session count.</h1>
-          <p>Help ambitious Minecraft servers grow. Verified activity may receive Sparks.</p>
+          <span>{t("home.eyebrow")}</span>
+          <h1>{t("home.title")}</h1>
+          <p>{t("home.description")}</p>
           <div>
             <Link className="button button--primary" to="/campaigns">
-              <Gamepad2 /> Browse campaigns
+              <Gamepad2 /> {t("home.browse")}
             </Link>
             <Link className="button button--glass" to="/how-it-works">
-              <Compass /> How it works
+              <Compass /> {t("nav.howItWorks")}
             </Link>
           </div>
         </div>
@@ -63,12 +61,12 @@ export function ReferenceDashboardHome() {
         <div className="home-section__heading">
           <div>
             <h2>
-              <Sparkles /> Featured campaigns
+              <Sparkles /> {t("home.featured")}
             </h2>
-            <p>Active campaigns loaded from Nortix seed data.</p>
+            <p>{t("home.seeded")}</p>
           </div>
           <Link to="/campaigns">
-            View all <ArrowRight />
+            {t("home.viewAll")} <ArrowRight />
           </Link>
         </div>
         <div className="featured-campaigns">
@@ -76,7 +74,7 @@ export function ReferenceDashboardHome() {
             <Link className="featured-tile" to={`/campaigns/${campaign.id}`} key={campaign.id}>
               <div className={`featured-tile__art server-art--${artIndexFor(campaign.server.id)}`}>
                 <span className={`featured-label featured-label--${index}`}>
-                  {index === 0 ? "FEATURED" : campaign.status}
+                  {index === 0 ? t("home.featuredLabel") : campaign.status}
                 </span>
                 <b>{campaign.server.name}</b>
               </div>
@@ -86,11 +84,13 @@ export function ReferenceDashboardHome() {
                 </h3>
                 <div className="featured-tile__tags">
                   <span>{campaign.category}</span>
-                  <span>{campaign.versionRequirements[0] ?? "Any version"}</span>
-                  <span>{campaign.milestones.length} steps</span>
+                  <span>{campaign.versionRequirements[0] ?? t("home.anyVersion")}</span>
+                  <span>{t("home.steps", { count: campaign.milestones.length })}</span>
                 </div>
                 <div className="featured-tile__meta">
-                  <strong>Up to {campaign.maximumSparksReward} Sparks</strong>
+                  <strong>
+                    {t("home.upToSparks", { count: formatNumber(campaign.maximumSparksReward) })}
+                  </strong>
                   <span>
                     <Users /> {campaign._count.participations}
                   </span>
@@ -98,49 +98,56 @@ export function ReferenceDashboardHome() {
               </div>
             </Link>
           ))}
-          {isLoading ? <p>Loading seeded campaigns…</p> : null}
-          {isError ? <button onClick={() => refetch()}>Retry seeded campaigns</button> : null}
+          {isLoading ? <p>{t("home.loading")}</p> : null}
+          {isError ? <button onClick={() => refetch()}>{t("home.retry")}</button> : null}
         </div>
       </section>
 
       <section className="home-section campaign-directory">
         <div className="home-section__heading campaign-directory__heading">
           <h2>
-            <Gamepad2 /> All campaigns
+            <Gamepad2 /> {t("home.allCampaigns")}
           </h2>
           <div className="campaign-filters">
             <button
               type="button"
-              title="Change category"
+              title={t("home.changeCategory")}
               onClick={() => {
                 setCategoryFilter(cycleValue(categories, categoryFilter));
                 setVisibleCount(4);
               }}
             >
-              {categoryFilter}
+              {categoryFilter === "__all__" ? t("home.allCategories") : categoryFilter}
             </button>
             <button
               type="button"
-              title="Change version"
+              title={t("home.changeVersion")}
               onClick={() => {
                 setVersionFilter(cycleValue(versions, versionFilter));
                 setVisibleCount(4);
               }}
             >
-              {versionFilter}
+              {versionFilter === "__all__" ? t("home.allVersions") : versionFilter}
             </button>
             <button
               type="button"
-              title="Change sorting"
+              title={t("home.changeSorting")}
               onClick={() => setSort(cycleValue(sorts, sort) as (typeof sorts)[number])}
             >
-              Sort: {sort}
+              {t("home.sort", {
+                value:
+                  sort === "recommended"
+                    ? t("home.recommended")
+                    : sort === "sparks"
+                      ? t("home.highestSparks")
+                      : t("home.mostActive"),
+              })}
             </button>
             <label>
               <Search />
               <input
-                aria-label="Search campaigns"
-                placeholder="Search campaigns..."
+                aria-label={t("home.search")}
+                placeholder={t("home.search")}
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
@@ -169,9 +176,11 @@ export function ReferenceDashboardHome() {
               <div className="campaign-row__tags">
                 <span>{campaign.category}</span>
                 <span>{campaign.versionRequirements[0] ?? "Any"}</span>
-                <span>{campaign.milestones.length} steps</span>
+                <span>{t("home.steps", { count: campaign.milestones.length })}</span>
               </div>
-              <strong>Up to {campaign.maximumSparksReward} Sparks</strong>
+              <strong>
+                {t("home.upToSparks", { count: formatNumber(campaign.maximumSparksReward) })}
+              </strong>
               <span className="campaign-row__players">
                 <Users /> {campaign._count.participations}
               </span>
@@ -179,12 +188,12 @@ export function ReferenceDashboardHome() {
                 className="button button--primary button--small"
                 to={`/campaigns/${campaign.id}`}
               >
-                Play now
+                {t("home.playNow")}
               </Link>
             </div>
           ))}
           {!isLoading && !isError && matchingCampaigns.length === 0 ? (
-            <p className="campaign-list__empty">No campaigns match these filters.</p>
+            <p className="campaign-list__empty">{t("home.noCampaigns")}</p>
           ) : null}
         </div>
         <button
@@ -193,7 +202,7 @@ export function ReferenceDashboardHome() {
           disabled={visibleCount >= matchingCampaigns.length}
           onClick={() => setVisibleCount((current) => current + 4)}
         >
-          {visibleCount >= matchingCampaigns.length ? "All campaigns loaded" : "Load more campaigns"}{" "}
+          {visibleCount >= matchingCampaigns.length ? t("home.loaded") : t("home.loadMore")}{" "}
           <ArrowRight />
         </button>
       </section>

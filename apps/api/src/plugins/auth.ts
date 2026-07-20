@@ -11,14 +11,20 @@ const hasPermission = (roles: readonly string[], permission: Permission) =>
 
 export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env }) => {
   const { env } = options;
+  const hasAdminCredential = Boolean(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
   if (env.AUTH_MODE === "firebase" && getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId: env.FIREBASE_PROJECT_ID!,
-        clientEmail: env.FIREBASE_CLIENT_EMAIL!,
-        privateKey: env.FIREBASE_PRIVATE_KEY!.replaceAll("\\n", "\n"),
-      }),
-    });
+    initializeApp(
+      hasAdminCredential
+        ? {
+            projectId: env.FIREBASE_PROJECT_ID!,
+            credential: cert({
+              projectId: env.FIREBASE_PROJECT_ID!,
+              clientEmail: env.FIREBASE_CLIENT_EMAIL!,
+              privateKey: env.FIREBASE_PRIVATE_KEY!.replaceAll("\\n", "\n"),
+            }),
+          }
+        : { projectId: env.FIREBASE_PROJECT_ID! },
+    );
   }
 
   app.decorateRequest("user", null);
@@ -42,7 +48,7 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
         return;
       }
       try {
-        const token = await getAuth().verifyIdToken(authorization.slice(7), true);
+        const token = await getAuth().verifyIdToken(authorization.slice(7), hasAdminCredential);
         firebaseUid = token.uid;
         email = token.email ?? `${token.uid}@firebase.local`;
         displayName = token.name ?? "Nortix member";

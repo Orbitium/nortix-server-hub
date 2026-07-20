@@ -5,9 +5,11 @@ import { Badge, Button } from "@nortix/ui";
 import { Brand } from "../components/Brand";
 import { firebaseActions, firebaseConfigured } from "../lib/firebase";
 import { markNortixAccountSession } from "../lib/auth-session";
+import { useI18n } from "../lib/i18n";
 
 export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +30,7 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
       markNortixAccountSession();
       navigate(safeNext);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Authentication failed.");
+      setMessage(error instanceof Error ? error.message : t("auth.failed"));
     } finally {
       setBusy(false);
     }
@@ -38,58 +40,45 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
       <div className="auth-aside">
         <Brand />
         <div>
-          <Badge tone="success">TRUSTED PLAYTESTS</Badge>
-          <h1>
-            {mode === "register"
-              ? "Build a reputation for useful participation."
-              : "Welcome back to the signal."}
-          </h1>
-          <p>
-            Discover Minecraft communities, complete clear milestones, and help server teams
-            improve.
-          </p>
+          <Badge tone="success">{t("auth.trusted")}</Badge>
+          <h1>{mode === "register" ? t("auth.registerTitle") : t("auth.signInTitle")}</h1>
+          <p>{t("auth.intro")}</p>
           {reason && (
             <div className="auth-requirement">
               <ShieldCheck />
               <span>
-                <strong>Account required</strong>
+                <strong>{t("auth.accountRequired")}</strong>
                 <small>
-                  {reason === "server"
-                    ? "Create an account before registering or publishing a server."
-                    : "Create an account before joining or contributing to a campaign."}
+                  {reason === "server" ? t("auth.serverReason") : t("auth.campaignReason")}
                 </small>
               </span>
             </div>
           )}
           <div className="auth-benefits">
             <span>
-              <Check /> Moderated campaigns
+              <Check /> {t("auth.moderated")}
             </span>
             <span>
-              <Check /> Verified milestone rewards
+              <Check /> {t("auth.verified")}
             </span>
             <span>
-              <Check /> Separate Sparks progression
+              <Check /> {t("auth.sparks")}
             </span>
             <span>
-              <Check /> Privacy-conscious reviews
+              <Check /> {t("auth.privacy")}
             </span>
           </div>
         </div>
-        <small>Not affiliated with Mojang Studios or Microsoft.</small>
+        <small>{t("auth.affiliation")}</small>
       </div>
       <main className="auth-main">
         <Link to="/" className="auth-back">
-          <ArrowLeft /> Back to Nortix
+          <ArrowLeft /> {t("auth.back")}
         </Link>
         <form className="auth-card" onSubmit={submit}>
           <span className="auth-icon">{mode === "register" ? <ShieldCheck /> : <KeyRound />}</span>
-          <h2>{mode === "register" ? "Create your Nortix profile" : "Sign in to Nortix"}</h2>
-          <p>
-            {mode === "register"
-              ? "One profile can playtest and manage servers."
-              : "Continue to campaigns, progress, and owner tools."}
-          </p>
+          <h2>{mode === "register" ? t("auth.createProfile") : t("auth.signInTo")}</h2>
+          <p>{mode === "register" ? t("auth.registerDescription") : t("auth.signInDescription")}</p>
           <button
             type="button"
             className="google-button"
@@ -99,13 +88,13 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
               navigate(safeNext);
             }}
           >
-            <b>G</b> Continue with Google
+            <b>G</b> {t("auth.google")}
           </button>
           <div className="or">
-            <span>or continue with email</span>
+            <span>{t("auth.orEmail")}</span>
           </div>
           <label>
-            Email address
+            {t("auth.email")}
             <span>
               <Mail />
               <input
@@ -118,7 +107,7 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             </span>
           </label>
           <label>
-            Password
+            {t("auth.password")}
             <span>
               <KeyRound />
               <input
@@ -127,12 +116,12 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
                 type={show ? "text" : "password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={t("auth.passwordPlaceholder")}
               />
               <button
                 type="button"
                 onClick={() => setShow(!show)}
-                aria-label={show ? "Hide password" : "Show password"}
+                aria-label={show ? t("auth.hidePassword") : t("auth.showPassword")}
               >
                 {show ? <EyeOff /> : <Eye />}
               </button>
@@ -145,11 +134,11 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
               onClick={async () => {
                 if (email) {
                   await firebaseActions.reset(email);
-                  setMessage("Password reset email requested.");
+                  setMessage(t("auth.resetRequested"));
                 }
               }}
             >
-              Forgot password?
+              {t("auth.forgot")}
             </button>
           )}
           {message && <p className="auth-message">{message}</p>}
@@ -159,23 +148,19 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
           <small className="auth-terms">
             {mode === "register" ? (
               <>
-                By creating a profile, you agree to the <Link to="/terms">Terms</Link> and{" "}
-                <Link to="/privacy">Privacy Policy</Link>.
+                {t("auth.byCreating")} <Link to="/terms">{t("nav.terms")}</Link> {t("auth.and")}{" "}
+                <Link to="/privacy">{t("auth.privacyPolicy")}</Link>.
                 <br />
-                Already have an account? <Link to={`/sign-in?${continuation}`}>Sign in</Link>
+                {t("auth.haveAccount")}{" "}
+                <Link to={`/sign-in?${continuation}`}>{t("nav.signIn")}</Link>
               </>
             ) : (
               <>
-                New to Nortix? <Link to="/register">Create a profile</Link>
+                {t("auth.new")} <Link to="/register">{t("auth.create")}</Link>
               </>
             )}
           </small>
-          {!firebaseConfigured && (
-            <p className="demo-notice">
-              Prototype mode: Firebase UI is complete; local sign-in continues with the seeded demo
-              identity until credentials are added.
-            </p>
-          )}
+          {!firebaseConfigured && <p className="demo-notice">{t("auth.prototype")}</p>}
         </form>
       </main>
     </div>

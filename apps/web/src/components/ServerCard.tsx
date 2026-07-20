@@ -2,8 +2,10 @@ import { CircleDot, Star, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, VerifiedBadge } from "@nortix/ui";
 import { artIndexFor, type PublicServer } from "../features/api-data";
+import { useI18n } from "../lib/i18n";
 
 export function ServerCard({ server }: { server: PublicServer }) {
+  const { t, formatNumber } = useI18n();
   return (
     <Card className="server-card">
       <Link
@@ -26,14 +28,14 @@ export function ServerCard({ server }: { server: PublicServer }) {
         </div>
         <div className="server-card__stats">
           <span className={server.online ? "online" : "offline"}>
-            <CircleDot size={13} /> {server.online ? "Online" : "Offline"}
+            <CircleDot size={13} /> {server.online ? t("server.online") : t("server.offline")}
           </span>
           <span>
-            <Users size={13} /> {(server.playerCount ?? 0).toLocaleString()}
+            <Users size={13} /> {formatNumber(server.playerCount ?? 0)}
           </span>
           <span>
             <Star size={13} fill="currentColor" />{" "}
-            {server.rating == null ? "New" : server.rating.toFixed(1)}
+            {server.rating == null ? t("server.new") : server.rating.toFixed(1)}
           </span>
         </div>
       </div>

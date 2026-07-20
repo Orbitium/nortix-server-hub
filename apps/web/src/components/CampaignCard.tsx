@@ -2,6 +2,7 @@ import { CalendarClock, Gamepad2, Globe2, Signal, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, Sparks, VerifiedBadge } from "@nortix/ui";
 import { artIndexFor, type PublicCampaign } from "../features/api-data";
+import { useI18n } from "../lib/i18n";
 
 export function CampaignCard({
   campaign,
@@ -10,11 +11,12 @@ export function CampaignCard({
   campaign: PublicCampaign;
   featured?: boolean;
 }) {
+  const { t, formatDate, formatNumber } = useI18n();
   const version =
-    campaign.versionRequirements[0] ?? campaign.server.versions[0] ?? "Any version";
+    campaign.versionRequirements[0] ?? campaign.server.versions[0] ?? t("home.anyVersion");
   const region = campaign.regionRestrictions.length
     ? campaign.regionRestrictions.join(" · ")
-    : "Worldwide";
+    : t("campaign.worldwide");
   return (
     <Card className={`campaign-card ${featured ? "campaign-card--featured" : ""}`}>
       <Link
@@ -26,7 +28,7 @@ export function CampaignCard({
           {campaign.server.name.slice(0, 2).toUpperCase()}
         </span>
         <span className="server-art__live">
-          <Signal size={12} /> Live playtest
+          <Signal size={12} /> {t("campaign.live")}
         </span>
       </Link>
       <div className="campaign-card__body">
@@ -41,14 +43,15 @@ export function CampaignCard({
         <div className="chip-row">
           <Badge>{campaign.category}</Badge>
           <Badge>{version}</Badge>
-          <Badge>{campaign.milestones.length} milestones</Badge>
+          <Badge>{t("campaign.milestones", { count: campaign.milestones.length })}</Badge>
         </div>
         <div className="campaign-card__meta">
           <span>
-            <CalendarClock size={14} /> Ends {new Date(campaign.endsAt).toLocaleDateString()}
+            <CalendarClock size={14} /> {t("campaign.ends", { date: formatDate(campaign.endsAt) })}
           </span>
           <span>
-            <Users size={14} /> {campaign._count.participations} testing
+            <Users size={14} />{" "}
+            {t("campaign.testing", { count: formatNumber(campaign._count.participations) })}
           </span>
           <span>
             <Globe2 size={14} /> {region}
@@ -56,20 +59,16 @@ export function CampaignCard({
         </div>
         <div className="campaign-card__footer">
           <div>
-            <small>Potential campaign reward</small>
+            <small>{t("campaign.reward")}</small>
             <strong>
               {campaign.minimumSparksReward}–{campaign.maximumSparksReward} Sparks
             </strong>
           </div>
           <Sparks
-            value={
-              campaign.automaticVerification
-                ? "Automatic verification"
-                : "Subject to verification"
-            }
+            value={campaign.automaticVerification ? t("campaign.automatic") : t("campaign.subject")}
           />
           <Link className="button button--secondary button--small" to={`/campaigns/${campaign.id}`}>
-            <Gamepad2 size={15} /> View playtest
+            <Gamepad2 size={15} /> {t("campaign.view")}
           </Link>
         </div>
       </div>
