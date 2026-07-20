@@ -24,7 +24,11 @@ COPY . .
 RUN pnpm --filter @nortix/api... build
 RUN --mount=type=cache,id=nortix-pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm config set store-dir /pnpm/store && \
-    pnpm --filter @nortix/api deploy --prod --legacy /prod/api
+    pnpm --filter @nortix/api deploy --prod --legacy /prod/api && \
+    cd /prod/api && \
+    ./node_modules/.bin/prisma generate \
+      --schema node_modules/@nortix/database/prisma/schema.prisma && \
+    node --input-type=module -e "await import('@nortix/database')"
 
 FROM node:22-alpine AS runtime
 WORKDIR /app

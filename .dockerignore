@@ -2,18 +2,47 @@
 .github
 .codex
 .openai
+.idea
+.vscode
 .turbo
 **/.turbo
 **/node_modules
 **/dist
 **/build
-plugins/minecraft/.gradle
-coverage
-playwright-report
-test-results
+**/.cache
+**/.gradle
+**/.vite
+**/coverage
+**/playwright-report
+**/test-results
+**/.nyc_output
+**/tmp
+**/temp
+
+# Development, test, and editor files are not needed by production builds.
+**/__tests__
+**/*.test.*
+**/*.spec.*
+*.md
+.prettierrc*
+eslint.config.*
+.gitignore
+.gitattributes
+.DS_Store
+Thumbs.db
+
+# These repository areas are not dependencies of either deployable app.
+AppData
+docs
+plugins
+tooling
+
+# Compose files orchestrate builds but are not part of either image.
+docker-compose*.yml
+
+# Secrets and local runtime output must never enter the build context.
 .env
 .env.*
-!.env.example
 firebase.json
-*.log
-*.tsbuildinfo
+**/*.log
+**/*.tsbuildinfo
