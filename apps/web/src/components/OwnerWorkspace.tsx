@@ -2244,6 +2244,13 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
     motdText: string;
     downstreamVerificationRequired: boolean;
   };
+  type AddressValidation = {
+    hostname: string;
+    port: number;
+    preview: { online: boolean; playerCount: number | null; maxPlayers: number | null; version: string | null };
+    validationSignature: string;
+    expiresAt: string;
+  };
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   type RegistrationPlatform = "PAPER" | "VELOCITY" | "DOWNSTREAM";
@@ -2252,6 +2259,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
   const [verificationParentId, setVerificationParentId] = useState("");
   const [inheritedComplete, setInheritedComplete] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [addressValidation, setAddressValidation] = useState<AddressValidation | null>(null);
   const [status, setStatus] = useState<"DETAILS" | "PENDING" | "CHECKING" | "VERIFIED">("DETAILS");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -2286,6 +2294,21 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
     return { hostname: value, port: 25565 };
   };
 
+  const validateAddress = async () => {
+    setError("");
+    try {
+      const target = parseAddress();
+      const validated = await api<AddressValidation>("/servers/validate-address", {
+        method: "POST",
+        body: JSON.stringify({ hostname: target.hostname, port: target.port, edition: "JAVA" }),
+      });
+      setAddressValidation(validated);
+    } catch (reason) {
+      setAddressValidation(null);
+      setError(reason instanceof Error ? reason.message : "The public address could not be validated.");
+    }
+  };
+
   const beginVerification = async () => {
     setError("");
     try {
@@ -2301,6 +2324,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
           versions: ["1.16+"],
           categories: [platform === "VELOCITY" ? "Network" : "Minecraft"],
           tags: [platform.toLowerCase()],
+          serverValidationSignature: addressValidation?.validationSignature,
           ...(platform === "DOWNSTREAM" ? { verificationParentId } : {}),
         }),
       });
@@ -2316,6 +2340,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
       setChallenge(next);
       setStatus("PENDING");
     } catch (reason) {
+      if (platform !== "DOWNSTREAM") setAddressValidation(null);
       setError(reason instanceof Error ? reason.message : "Registration could not be started.");
     }
   };
@@ -2429,7 +2454,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                 </label>
                 <label>
                   {platform === "DOWNSTREAM" ? "Backend address" : "Public address"}
-                  <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder={platform === "DOWNSTREAM" ? "survival.internal:25565" : "play.example.net:25565"} />
+                  <input value={address} onChange={(event) => { setAddress(event.target.value); setAddressValidation(null); }} placeholder={platform === "DOWNSTREAM" ? "survival.internal:25565" : "play.example.net:25565"} />
                 </label>
                 {platform === "DOWNSTREAM" && (
                   <label className="span-two">
@@ -2445,10 +2470,25 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                 )}
               </div>
               {error && <p className="owner-verification-error">{error}</p>}
-              <button className="button button--primary" disabled={name.trim().length < 3 || address.trim().length < 3 || (platform === "DOWNSTREAM" && !verificationParentId)} onClick={() => void beginVerification()}>
+              {platform !== "DOWNSTREAM" && addressValidation && (
+                <div className="owner-verification-success">
+                  <CheckCircle2 />
+                  <div>
+                    <strong>{addressValidation.hostname}:{addressValidation.port} is online</strong>
+                    <p>{addressValidation.preview.version ?? "Minecraft server"} · {addressValidation.preview.playerCount ?? 0}/{addressValidation.preview.maxPlayers ?? "?"} players</p>
+                    <small>Validated until {new Date(addressValidation.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.</small>
+                  </div>
+                </div>
+              )}
+              {(platform === "DOWNSTREAM" || !addressValidation) && <button className="button button--primary" disabled={name.trim().length < 3 || address.trim().length < 3 || (platform === "DOWNSTREAM" && !verificationParentId)} onClick={() => void (platform === "DOWNSTREAM" ? beginVerification() : validateAddress())}>
                 <Link2 />
-                {platform === "DOWNSTREAM" ? "Link backend server" : "Generate verification code"}
-              </button>
+                {platform === "DOWNSTREAM" ? "Link backend server" : "Check public address"}
+              </button>}
+              {platform !== "DOWNSTREAM" && addressValidation && (
+                <button className="button button--secondary" onClick={() => void beginVerification()}>
+                  Generate verification code
+                </button>
+              )}
             </>
           ) : (
             <div className="owner-verification">
@@ -2470,7 +2510,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                   <div className="owner-verification-code">
                     <small>ONE-TIME MOTD CODE</small>
                     <code>{challenge.code}</code>
-                    <button onClick={() => void copyCode()}>
+                    <button className={`button button--secondary button--small owner-copy-code${copied ? " owner-copy-code--copied" : ""}`} onClick={() => void copyCode()}>
                       <Copy />
                       {copied ? "Copied" : "Copy code"}
                     </button>
@@ -2500,13 +2540,25 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                   </div>
                   {error && <p className="owner-verification-error">{error}</p>}
                   <div className="owner-verification-actions">
+                    <a
+                      className="button button--secondary button--small owner-plugin-link"
+                      href="https://modrinth.com/"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Download />
+                      Get the Plugin
+                      <ArrowUpRight />
+                    </a>
                     <button
+                      className="button button--ghost button--small owner-start-over"
                       onClick={() => {
                         setChallenge(null);
                         setStatus("DETAILS");
                         setError("");
                       }}
                     >
+                      <RefreshCw />
                       Start over
                     </button>
                     <button className="button button--primary" disabled={status === "CHECKING"} onClick={() => void checkVerification()}>

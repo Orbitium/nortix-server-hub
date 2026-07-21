@@ -3,7 +3,7 @@ import { UnifiedInfoPage } from "../components/UnifiedPages";
 import { OwnerPlatform } from "../components/OwnerWorkspace";
 import { RequireAccount, RequireSignIn } from "../components/RequireAccount";
 import { DashboardLayout } from "../layouts/DashboardLayout";
-import { CampaignDetailPage, ContactPage, ServerDetailPage } from "../routes/PublicPages";
+import { CampaignDetailPage, ContactPage, PublicProfilePage, ServerDetailPage } from "../routes/PublicPages";
 import {
   DashboardCampaignsPage,
   DashboardHomePage,
@@ -112,6 +112,7 @@ export function App() {
       </Route>
       <Route path="sign-in" element={<AuthPage mode="sign-in" />} />
       <Route path="register" element={<AuthPage mode="register" />} />
+      <Route path="profile/:username" element={<PublicProfilePage />} />
       <Route path="/admin/*" element={<RequireSignIn><AdminRoutes /></RequireSignIn>} />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

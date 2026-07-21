@@ -28,7 +28,8 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
@@ -276,24 +277,59 @@ export function DashboardServersPage() {
 
 export function DashboardCampaignsPage() {
   const [tab, setTab] = useState("Newest");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("ALL");
+  const [edition, setEdition] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
-  const visibleCampaigns = [...(data?.items ?? [])];
-  if (tab === "Highest Sparks limit") {
-    visibleCampaigns.sort(
-      (left, right) => right.maximumSparksReward - left.maximumSparksReward,
-    );
-  }
-  if (tab === "Ending soon") {
-    visibleCampaigns.sort(
-      (left, right) => new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime(),
-    );
-  }
+  const campaigns = data?.items ?? [];
+  const categories = useMemo(
+    () => ["ALL", ...new Set(campaigns.map((campaign) => campaign.category).filter(Boolean))],
+    [campaigns],
+  );
+  const visibleCampaigns = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const filtered = campaigns.filter((campaign) => {
+      const searchableText = [
+        campaign.title,
+        campaign.description,
+        campaign.category,
+        campaign.server.name,
+        campaign.server.edition,
+        ...campaign.server.categories,
+        ...campaign.versionRequirements,
+      ].join(" ").toLowerCase();
+      return (
+        (category === "ALL" || campaign.category === category) &&
+        (edition === "ALL" || campaign.server.edition === edition) &&
+        (!query || searchableText.includes(query))
+      );
+    });
+    return [...filtered].sort((left, right) => {
+      if (tab === "Highest Sparks limit") return right.maximumSparksReward - left.maximumSparksReward;
+      if (tab === "Ending soon") return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
+      return new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime();
+    });
+  }, [campaigns, category, edition, search, tab]);
   return (
     <div className="dashboard-page">
       <PageHeading
         title="Campaigns"
         description="Explore optional playtests that may provide Sparks after verification."
       />
+      <div className="dashboard-filter campaign-filters">
+        <label>
+          <Search />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns, servers, or versions" />
+        </label>
+        <select aria-label="Filter campaigns by category" value={category} onChange={(event) => setCategory(event.target.value)}>
+          {categories.map((item) => <option value={item} key={item}>{item === "ALL" ? "All categories" : item}</option>)}
+        </select>
+        <select aria-label="Filter campaigns by edition" value={edition} onChange={(event) => setEdition(event.target.value)}>
+          <option value="ALL">All editions</option>
+          <option value="JAVA">Java</option>
+          <option value="BEDROCK">Bedrock</option>
+        </select>
+      </div>
       <div className="tabs">
         {["Newest", "Highest Sparks limit", "Ending soon"].map((item) => (
           <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>
@@ -304,7 +340,7 @@ export function DashboardCampaignsPage() {
       <div className="campaign-grid">
         {isLoading ? <Card><p>Loading seeded campaigns…</p></Card> : null}
         {isError ? <Card><p>Seeded campaigns could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
-        {!isLoading && !isError && visibleCampaigns.length === 0 ? <Card><p>No active seeded campaigns are available.</p></Card> : null}
+        {!isLoading && !isError && visibleCampaigns.length === 0 ? <Card><p>No campaigns match these filters.</p></Card> : null}
         {visibleCampaigns.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
@@ -1027,11 +1063,24 @@ export function ProfilePage() {
   });
   const [serverOptions, setServerOptions] = useState<ServerOption[]>([]);
   const [claim, setClaim] = useState<{ code: string; expiresAt: string; verificationServer: string }>();
+  const [claimOpen, setClaimOpen] = useState(false);
   const [serverId, setServerId] = useState("");
   const [crackedName, setCrackedName] = useState("");
   const [identityMessage, setIdentityMessage] = useState("");
   const [identityBusy, setIdentityBusy] = useState(false);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileDraft, setProfileDraft] = useState({
+    username: "",
+    displayName: "",
+    bio: "",
+    backgroundColor: "slate" as "slate" | "violet" | "ocean" | "moss" | "ember",
+    isPublic: true,
+    showReputation: true,
+  });
   const { data: currentUser } = useCurrentUser();
+  const queryClient = useQueryClient();
   const { data: participations = [] } = useParticipations();
   const approvedMilestones = participations.reduce(
     (total, participation) => total + participation.completions.filter((item) => item.status === "APPROVED").length,
@@ -1057,7 +1106,9 @@ export function ProfilePage() {
     setIdentityBusy(true);
     setIdentityMessage("");
     try {
-      setClaim(await api("/minecraft-identities/premium/claims", { method: "POST", body: "{}" }));
+      const newClaim = await api<{ code: string; expiresAt: string; verificationServer: string }>("/minecraft-identities/premium/claims", { method: "POST", body: "{}" });
+      setClaim(newClaim);
+      setClaimOpen(true);
       await refreshIdentities();
     } catch (error) {
       setIdentityMessage((error as Error).message);
@@ -1095,19 +1146,66 @@ export function ProfilePage() {
     await refreshIdentities();
   };
 
+  const openProfileEditor = () => {
+    setProfileMessage("");
+    setProfileDraft({
+      username: currentUser?.username ?? "",
+      displayName: currentUser?.displayName ?? "",
+      bio: currentUser?.publicProfile?.bio ?? "",
+      backgroundColor: currentUser?.publicProfile?.backgroundColor ?? "slate",
+      isPublic: currentUser?.publicProfile?.isPublic !== false,
+      showReputation: currentUser?.publicProfile?.showReputation !== false,
+    });
+    setProfileEditOpen(true);
+  };
+
+  const saveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setProfileBusy(true);
+    setProfileMessage("");
+    try {
+      const updated = await api<typeof currentUser>("/users/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify(profileDraft),
+      });
+      queryClient.setQueryData(["current-user"], updated);
+      setProfileEditOpen(false);
+      setProfileMessage("Profile updated.");
+    } catch (error) {
+      setProfileMessage((error as Error).message);
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const shareProfile = async () => {
+    if (!currentUser) return;
+    const url = `${window.location.origin}/profile/${encodeURIComponent(currentUser.username)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${currentUser.displayName ?? currentUser.username} on Nortix`, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setProfileMessage("Profile link copied.");
+      }
+    } catch {
+      setProfileMessage("Profile sharing was cancelled.");
+    }
+  };
+
   return (
     <div className="dashboard-page">
       <PageHeading
         title="Profile"
-        description="Your public tester identity, reputation, and cosmetic loadout."
+        description="Your public tester identity, reputation, and profile settings."
         action={
-          <button className="button button--secondary" disabled title="Profile editing endpoint not enabled">
-            <Settings /> Editing unavailable
+          <button className="button button--secondary" onClick={openProfileEditor}>
+            <Settings /> Edit profile
           </button>
         }
       />
       <Card className="profile-card">
-        <div className="profile-banner">
+        <div className={`profile-banner profile-banner--${currentUser?.publicProfile?.backgroundColor ?? "slate"}`}>
           <span className="profile-avatar">{currentUser?.username.slice(0, 2).toUpperCase() ?? "—"}</span>
         </div>
         <div className="profile-card__body">
@@ -1122,9 +1220,12 @@ export function ProfilePage() {
               <Badge>{currentUser?.reputationScore ?? 0} reputation</Badge>
             </div>
           </div>
-          <button className="button button--secondary" disabled>Customization unavailable</button>
+          <button className="button button--secondary" onClick={() => void shareProfile()}>
+            <Link2 /> Share profile
+          </button>
         </div>
-        <p className="profile-bio">Profile details are loaded from the Nortix account record.</p>
+        <p className="profile-bio">{currentUser?.publicProfile?.bio || "Add a short intro so other testers know what you enjoy playing."}</p>
+        {profileMessage ? <p className="profile-message" role="status">{profileMessage}</p> : null}
         <div className="profile-stats">
           <span>
             <strong>{approvedMilestones}</strong>
@@ -1144,6 +1245,25 @@ export function ProfilePage() {
           </span>
         </div>
       </Card>
+      {profileEditOpen ? (
+        <Modal title="Edit profile" className="modal--compact" onClose={() => setProfileEditOpen(false)}>
+          <form onSubmit={saveProfile}>
+            <div className="modal__body profile-edit-form">
+              <p>Keep it simple. These details can appear on your shared public profile.</p>
+              <label>Username<input required minLength={3} maxLength={16} pattern="[A-Za-z0-9_]{3,16}" value={profileDraft.username} onChange={(event) => setProfileDraft({ ...profileDraft, username: event.target.value })} /></label>
+              <label>Display name<input required maxLength={80} value={profileDraft.displayName} onChange={(event) => setProfileDraft({ ...profileDraft, displayName: event.target.value })} /></label>
+              <label>Bio<textarea rows={3} maxLength={240} placeholder="A short intro about your Minecraft interests" value={profileDraft.bio} onChange={(event) => setProfileDraft({ ...profileDraft, bio: event.target.value })} /></label>
+              <label>Profile background<select value={profileDraft.backgroundColor} onChange={(event) => setProfileDraft({ ...profileDraft, backgroundColor: event.target.value as typeof profileDraft.backgroundColor })}><option value="slate">Slate</option><option value="violet">Violet</option><option value="ocean">Ocean</option><option value="moss">Moss</option><option value="ember">Ember</option></select></label>
+              <label className="checkbox-row"><input type="checkbox" checked={profileDraft.isPublic} onChange={(event) => setProfileDraft({ ...profileDraft, isPublic: event.target.checked })} /> Show my profile when someone opens my link</label>
+              <label className="checkbox-row"><input type="checkbox" checked={profileDraft.showReputation} onChange={(event) => setProfileDraft({ ...profileDraft, showReputation: event.target.checked })} /> Show my reputation and tester level</label>
+            </div>
+            <div className="modal__footer">
+              <button className="button button--ghost" type="button" onClick={() => setProfileEditOpen(false)}>Cancel</button>
+              <Button type="submit" disabled={profileBusy}>{profileBusy ? "Saving…" : "Save profile"}</Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
       <div className="profile-grid">
         <Card>
           <h2>Participation summary</h2>
@@ -1189,11 +1309,9 @@ export function ProfilePage() {
             ))}
             {identityData.premium.length === 0 && <p className="identity-empty">No premium Minecraft account is linked yet.</p>}
             {claim ? (
-              <div className="identity-claim-code">
-                <small>Join <strong>{claim.verificationServer}</strong>, then run</small>
-                <code>/nortixclaim {claim.code}</code>
-                <button onClick={() => navigator.clipboard.writeText(`/nortixclaim ${claim.code}`)}><Copy /> Copy command</button>
-                <span>Expires {new Date(claim.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              <div className="identity-claim-ready">
+                <span><strong>Claim code ready</strong><small>Expires {new Date(claim.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></span>
+                <button className="button button--secondary button--small" onClick={() => setClaimOpen(true)}>View instructions</button>
               </div>
             ) : (
               <button className="button button--primary" disabled={identityBusy} onClick={createPremiumClaim}>
@@ -1226,6 +1344,26 @@ export function ProfilePage() {
           </div>
         </Card>
       </section>
+      {claim && claimOpen ? (
+        <Modal title="Link your premium Minecraft account" className="modal--compact premium-claim-modal" onClose={() => setClaimOpen(false)}>
+          <div className="modal__body">
+            <div className="identity-claim-code premium-claim-modal__code">
+              <small>Join <strong>{claim.verificationServer}</strong>, then run</small>
+              <code>/nortixclaim {claim.code}</code>
+              <button className="button button--ghost button--small" onClick={() => void navigator.clipboard.writeText(`/nortixclaim ${claim.code}`)}><Copy /> Copy command</button>
+              <span>Expires {new Date(claim.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+            <div className="premium-link-steps">
+              <div><b>1</b><span><strong>Join the verification server</strong><small>Open Minecraft Java Edition and connect to the server shown above.</small></span></div>
+              <div><b>2</b><span><strong>Run the command</strong><small>Paste the command into Minecraft chat and send it. Never share your one-time code.</small></span></div>
+              <div><b>3</b><span><strong>Come back to Nortix</strong><small>We will verify the account automatically. This claim expires soon, so finish before the time shown above.</small></span></div>
+            </div>
+          </div>
+          <div className="modal__footer">
+            <Button type="button" onClick={() => setClaimOpen(false)}>Done</Button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

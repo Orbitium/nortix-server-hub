@@ -30,10 +30,47 @@ import { Seo } from "../components/Seo";
 import {
   artIndexFor,
   usePublicCampaigns,
+  usePublicProfile,
   usePublicServer,
   usePublicServers,
 } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
+
+const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
+
+export function PublicProfilePage() {
+  const { username } = useParams();
+  const { data: profile, isLoading, isError } = usePublicProfile(username);
+  if (isLoading) return <div className="content-page narrow-page"><Card><p>Loading profile…</p></Card></div>;
+  if (isError || !profile) return <div className="content-page narrow-page"><Card><h1>Profile unavailable</h1><p>This profile may be private or no longer exists.</p></Card></div>;
+  const background = profileBackgrounds.has(profile.publicProfile.backgroundColor ?? "")
+    ? profile.publicProfile.backgroundColor
+    : "slate";
+  return (
+    <div className="content-page narrow-page public-profile-page">
+      <Card className="profile-card">
+        <div className={`profile-banner profile-banner--${background}`}>
+          <span className="profile-avatar">{profile.username.slice(0, 2).toUpperCase()}</span>
+        </div>
+        <div className="profile-card__body">
+          <div>
+            <h1>{profile.displayName} <ShieldCheck /></h1>
+            <p>@{profile.username}</p>
+            {profile.publicProfile.bio ? <p className="public-profile-bio">{profile.publicProfile.bio}</p> : null}
+          </div>
+          <Badge tone="success">Nortix tester</Badge>
+        </div>
+        {profile.publicProfile.showReputation !== false ? (
+          <div className="profile-stats">
+            <span><strong>{profile.reputationScore ?? 0}</strong><small>Reputation</small></span>
+            <span><strong>{profile.testerLevel ?? 0}</strong><small>Tester level</small></span>
+            <span><strong>{profile.reputationTier ?? "New Tester"}</strong><small>Tier</small></span>
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  );
+}
 
 export function HomePage() {
   const { data: campaignData } = usePublicCampaigns();
@@ -448,6 +485,10 @@ export function ServerDetailPage() {
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
   const { data: campaignData } = usePublicCampaigns();
   const [addressCopied, setAddressCopied] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDescription, setReportDescription] = useState("");
   if (isLoading) {
     return (
       <div className="detail-page">
@@ -515,8 +556,11 @@ export function ServerDetailPage() {
         path={canonicalPath}
         jsonLd={serverSchema}
       />
-      <div className={`server-detail-hero server-art--${artIndexFor(server.id)}`}>
-        <div className="server-detail-hero__logo">{server.name.slice(0, 2).toUpperCase()}</div>
+      <div className="server-detail-hero">
+        {server.logoUrl ? <img className="server-detail-hero__backdrop" src={server.logoUrl} alt="" aria-hidden="true" /> : null}
+        <div className="server-detail-hero__logo">
+          {server.logoUrl ? <img src={server.logoUrl} alt={`${server.name} icon`} /> : server.name.slice(0, 2).toUpperCase()}
+        </div>
         <div>
           <div className="detail-title-row">
             <h1>{server.name}</h1>
@@ -676,10 +720,96 @@ export function ServerDetailPage() {
             <ShieldCheck />
             <h3>Stay safe</h3>
             <p>Server rules still apply. Report suspicious requirements or behavior to Nortix.</p>
-            <button className="button button--ghost">Report server</button>
+            <button
+              className="button button--ghost"
+              onClick={() => {
+                setReportSubmitted(false);
+                setReportOpen(true);
+              }}
+            >
+              Report server
+            </button>
           </Card>
         </aside>
       </div>
+      {reportOpen ? (
+        <Modal
+          title="Report server"
+          className="modal--compact"
+          onClose={() => {
+            setReportOpen(false);
+            setReportSubmitted(false);
+          }}
+        >
+          {reportSubmitted ? (
+            <div className="modal__body report-form__success">
+              <strong>Thanks for helping keep Nortix safe.</strong>
+              <p>Your report is ready to be reviewed by the Nortix team.</p>
+              <div className="modal__footer">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setReportOpen(false);
+                    setReportSubmitted(false);
+                  }}
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                setReportSubmitted(true);
+              }}
+            >
+              <div className="modal__body report-form">
+                <p>Tell us what seems unsafe, misleading, or against Nortix guidelines.</p>
+                <label>
+                  Reason
+                  <select
+                    required
+                    value={reportReason}
+                    onChange={(event) => setReportReason(event.target.value)}
+                  >
+                    <option value="">Select a reason</option>
+                    <option value="misleading">Misleading listing</option>
+                    <option value="unsafe">Unsafe or abusive behavior</option>
+                    <option value="scam">Suspicious requirements or scam</option>
+                    <option value="other">Something else</option>
+                  </select>
+                </label>
+                <label>
+                  Description
+                  <textarea
+                    required
+                    minLength={10}
+                    rows={4}
+                    value={reportDescription}
+                    onChange={(event) => setReportDescription(event.target.value)}
+                    placeholder="Include what happened and any useful details."
+                  />
+                </label>
+              </div>
+              <div className="modal__footer">
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={() => {
+                    setReportOpen(false);
+                    setReportReason("");
+                    setReportDescription("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <Button type="submit">Submit report</Button>
+              </div>
+            </form>
+          )}
+        </Modal>
+      ) : null}
     </div>
   );
 }

@@ -22,6 +22,9 @@ The backend never trusts:
 - safe error envelopes with request IDs
 - structured logs with authorization, signature, and payout destinations redacted
 - HMAC payment-webhook validation and provider-event idempotency
+- Server registration requires a server-side mcsrvstat.us status preview and a short-lived,
+  owner/address-bound HMAC validation signature; missing, expired, or mismatched signatures are
+  rejected before a public server record is created.
 - signed Minecraft event ingestion, five-minute replay window, and event-ID idempotency
 - explicit withdrawal states and reservation/cancellation ledger entries
 - admin action audit records
@@ -47,6 +50,8 @@ and minimized rather than exposing raw identifiers broadly.
 ## Production checklist
 
 - Replace all placeholder secrets.
+- Set `SERVER_VALIDATION_SECRET` to a unique random value; it signs the short-lived validation
+  results used by public server registration.
 - Set `AUTH_MODE=firebase`; disable mock headers. `FIREBASE_PROJECT_ID` is required
   for public-key ID-token verification. Configure both optional Firebase Admin
   service-account fields when immediate Firebase revocation and disabled-user

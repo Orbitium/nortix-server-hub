@@ -114,6 +114,24 @@ export type CurrentUser = {
   reputationScore: number;
   reputationTier: string;
   testerLevel: number;
+  publicProfile?: UserPublicProfile;
+};
+
+export type UserPublicProfile = {
+  bio?: string | null;
+  backgroundColor?: "slate" | "violet" | "ocean" | "moss" | "ember";
+  isPublic?: boolean;
+  showReputation?: boolean;
+};
+
+export type PublicUserProfile = {
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  reputationScore: number | null;
+  reputationTier: string | null;
+  testerLevel: number | null;
+  publicProfile: UserPublicProfile;
 };
 
 export type AdminReviewCampaign = {
@@ -350,6 +368,13 @@ export const useCurrentUser = (enabled = true) =>
     queryKey: ["current-user"],
     queryFn: () => api<CurrentUser>("/users/me"),
     enabled,
+  });
+
+export const usePublicProfile = (username?: string) =>
+  useQuery({
+    queryKey: ["public-profile", username],
+    queryFn: () => api<PublicUserProfile>(`/users/${encodeURIComponent(username!)}`),
+    enabled: Boolean(username),
   });
 
 export const useParticipations = () =>

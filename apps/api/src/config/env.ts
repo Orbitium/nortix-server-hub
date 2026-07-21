@@ -12,6 +12,7 @@ const EnvSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().trim().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),
   INTEGRATION_SIGNING_SECRET: z.string().min(16).default("local-integration-secret"),
+  SERVER_VALIDATION_SECRET: z.string().min(32).default("local-server-validation-secret-please-change"),
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default("local-payment-secret"),
   IDENTITY_VERIFICATION_SECRET: z.string().min(32).default("local-identity-verification-secret"),
   MIN_WITHDRAWAL_USD: z.coerce.number().int().min(1).default(10),
@@ -63,7 +64,8 @@ export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
   if (
     result.data.NODE_ENV === "production" &&
     (result.data.INTEGRATION_SIGNING_SECRET === "local-integration-secret" ||
-      result.data.PAYMENT_WEBHOOK_SECRET === "local-payment-secret")
+      result.data.PAYMENT_WEBHOOK_SECRET === "local-payment-secret" ||
+      result.data.SERVER_VALIDATION_SECRET === "local-server-validation-secret-please-change")
   ) {
     throw new Error("Production signing and webhook secrets must be explicitly configured.");
   }

@@ -226,6 +226,7 @@ DISCOVERY_SCAN_ENABLED=true
 DISCOVERY_SCAN_INTERVAL_MINUTES=10
 DISCOVERY_SCAN_SPACING_MS=12000
 MCSRVSTAT_USER_AGENT=NortixServerHub/1.0 (+https://hub.nortixlabs.com/contact)
+SERVER_VALIDATION_SECRET=<unique-random-secret-at-least-32-characters>
 ```
 
 Set a descriptive `MCSRVSTAT_USER_AGENT` with a real project contact URL or email

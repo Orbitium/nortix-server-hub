@@ -11,6 +11,7 @@ const production = {
   INTEGRATION_SIGNING_SECRET: "a-secure-integration-secret",
   PAYMENT_WEBHOOK_SECRET: "a-secure-payment-secret",
   IDENTITY_VERIFICATION_SECRET: "a-separate-secure-identity-verification-secret",
+  SERVER_VALIDATION_SECRET: "a-separate-secure-server-validation-secret",
 };
 
 describe("production environment policy", () => {

@@ -1,18 +1,20 @@
 import { CircleDot, Star, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, VerifiedBadge } from "@nortix/ui";
-import { artIndexFor, type PublicServer } from "../features/api-data";
+import { type PublicServer } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
 
 export function ServerCard({ server }: { server: PublicServer }) {
   const { t, formatNumber } = useI18n();
   return (
     <Card className="server-card">
-      <Link
-        to={`/servers/${server.slug}`}
-        className={`server-art server-art--${artIndexFor(server.id)}`}
-      >
-        <span className="server-art__monogram">{server.name.slice(0, 2).toUpperCase()}</span>
+      <Link to={`/servers/${server.slug}`} className="server-card__visual">
+        {server.logoUrl ? <img className="server-card__visual-backdrop" src={server.logoUrl} alt="" aria-hidden="true" /> : null}
+        {server.logoUrl ? (
+          <img className="server-card__visual-icon" src={server.logoUrl} alt={`${server.name} icon`} />
+        ) : (
+          <span className="server-card__visual-monogram">{server.name.slice(0, 2).toUpperCase()}</span>
+        )}
       </Link>
       <div className="server-card__content">
         <div className="server-card__heading">

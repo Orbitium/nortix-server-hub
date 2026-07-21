@@ -1,6 +1,6 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma, type Prisma } from "@nortix/database";
-import { AdminMessageInputSchema, CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, NotificationPreferenceInputSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, WithdrawalInputSchema, CrackedAccountClaimSchema } from "@nortix/shared";
+import { AdminMessageInputSchema, CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, NotificationPreferenceInputSchema, ServerAddressValidationSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, WithdrawalInputSchema, CrackedAccountClaimSchema } from "@nortix/shared";
 import { CreateServerVerificationSchema, PluginCapabilitiesHandshakeSchema, PluginPresenceSnapshotSchema, PluginVerificationHandshakeSchema, PluginVerificationStatusSchema, ServerPluginEventSchema, PluginPlayerHistorySchema } from "@nortix/plugin-sdk";
 import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
@@ -15,12 +15,36 @@ import { ServerVerificationService } from "./server-verification/service.js";
 import { MinecraftIdentityService } from "./minecraft-identities/service.js";
 import { createNotification, NotificationService } from "./notifications/service.js";
 import { ServerDiscoveryService } from "./server-discovery/service.js";
+import { McsrvstatClient, McsrvstatRequestError } from "./server-discovery/mcsrvstat-client.js";
 
 const campaignService = new CampaignService();
 const withdrawalService = new WithdrawalService();
 const serverVerificationService = new ServerVerificationService();
 const minecraftIdentityService = new MinecraftIdentityService();
 const notificationService = new NotificationService();
+
+const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
+const normalizeServerHostname = (hostname: string) => hostname.trim().toLowerCase().replace(/\.$/, "");
+const validationPayload = (ownerId: string, hostname: string, port: number, edition: string, expiresAt: number) =>
+  `${ownerId}|${normalizeServerHostname(hostname)}|${port}|${edition}|${expiresAt}`;
+const signServerValidation = (payload: string, secret: string) =>
+  createHmac("sha256", secret).update(payload).digest("base64url");
+const isValidServerValidationSignature = (
+  signature: string | undefined,
+  ownerId: string,
+  hostname: string,
+  port: number,
+  edition: string,
+  secret: string,
+) => {
+  if (!signature) return false;
+  const [expiresText, supplied] = signature.split(".");
+  const expiresAt = Number(expiresText);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now() || !supplied) return false;
+  const expectedBuffer = Buffer.from(signServerValidation(validationPayload(ownerId, hostname, port, edition, expiresAt), secret));
+  const suppliedBuffer = Buffer.from(supplied);
+  return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
+};
 
 const requireOwnedServer = async (serverId: string, userId: string) => {
   const server = await prisma.server.findFirst({ where: { id: serverId, ownerId: userId } });
@@ -117,12 +141,13 @@ const publicMilestoneSelect = {
 
 const profileInputSchema = z
   .object({
+    username: z.string().trim().regex(/^[A-Za-z0-9_]{3,16}$/).optional(),
     displayName: z.string().trim().min(1).max(80).optional(),
     avatarUrl: z.string().url().max(2_000).nullable().optional(),
-    publicProfile: z
-      .record(z.string(), z.unknown())
-      .refine((value) => JSON.stringify(value).length <= 8_000, "Public profile is too large.")
-      .optional(),
+    bio: z.string().trim().max(240).optional(),
+    backgroundColor: z.enum(["slate", "violet", "ocean", "moss", "ember"]).optional(),
+    isPublic: z.boolean().optional(),
+    showReputation: z.boolean().optional(),
   })
   .strict();
 
@@ -167,6 +192,7 @@ const parsePagination = (query: Record<string, unknown>) => ({
 });
 
 export const registerRoutes = async (app: FastifyInstance, env: Env) => {
+  const mcStatusClient = new McsrvstatClient(env.MCSRVSTAT_USER_AGENT);
   const paymentProvider = new MockPaymentProvider(env.PAYMENT_WEBHOOK_SECRET);
   const payoutProvider = new MockPayoutProvider();
   const identityCleanupTimer = setInterval(() => minecraftIdentityService.cleanup().catch((error) => app.log.error({ err: error }, "minecraft identity cleanup failed")), 5 * 60_000);
@@ -241,14 +267,60 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) => prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }));
   app.patch("/v1/users/me/profile", { preHandler: app.authenticate }, async (request) => {
     const input = profileInputSchema.parse(request.body);
-    return prisma.user.update({
+    const current = await prisma.user.findUnique({
       where: { id: request.user!.id },
-      data: {
-        displayName: input.displayName,
-        avatarUrl: input.avatarUrl,
-        publicProfile: input.publicProfile as Prisma.InputJsonValue | undefined,
-      },
-      select: selfUserSelect,
+      select: { username: true, displayName: true, avatarUrl: true, publicProfile: true },
+    });
+    if (!current) throw new Error("Profile not found.");
+    if (input.username && input.username.toLowerCase() !== current.username.toLowerCase()) {
+      const usernameTaken = await prisma.user.findFirst({
+        where: { username: { equals: input.username, mode: "insensitive" }, NOT: { id: request.user!.id } },
+        select: { id: true },
+      });
+      if (usernameTaken) throw new Error("That username is already taken.");
+    }
+    const currentPublicProfile = current.publicProfile && typeof current.publicProfile === "object"
+      ? current.publicProfile as Record<string, unknown>
+      : {};
+    const publicProfile = {
+      ...currentPublicProfile,
+      ...(input.bio !== undefined ? { bio: input.bio } : {}),
+      ...(input.backgroundColor !== undefined ? { backgroundColor: input.backgroundColor } : {}),
+      ...(input.isPublic !== undefined ? { isPublic: input.isPublic } : {}),
+      ...(input.showReputation !== undefined ? { showReputation: input.showReputation } : {}),
+    };
+    return prisma.$transaction(async (transaction) => {
+      const updated = await transaction.user.update({
+        where: { id: request.user!.id },
+        data: {
+          username: input.username,
+          displayName: input.displayName,
+          avatarUrl: input.avatarUrl,
+          publicProfile: publicProfile as Prisma.InputJsonValue,
+        },
+        select: selfUserSelect,
+      });
+      await transaction.auditLog.create({
+        data: {
+          actorId: request.user!.id,
+          action: "PROFILE_UPDATED",
+          entityType: "USER",
+          entityId: request.user!.id,
+          beforeSnapshot: {
+            username: current.username,
+            displayName: current.displayName,
+            avatarUrl: current.avatarUrl,
+            publicProfile: currentPublicProfile,
+          } as Prisma.InputJsonValue,
+          afterSnapshot: {
+            username: updated.username,
+            displayName: updated.displayName,
+            avatarUrl: updated.avatarUrl,
+            publicProfile,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      return updated;
     });
   });
   app.get("/v1/notifications/summary", { preHandler: app.authenticate }, async (request) =>
@@ -346,7 +418,24 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         publicProfile: true,
       },
     });
-    return user ?? reply.code(404).send({ code: "NOT_FOUND", message: "Profile not found." });
+    if (!user || (user.publicProfile && typeof user.publicProfile === "object" && "isPublic" in user.publicProfile && user.publicProfile.isPublic === false)) {
+      return reply.code(404).send({ code: "NOT_FOUND", message: "Profile not found." });
+    }
+    const profile = user.publicProfile && typeof user.publicProfile === "object" ? user.publicProfile as Record<string, unknown> : {};
+    return {
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      reputationScore: profile.showReputation === false ? null : user.reputationScore,
+      reputationTier: profile.showReputation === false ? null : user.reputationTier,
+      testerLevel: profile.showReputation === false ? null : user.testerLevel,
+      publicProfile: {
+        bio: typeof profile.bio === "string" ? profile.bio : null,
+        backgroundColor: typeof profile.backgroundColor === "string" ? profile.backgroundColor : "slate",
+        isPublic: profile.isPublic !== false,
+        showReputation: profile.showReputation !== false,
+      },
+    };
   });
   app.get("/v1/leaderboard", async () =>
     prisma.user.findMany({
@@ -480,6 +569,16 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   });
   app.post("/v1/servers", { preHandler: app.authenticate }, async (request, reply) => {
     const input = ServerInputSchema.parse(request.body);
+    if (!input.verificationParentId && !isValidServerValidationSignature(
+      input.serverValidationSignature,
+      request.user!.id,
+      input.hostname,
+      input.port,
+      input.edition,
+      env.SERVER_VALIDATION_SECRET,
+    )) {
+      throw new Error("A valid public server address validation is required before registration.");
+    }
     const slug = `${input.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -542,6 +641,37 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       return created;
     });
     return reply.code(201).send(server);
+  });
+  app.post("/v1/servers/validate-address", { preHandler: app.authenticate }, async (request) => {
+    const input = ServerAddressValidationSchema.parse(request.body);
+    const hostname = normalizeServerHostname(input.hostname);
+    let status;
+    try {
+      status = await mcStatusClient.getStatus({ hostname, port: input.port, edition: input.edition });
+    } catch (error) {
+      if (error instanceof McsrvstatRequestError) {
+        throw new Error("The public server address could not be validated. Make sure it is reachable and try again.");
+      }
+      throw error;
+    }
+    if (!status.online) {
+      throw new Error("The public server address did not return a live Minecraft server.");
+    }
+    const expiresAt = Date.now() + SERVER_VALIDATION_TTL_MS;
+    const payload = validationPayload(request.user!.id, hostname, input.port, input.edition, expiresAt);
+    return {
+      hostname,
+      port: input.port,
+      edition: input.edition,
+      preview: {
+        online: status.online,
+        playerCount: status.playerCount,
+        maxPlayers: status.maxPlayers,
+        version: status.version,
+      },
+      validationSignature: `${expiresAt}.${signServerValidation(payload, env.SERVER_VALIDATION_SECRET)}`,
+      expiresAt: new Date(expiresAt).toISOString(),
+    };
   });
   app.post("/v1/servers/:id/verification", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };

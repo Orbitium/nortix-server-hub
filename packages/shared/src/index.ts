@@ -79,6 +79,13 @@ export const ServerInputSchema = z.object({
   verificationParentId: z.string().min(1).optional(),
   websiteUrl: z.string().url().optional(),
   discordUrl: z.string().url().optional(),
+  serverValidationSignature: z.string().min(20).max(500).optional(),
+});
+
+export const ServerAddressValidationSchema = z.object({
+  hostname: z.string().trim().min(3).max(255),
+  port: z.number().int().min(1).max(65535).default(25565),
+  edition: z.enum(["JAVA", "BEDROCK"]).default("JAVA"),
 });
 
 export const serverTeamRoles = ["ADMIN", "MANAGER", "OPERATOR", "ANALYST"] as const;
