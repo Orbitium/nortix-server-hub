@@ -61,13 +61,23 @@ export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
   if (result.data.NODE_ENV === "production" && result.data.AUTH_MODE !== "firebase") {
     throw new Error("Production requires AUTH_MODE=firebase; mock authentication is development-only.");
   }
-  if (
-    result.data.NODE_ENV === "production" &&
-    (result.data.INTEGRATION_SIGNING_SECRET === "local-integration-secret" ||
-      result.data.PAYMENT_WEBHOOK_SECRET === "local-payment-secret" ||
-      result.data.SERVER_VALIDATION_SECRET === "local-server-validation-secret-please-change")
-  ) {
-    throw new Error("Production signing and webhook secrets must be explicitly configured.");
+  if (result.data.NODE_ENV === "production") {
+    const placeholderSecrets = [
+      result.data.INTEGRATION_SIGNING_SECRET === "local-integration-secret"
+        ? "INTEGRATION_SIGNING_SECRET"
+        : null,
+      result.data.PAYMENT_WEBHOOK_SECRET === "local-payment-secret"
+        ? "PAYMENT_WEBHOOK_SECRET"
+        : null,
+      result.data.SERVER_VALIDATION_SECRET === "local-server-validation-secret-please-change"
+        ? "SERVER_VALIDATION_SECRET"
+        : null,
+    ].filter((name): name is string => name !== null);
+    if (placeholderSecrets.length > 0) {
+      throw new Error(
+        `Production secrets must be explicitly configured: ${placeholderSecrets.join(", ")}.`,
+      );
+    }
   }
   if (
     result.data.NODE_ENV === "production" &&
