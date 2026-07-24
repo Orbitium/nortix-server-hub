@@ -32,6 +32,7 @@ export type PublicServer = {
   maxPlayers?: number | null;
   rating?: number | null;
   reviewCount?: number;
+  voteCount?: number;
   hostname?: string;
   port?: number;
   activeCampaignCount?: number;
@@ -61,6 +62,8 @@ export type PublicCampaign = {
   description: string;
   status: "ACTIVE" | "SCHEDULED" | "COMPLETED";
   category: string;
+  quickStart?: string | null;
+  quickStartConfig?: Record<string, unknown>;
   startsAt: string;
   endsAt: string;
   maxParticipants: number;
@@ -174,13 +177,13 @@ export type DailyQuest = {
   sparksReward: number;
   progress: number;
   completedAt?: string | null;
+  verificationPending?: boolean;
 };
 
 export type AdminOverview = {
   users: number;
   servers: number;
   campaigns: number;
-  pendingWithdrawals: number;
   openCases: number;
 };
 
@@ -359,7 +362,7 @@ export const useSparksSummary = (enabled = true) =>
   useQuery({
     queryKey: ["sparks-summary"],
     queryFn: () =>
-      api<{ balance: number; cashValue: null; withdrawable: false }>("/sparks/summary"),
+      api<{ balance: number }>("/sparks/summary"),
     enabled,
   });
 

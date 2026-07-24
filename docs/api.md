@@ -25,6 +25,8 @@ Errors use:
 
 - `GET /servers?page=1&pageSize=12&search=sky`
 - `GET /servers/:slug`
+- `POST /servers/:id/vote` - authenticated, idempotent Nortix server vote
+- `POST /servers/:id/reviews` - authenticated 1-5 star review submission; public reviews have no replies
 - `POST /servers` — `server:manage`
 - `POST /servers/:id/verification` — owner only
 
@@ -53,18 +55,15 @@ endpoint returns capability-aware plugin milestone presets and a deliberately
 broad potential-exposure range. Exposure is directional and is not a delivery
 promise.
 
-## Earnings, withdrawals, and Sparks
+## Sparks
 
-- `GET /earnings/summary`
-- `GET /earnings/transactions`
-- `GET /withdrawals`
-- `POST /withdrawals`
 - `GET /sparks/summary`
 - `GET /sparks/transactions`
 - `GET /sparks/shop`
 - `POST /sparks/purchases`
 
-Sparks purchase routes can only debit Sparks and contain no conversion path to Earnings.
+Sparks are non-withdrawable, non-transferable platform points with no cash value. Purchase routes
+only debit Sparks and there is no cash-out or conversion endpoint.
 
 ## Owner operations
 
@@ -83,8 +82,6 @@ HMAC signature, stores a unique provider event, and creates one idempotent purch
 - `GET /admin/campaigns`
 - `POST /admin/campaigns/:id/review`
 - `POST /admin/completions/:id/review`
-- `GET /admin/withdrawals`
-- `POST /admin/withdrawals/:id/transition`
 - `GET /admin/payment-events`
 - `GET /admin/ledger`
 - `GET /admin/audit-logs`
@@ -114,9 +111,9 @@ activity.
 
 ## Pagination and idempotency
 
-List endpoints use `page` and `pageSize`; page size is capped at 50. Financial provider events,
-milestone rewards, Sparks rewards, campaign-credit purchases, withdrawals, and cosmetic purchases
-use unique idempotency keys stored in PostgreSQL.
+List endpoints use `page` and `pageSize`; page size is capped at 50. Payment provider events,
+Sparks rewards, campaign-credit purchases, and cosmetic purchases use unique idempotency keys
+stored in PostgreSQL.
 ## Inbox, messages, and notifications
 
 Authenticated account endpoints:

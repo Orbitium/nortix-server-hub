@@ -21,7 +21,6 @@ import {
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge, Button, Card, Sparks, VerifiedBadge } from "@nortix/ui";
-import { formatMoney } from "@nortix/shared";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
@@ -35,6 +34,7 @@ import {
   usePublicServers,
 } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
+import { api } from "../lib/api";
 
 const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
 
@@ -254,8 +254,7 @@ export function HomePage() {
             <Zap />
             <h3>Receive verified rewards</h3>
             <p>
-              Approved milestones add to Earnings, while Sparks unlock cosmetic progression across
-              Nortix.
+              Approved milestones add Sparks, which unlock cosmetic progression across Nortix.
             </p>
           </Card>
         </div>
@@ -473,6 +472,11 @@ export function BrowseCampaignsPage() {
             <Button onClick={() => refetch()}>{t("listing.retry")}</Button>
           </Card>
         ) : null}
+        {!isLoading && !isError && visible.length === 0 ? (
+          <Card className="empty-state-card">
+            <p>{t("ui.noCampaigns")}</p>
+          </Card>
+        ) : null}
         {visible.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
@@ -491,6 +495,11 @@ export function ServerDetailPage() {
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
+  const [voteCount, setVoteCount] = useState<number | null>(null);
+  const [voteMessage, setVoteMessage] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
   if (isLoading) {
     return (
       <div className="detail-page">
@@ -529,6 +538,25 @@ export function ServerDetailPage() {
     }
   };
   const canonicalPath = `/servers/${server.slug}`;
+  const vote = async () => {
+    try {
+      const result = await api<{ voteCount: number }>(`/servers/${server.id}/vote`, { method: "POST", body: JSON.stringify({ vote: true }) });
+      setVoteCount(result.voteCount);
+      setVoteMessage("Your vote is counted.");
+    } catch (error) {
+      setVoteMessage(error instanceof Error ? error.message : "Sign in to vote for this server.");
+    }
+  };
+  const submitReview = async () => {
+    try {
+      await api(`/servers/${server.id}/reviews`, { method: "POST", body: JSON.stringify({ rating: reviewRating, text: reviewText }) });
+      setReviewMessage("Review submitted.");
+      setReviewText("");
+      void refetch();
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : "Sign in to review this server.");
+    }
+  };
   const serverSchema = {
     "@context": "https://schema.org",
     "@type": "VideoGame",
@@ -591,6 +619,8 @@ export function ServerDetailPage() {
           >
             {addressCopied ? t("ui.addressCopied") : t("ui.copyAddress")}
           </button>
+          {!isDiscovered ? <button className="button button--secondary" onClick={() => void vote()}>Vote on Nortix ({voteCount ?? server.voteCount ?? 0})</button> : null}
+          {voteMessage ? <small>{voteMessage}</small> : null}
         </div>
       </div>
       <div className="detail-columns">
@@ -651,6 +681,17 @@ export function ServerDetailPage() {
           </section>
           <Card>
             <h2>Community reviews</h2>
+            {!isDiscovered ? (
+              <div className="review-composer">
+                <strong>Rate this server after at least 15 minutes of gameplay</strong>
+                <div className="stars" role="radiogroup" aria-label="Rating">
+                  {[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} onClick={() => setReviewRating(rating)} aria-label={`${rating} stars`}>{rating <= reviewRating ? "★" : "☆"}</button>)}
+                </div>
+                <textarea value={reviewText} onChange={(event) => setReviewText(event.target.value)} placeholder="Share a useful, respectful review" maxLength={1000} />
+                <button className="button button--secondary" disabled={reviewText.trim().length < 3} onClick={() => void submitReview()}>Submit review</button>
+                {reviewMessage ? <small>{reviewMessage}</small> : null}
+              </div>
+            ) : null}
             <div className="review-summary">
               <strong>{server.rating ?? "New"}</strong>
               <span>
@@ -830,7 +871,6 @@ export function LegacyCampaignDetailPage() {
     version: rawCampaign.versionRequirements[0] ?? rawCampaign.server.versions[0] ?? "Any version",
     difficulty: rawCampaign.category,
     language: "Server supported",
-    rewardCents: 0,
     sparksMinimum: rawCampaign.minimumSparksReward,
     sparks: rawCampaign.maximumSparksReward,
     duration: `Ends ${new Date(rawCampaign.endsAt).toLocaleDateString()}`,
@@ -851,7 +891,6 @@ export function LegacyCampaignDetailPage() {
       ...milestone,
       description: milestone.publicInstructions,
       duration: milestone.verificationMethod.replaceAll("_", " ").toLowerCase(),
-      rewardCents: 0,
       sparks: milestone.sparksReward,
     })),
   };
@@ -884,7 +923,7 @@ export function LegacyCampaignDetailPage() {
           </div>
           <Card className="join-card">
             <span>Available reward</span>
-            <strong>{formatMoney(campaign.rewardCents)}</strong>
+            <strong>{campaign.sparks.toLocaleString()} Sparks</strong>
             <Sparks value={`${campaign.sparks.toLocaleString()} Sparks`} />
             <hr />
             <div>
@@ -928,7 +967,7 @@ export function LegacyCampaignDetailPage() {
                     </small>
                   </div>
                   <div className="milestone-reward">
-                    <strong>{formatMoney(milestone.rewardCents)}</strong>
+                    <strong>{milestone.sparks.toLocaleString()} Sparks</strong>
                     <Sparks value={milestone.sparks} />
                   </div>
                 </div>
@@ -984,7 +1023,7 @@ export function LegacyCampaignDetailPage() {
             <dl>
               <div>
                 <dt>Milestone rewards</dt>
-                <dd>{formatMoney(campaign.rewardCents)}</dd>
+                <dd>{campaign.sparks.toLocaleString()} Sparks</dd>
               </div>
               <div>
                 <dt>Sparks</dt>
@@ -1079,7 +1118,7 @@ export function HowItWorksPage({ owners = false }: { owners?: boolean }) {
     [
       WalletCards,
       "Receive verified rewards",
-      "Approved rewards appear in Earnings. Sparks remain separate and unlock cosmetics.",
+      "Approved milestones may provide Sparks after verification. Sparks unlock cosmetics and non-financial progression.",
     ],
   ] as const;
   const ownerSteps = [
@@ -1146,12 +1185,12 @@ export function HowItWorksPage({ owners = false }: { owners?: boolean }) {
           <h2>
             {owners
               ? "You configure the playtest. Nortix protects the experience."
-              : "Earnings and Sparks serve different purposes."}
+              : "Sparks are separate from reputation and unlock non-financial progression."}
           </h2>
           <p>
             {owners
               ? "Owners select approved milestone templates, audiences, schedules, and capacity. Nortix controls acceptable ranges, verification methods, moderation, and public rewards."
-              : "Earnings are withdrawable rewards for approved milestones. Sparks have no cash value and are spent only on cosmetic or non-financial progression."}
+              : "Sparks have no cash value and are spent only on cosmetic or non-financial progression."}
           </p>
         </div>
         <Card className={owners ? "control-card" : "systems-card"}>
@@ -1176,8 +1215,8 @@ export function HowItWorksPage({ owners = false }: { owners?: boolean }) {
               <div>
                 <WalletCards />
                 <span>
-                  <strong>Earnings</strong>
-                  <small>Available to withdraw after verification</small>
+                  <strong>Sparks</strong>
+                  <small>Available after milestone verification</small>
                 </span>
               </div>
               <div>
@@ -1258,12 +1297,12 @@ const legalContent: Record<
         "Joining a campaign does not guarantee reward approval. Published milestones and evidence requirements determine eligibility.",
       ],
       [
-        "Rewards and withdrawals",
-        "Approved earnings may be withdrawn after applicable thresholds, review, country availability, and provider requirements.",
+        "Sparks rewards",
+        "Approved milestones may provide Sparks after verification. Sparks are non-withdrawable and have no cash value.",
       ],
       [
         "Sparks",
-        "Sparks are non-withdrawable platform points with no cash value. They cannot be transferred or converted into earnings.",
+        "Sparks are non-withdrawable platform points with no cash value. They cannot be transferred or converted into money.",
       ],
       [
         "Service changes",

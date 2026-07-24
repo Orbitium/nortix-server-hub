@@ -13,9 +13,9 @@ implemented through short-lived public MOTD challenges.
 - Firebase Authentication client integration and Firebase Admin ID-token verification
 - Fastify REST API with server-side permissions, ownership checks, rate limits, and safe errors
 - PostgreSQL + Prisma model for the full product domain
-- Append-only Earnings, Sparks, and Campaign Credit ledgers
+- Append-only Sparks and Campaign Credit ledgers
 - Paper and Velocity ownership verification through independently checked public MOTD codes
-- Mock payment and payout providers with signed, idempotent webhook handling
+- Mock payment provider for owner Campaign Credits with signed, idempotent webhook handling
 - Signed Minecraft integration event contracts, replay protection, and an event simulator
 - Realistic deterministic seed data: 20 users, 12 servers, 8 active campaigns
 - Vitest financial/authorization/idempotency coverage and three Playwright product flows

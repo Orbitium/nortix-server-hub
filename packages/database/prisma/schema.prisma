@@ -235,6 +235,7 @@ model User {
   ownedCampaigns            Campaign[]                  @relation("CampaignOwner")
   participations            CampaignParticipation[]
   reviews                   Review[]
+  serverVotes               ServerVote[]
   withdrawals               WithdrawalRequest[]         @relation("WithdrawalPlayer")
   reviewedWithdrawals       WithdrawalRequest[]         @relation("WithdrawalReviewer")
   earningsLedger            EarningsLedgerEntry[]       @relation("EarningsUser")
@@ -418,6 +419,7 @@ model Server {
   verifications             ServerVerification[]
   campaigns                 Campaign[]
   reviews                   Review[]
+  votes                     ServerVote[]
   analyticsEvents           AnalyticsEvent[]
   integrationKeys           IntegrationApiKey[]
   teamMembers               ServerTeamMember[]
@@ -571,6 +573,8 @@ model Campaign {
   description           String
   status                CampaignStatus          @default(DRAFT)
   category              String
+  quickStart            String?
+  quickStartConfig      Json                    @default("{}")
   internalBudgetCents   Int
   campaignBudgetCredits Int                     @default(0)
   publicRewardCents     Int
@@ -721,6 +725,18 @@ model Review {
   createdAt        DateTime         @default(now())
 
   @@unique([serverId, playerId])
+}
+
+model ServerVote {
+  id        String   @id @default(cuid())
+  serverId  String
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([serverId, playerId])
+  @@index([serverId, createdAt])
 }
 
 model WithdrawalRequest {

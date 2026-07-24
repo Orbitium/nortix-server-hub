@@ -1752,11 +1752,15 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
   const [derivedCapacity, setDerivedCapacity] = useState(172);
   const [estimatedCreditCost, setEstimatedCreditCost] = useState(29);
   const [category, setCategory] = useState("Onboarding");
+  const [quickStart, setQuickStart] = useState("FIRST_JOIN");
+  const [quickStartValue, setQuickStartValue] = useState("15");
   const [rewardRange, setRewardRange] = useState("50-100");
   const [suggestions, setSuggestions] = useState<CampaignSuggestion[]>([]);
   const [suggestionsServer, setSuggestionsServer] = useState("");
   const [exposure, setExposure] = useState({ minimum: 100, maximum: 400 });
-  const [milestones, setMilestones] = useState<ConfiguredMilestone[]>([]);
+  const [milestones, setMilestones] = useState<ConfiguredMilestone[]>([
+    { id: "quick-start-first-join", metric: "JOIN_SERVER", target: 1, scope: "SERVER", title: "First join" },
+  ]);
   const [milestoneComposerOpen, setMilestoneComposerOpen] = useState(false);
   const [milestoneDraft, setMilestoneDraft] = useState({
     metric: "",
@@ -1765,6 +1769,21 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
   });
   const [milestoneDraftMessage, setMilestoneDraftMessage] = useState("");
   const [eligibility, setEligibility] = useState<CampaignEligibility | null>(null);
+
+  const applyQuickStart = (kind: string, value = quickStartValue) => {
+    const definitions: Record<string, { metric: string; title: string; target: number; scope: "SERVER" }> = {
+      FIRST_JOIN: { metric: "JOIN_SERVER", title: "First join", target: 1, scope: "SERVER" },
+      JOIN_DAILY: { metric: "JOIN_DAILY", title: "Join on a different day", target: 1, scope: "SERVER" },
+      JOIN_WEEKLY: { metric: "JOIN_WEEKLY", title: "Join in a different week", target: 1, scope: "SERVER" },
+      JOIN_DISCORD: { metric: "JOIN_DISCORD", title: "Join the Discord community", target: 1, scope: "SERVER" },
+      VOTE_SERVER: { metric: "VOTE_SERVER", title: "Vote for this server on Nortix", target: 1, scope: "SERVER" },
+      SERVER_REVIEW: { metric: "SERVER_REVIEW", title: "Review the server after playing", target: 1, scope: "SERVER" },
+      PLAYTIME: { metric: "ACTIVE_DURATION", title: `Play for ${value} minutes`, target: Number(value) * 60, scope: "SERVER" },
+      TOTAL_PLAYTIME: { metric: "PLAYTIME_TOTAL", title: `Reach ${value} hour${value === "1" ? "" : "s"} of playtime`, target: Number(value) * 3600, scope: "SERVER" },
+    };
+    const definition = definitions[kind];
+    if (definition) setMilestones([{ id: crypto.randomUUID(), ...definition }]);
+  };
 
   useEffect(() => {
     api<CampaignCreditBalance>("/owner/campaign-balance")
@@ -1800,15 +1819,7 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
         setExposure(result.exposure);
         setDerivedCapacity(result.derivedCapacity);
         setEstimatedCreditCost(result.estimatedCostPerPotentialParticipant);
-        if (suggestionsServer !== server.id) {
-          setMilestones(
-            result.suggestions
-              .filter((item) => item.available && item.recommended)
-              .slice(0, 3)
-              .map(toConfiguredMilestone),
-          );
-          setSuggestionsServer(server.id);
-        }
+        if (suggestionsServer !== server.id) setSuggestionsServer(server.id);
       })
       .catch(() => {
         setSuggestions([]);
@@ -1935,10 +1946,15 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
             templateType: item.metric,
             title: `${item.title} · ${item.target.toLocaleString()}`,
             instructions: `${item.title} on ${item.scope === "SERVER" ? server.name : "this proxy network"}. Nortix checks progress automatically from safeguarded plugin data.`,
-            rewardCents: 0,
-            verificationMethod: "SERVER_PLUGIN",
+            verificationMethod: quickStart === "JOIN_DISCORD" ? "API" : "WEB_EVENT",
             config: { metric: item.metric, target: item.target, scope: item.scope },
           })),
+          quickStart,
+          quickStartConfig: quickStart === "PLAYTIME"
+            ? { minutes: Number(quickStartValue) }
+            : quickStart === "TOTAL_PLAYTIME"
+              ? { hours: Number(quickStartValue) }
+              : quickStart === "JOIN_DISCORD" ? { optional: true } : {},
         }),
       });
       await api(`/owner/campaigns/${created.id}/submit`, { method: "POST" });
@@ -1996,6 +2012,40 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
 
           <div className="owner-simple-heading">
             <span>2</span>
+            <div>
+              <h2>Quick-start campaign</h2>
+              <p>Choose a ready-made player goal, then adjust the campaign details below.</p>
+            </div>
+          </div>
+          <div className="form-grid form-grid--two owner-compact-fields">
+            <label>
+              Quick start
+              <select value={quickStart} onChange={(event) => { setQuickStart(event.target.value); applyQuickStart(event.target.value); }}>
+                <option value="FIRST_JOIN">First Join</option>
+                <option value="JOIN_DAILY">Join Daily</option>
+                <option value="JOIN_WEEKLY">Join Weekly</option>
+                <option value="PLAYTIME">Play 15–30–45 minutes</option>
+                <option value="JOIN_DISCORD">Join Discord (optional OAuth)</option>
+                <option value="VOTE_SERVER">Voted server on Nortix</option>
+                <option value="TOTAL_PLAYTIME">Total playtime reached: 1–5–15–30 hours</option>
+                <option value="SERVER_REVIEW">Ranked server on Nortix (post-play)</option>
+              </select>
+            </label>
+            {(quickStart === "PLAYTIME" || quickStart === "TOTAL_PLAYTIME") ? (
+              <label>
+                Goal amount
+                <select value={quickStartValue} onChange={(event) => { setQuickStartValue(event.target.value); applyQuickStart(quickStart, event.target.value); }}>
+                  {(quickStart === "PLAYTIME" ? ["15", "30", "45"] : ["1", "5", "15", "30"]).map((value) => <option value={value} key={value}>{value} {quickStart === "PLAYTIME" ? "minutes" : "hours"}</option>)}
+                </select>
+              </label>
+            ) : null}
+          </div>
+          <div className="owner-auto-note">
+            <ShieldCheck />
+            <span><strong>{quickStart === "JOIN_DISCORD" ? "Optional Discord OAuth" : "Quick start ready"}</strong><small>{quickStart === "JOIN_DISCORD" ? "OAuth connection can be completed later; the campaign intent is stored now." : "Gameplay validation will be connected in a later backend integration step."}</small></span>
+          </div>
+          <div className="owner-simple-heading">
+            <span>3</span>
             <div>
               <h2>Suggested milestones</h2>
               <p>Suggestions come from the capabilities reported by the plugin on {server.name}.</p>

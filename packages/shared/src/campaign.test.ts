@@ -17,7 +17,6 @@ const campaign = {
       templateType: "PLAYTIME_SECONDS",
       title: "Stay active",
       instructions: "Stay active while Nortix checks safeguarded server events.",
-      rewardCents: 0,
       verificationMethod: "SERVER_PLUGIN",
       config: { metric: "PLAYTIME_SECONDS", target: 1_800, scope: "SERVER" },
     },

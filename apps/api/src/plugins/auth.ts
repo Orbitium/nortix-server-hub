@@ -6,11 +6,13 @@ import { prisma } from "@nortix/database";
 import { rolePermissions, type Permission, type UserRole } from "@nortix/shared";
 import type { Env } from "../config/env.js";
 import { resolveMockUserId } from "./mock-auth.js";
+import { QuestService } from "../modules/quests/service.js";
 
 const hasPermission = (roles: readonly string[], permission: Permission) =>
   roles.some((role) => rolePermissions[role as UserRole]?.includes(permission));
 
 export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env }) => {
+  const questService = new QuestService();
   const { env } = options;
   const hasInlineAdminCredential = Boolean(
     env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY,
@@ -83,6 +85,7 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
         .replace(/[^a-zA-Z0-9_]/g, "")
         .slice(0, 24)
         .toLowerCase() || "player";
+    const wasExisting = await prisma.user.findUnique({ where: { firebaseUid }, select: { id: true } });
     request.user = await prisma.user.upsert({
       where: { firebaseUid },
       update: { lastActiveAt: new Date(), email, displayName },
@@ -94,6 +97,7 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
         roles: ["PLAYER"],
       },
     });
+    if (!wasExisting) await questService.ensureAccountQuests(request.user.id);
     if (request.user.status === "SUSPENDED" || request.user.status === "BANNED") {
       await reply.code(403).send({
         code: "ACCOUNT_RESTRICTED",

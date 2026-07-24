@@ -38,7 +38,7 @@ export function SeededProgressPage() {
       {isLoading && <Card><p>Loading your seeded participation records…</p></Card>}
       {isError && <Card><p>Participation records could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card>}
       {!isLoading && !isError && visible.length === 0 && (
-        <Card><p>No participation records match this view.</p><Link className="button button--primary" to="/campaigns">Browse campaigns</Link></Card>
+        <Card className="empty-state-card"><p>No participation records match this view.</p><Link className="button button--primary" to="/campaigns">Browse campaigns</Link></Card>
       )}
       <div className="campaign-grid">
         {visible.map((participation) => {

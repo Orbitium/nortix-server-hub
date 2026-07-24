@@ -53,15 +53,13 @@ custom claims alone.
 
 ## Financial boundaries
 
-Three independent append-only ledgers exist:
+Two active append-only ledgers exist:
 
-1. Earnings ledger: withdrawable player reward obligations in integer currency cents.
-2. Sparks ledger: non-withdrawable, non-transferable cosmetic progression points.
-3. Campaign-credit ledger: server-owner purchased and promotional campaign capacity.
+1. Sparks ledger: non-withdrawable, non-transferable cosmetic progression points.
+2. Campaign-credit ledger: server-owner purchased and promotional campaign capacity.
 
-Milestone verification creates Earnings and Sparks entries in the same database transaction and
-uses unique idempotency keys. Withdrawal requests reserve earnings with a debit entry. Cancellation
-returns the reservation with a credit entry. Purchased and promotional credit components remain
+Milestone verification creates Sparks entries in the same database transaction and uses unique
+idempotency keys. Purchased and promotional credit components remain
 separately attributable; promotional expiry cannot debit purchased credits.
 
 Cached balances are never authoritative. They are updated for responsive summaries after ledger

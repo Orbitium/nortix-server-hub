@@ -15,7 +15,6 @@ const EnvSchema = z.object({
   SERVER_VALIDATION_SECRET: z.string().min(32).default("local-server-validation-secret-please-change"),
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default("local-payment-secret"),
   IDENTITY_VERIFICATION_SECRET: z.string().min(32).default("local-identity-verification-secret"),
-  MIN_WITHDRAWAL_USD: z.coerce.number().int().min(1).default(10),
   DISCOVERY_SCAN_ENABLED: z
     .enum(["true", "false"])
     .default("false")

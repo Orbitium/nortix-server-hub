@@ -4,29 +4,26 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Clock3,
-  Compass,
   Copy,
-  Download,
   Flame,
   Gamepad2,
   Gift,
   Globe2,
   Heart,
   History,
-  LockKeyhole,
   Link2,
   MessageSquareText,
   MoreHorizontal,
   Palette,
   Search,
   Target,
+  ThumbsUp,
   Settings,
   ShieldCheck,
   Sparkles,
   UserPlus,
   Unlink2,
   Users,
-  WalletCards,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -482,6 +479,7 @@ export function ProgressPage() {
   return <SeededProgressPage />;
 }
 
+/* Removed IRL cash-out UI. Sparks are non-withdrawable platform points.
 export function EarningsPage() {
   const [withdraw, setWithdraw] = useState(false);
   const transactions = [
@@ -618,14 +616,22 @@ export function EarningsPage() {
     </div>
   );
 }
+*/
 
 export function QuestsPage() {
   const { data, isLoading, isError, refetch } = useDailyQuests();
   const quests = data ?? [];
   const questIcons = {
-    SERVER_VIEWS: Compass,
-    FEEDBACK: MessageSquareText,
-    MILESTONE: Target,
+    ACCOUNT_CREATED: UserPlus,
+    MINECRAFT_ACCOUNT_LINKED: Link2,
+    CAMPAIGN_COMPLETED: Target,
+    SERVER_VOTED: ThumbsUp,
+    VERIFIED_SERVER_JOINED: ShieldCheck,
+    DISCORD_JOIN: MessageSquareText,
+    LOGIN_STREAK: Flame,
+    SPARKS_SHOP_PURCHASED: Sparkles,
+    FRIEND_REFERRAL: Users,
+    SERVER_REVIEW_WRITTEN: MessageSquareText,
   } as const;
   const totalPotentialSparks = quests.reduce((total, quest) => total + quest.sparksReward, 0);
   const completedQuests = quests.filter((quest) => quest.completedAt).length;
@@ -639,7 +645,7 @@ export function QuestsPage() {
         <div>
           <Badge tone="purple">DAILY SET</Badge>
           <h2>{quests.length} quests · up to {totalPotentialSparks} Sparks may be available</h2>
-          <p>Quest progress comes from the current seeded account and may require verification.</p>
+          <p>These account quests are available to everyone. Sign in to earn Sparks when the backend verifies your progress.</p>
         </div>
         <div className="streak-large">
           <Flame />
@@ -657,7 +663,7 @@ export function QuestsPage() {
             <span className="quest-icon">
               <Icon />
             </span>
-            <Badge tone="purple">Up to {quest.sparksReward} Sparks</Badge>
+            <Badge tone={quest.verificationPending ? "warning" : "purple"}>{quest.verificationPending ? "Verification pending" : `${quest.sparksReward} Sparks`}</Badge>
             <h3>{quest.title}</h3>
             <p>{quest.description}</p>
             <ProgressBar value={(quest.progress / quest.target) * 100} label={`${quest.progress} of ${quest.target}`} />

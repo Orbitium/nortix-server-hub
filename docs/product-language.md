@@ -1,13 +1,6 @@
 # Product and financial language
 
-Player-facing copy uses:
-
-- Earnings
-- Available to withdraw
-- Pending verification
-- Reward
-- Milestone reward
-- Sparks
+Player-facing copy uses Sparks and qualified language such as “up to” and “may receive”.
 
 Owner-facing copy uses:
 
@@ -22,5 +15,5 @@ crypto, easy money, or licensing. Players never see owner bids, owner payment al
 margin, subsidy, fraud scores, or private accounting calculations.
 
 Sparks are non-withdrawable, non-transferable, have no cash value, and cannot be exchanged for
-Earnings. They fund cosmetics and non-financial progression only. Reputation is separate again: it
+money. They fund cosmetics and non-financial progression only. Reputation is separate again: it
 cannot be purchased and reflects useful, honest participation.

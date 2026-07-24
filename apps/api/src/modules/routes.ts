@@ -1,8 +1,8 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma, type Prisma } from "@nortix/database";
-import { AdminMessageInputSchema, CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, NotificationPreferenceInputSchema, ServerAddressValidationSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, WithdrawalInputSchema, CrackedAccountClaimSchema } from "@nortix/shared";
+import { AdminMessageInputSchema, CampaignInputSchema, JoinCampaignSchema, MilestoneSubmissionSchema, NotificationPreferenceInputSchema, ServerAddressValidationSchema, ServerInputSchema, ServerTeamInviteInputSchema, TeamInviteResponseSchema, TeamMemberRoleInputSchema, CrackedAccountClaimSchema, ServerReviewInputSchema, ServerVoteInputSchema } from "@nortix/shared";
 import { CreateServerVerificationSchema, PluginCapabilitiesHandshakeSchema, PluginPresenceSnapshotSchema, PluginVerificationHandshakeSchema, PluginVerificationStatusSchema, ServerPluginEventSchema, PluginPlayerHistorySchema } from "@nortix/plugin-sdk";
-import { MockPaymentProvider, MockPayoutProvider } from "@nortix/integrations";
+import { MockPaymentProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Env } from "../config/env.js";
@@ -10,18 +10,18 @@ import { canAccessServer, teamPermissions, validatePluginEvent, type ServerPermi
 import { verifyPremiumIdentityProof } from "../security/identity-proof.js";
 import { CAMPAIGN_ACTIVITY_WINDOW_DAYS, calculateCampaignCreditBalance, canAutomaticallyApprovePluginMilestone, deriveCampaignCapacity, estimatePotentialExposure, evaluateCampaignEligibility, suggestCampaignMilestones } from "./campaigns/policy.js";
 import { CampaignService } from "./campaigns/service.js";
-import { WithdrawalService } from "./withdrawals/service.js";
 import { ServerVerificationService } from "./server-verification/service.js";
 import { MinecraftIdentityService } from "./minecraft-identities/service.js";
 import { createNotification, NotificationService } from "./notifications/service.js";
 import { ServerDiscoveryService } from "./server-discovery/service.js";
 import { McsrvstatClient, McsrvstatRequestError } from "./server-discovery/mcsrvstat-client.js";
+import { QuestService } from "./quests/service.js";
 
 const campaignService = new CampaignService();
-const withdrawalService = new WithdrawalService();
 const serverVerificationService = new ServerVerificationService();
 const minecraftIdentityService = new MinecraftIdentityService();
 const notificationService = new NotificationService();
+const questService = new QuestService();
 
 const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
 const normalizeServerHostname = (hostname: string) => hostname.trim().toLowerCase().replace(/\.$/, "");
@@ -158,13 +158,6 @@ const campaignReviewSchema = z
   })
   .strict();
 
-const withdrawalTransitionSchema = z
-  .object({
-    status: z.enum(["UNDER_REVIEW", "APPROVED", "PROCESSING", "PAID", "FAILED", "CANCELLED"]),
-    reason: z.string().trim().max(2_000).optional(),
-  })
-  .strict();
-
 const completionReviewSchema = z
   .object({
     approved: z.boolean(),
@@ -194,7 +187,6 @@ const parsePagination = (query: Record<string, unknown>) => ({
 export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   const mcStatusClient = new McsrvstatClient(env.MCSRVSTAT_USER_AGENT);
   const paymentProvider = new MockPaymentProvider(env.PAYMENT_WEBHOOK_SECRET);
-  const payoutProvider = new MockPayoutProvider();
   const identityCleanupTimer = setInterval(() => minecraftIdentityService.cleanup().catch((error) => app.log.error({ err: error }, "minecraft identity cleanup failed")), 5 * 60_000);
   const serverDiscoveryService = new ServerDiscoveryService(env, app.log);
   serverDiscoveryService.start();
@@ -377,7 +369,9 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   });
   app.post("/v1/minecraft-identities/cracked/claims", { preHandler: app.authenticate, config: { rateLimit: { max: 6, timeWindow: "1 hour" } } }, async (request, reply) => {
     const input = CrackedAccountClaimSchema.parse(request.body);
-    return reply.code(201).send(await minecraftIdentityService.reserveCracked(request.user!.id, input.serverId, input.minecraftUsername));
+    const link = await minecraftIdentityService.reserveCracked(request.user!.id, input.serverId, input.minecraftUsername);
+    await questService.evaluateAndAward(request.user!.id);
+    return reply.code(201).send(link);
   });
   app.delete("/v1/minecraft-identities/cracked/:linkId", { preHandler: app.authenticate }, async (request, reply) => {
     const { linkId } = request.params as { linkId: string };
@@ -402,6 +396,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       });
     }
     const identity = await minecraftIdentityService.completePremiumClaim(input.code, input.uuid, input.username);
+    await questService.evaluateAndAward(identity.userId);
     return reply.code(201).send({ linked: true, identityId: identity.id });
   });
   app.get("/v1/users/:username", async (request, reply) => {
@@ -472,7 +467,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         select: {
           ...publicServerSelect,
           playerHistorySyncedAt: true,
-          _count: { select: { campaigns: true, reviews: true } },
+          _count: { select: { campaigns: true, reviews: true, votes: true } },
           reviews: { select: { rating: true } },
         },
         orderBy: [{ online: "desc" }, { playerCount: "desc" }],
@@ -492,10 +487,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             )
           : null,
       reviewCount: _count.reviews,
+      voteCount: _count.votes,
       activeCampaignCount: _count.campaigns,
       crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
     }));
-    const combined = [...ownedItems, ...discoveredItems];
+    const combined = [...ownedItems, ...discoveredItems].sort((a, b) =>
+      ((b as typeof ownedItems[number]).activeCampaignCount ?? 0) - ((a as typeof ownedItems[number]).activeCampaignCount ?? 0) ||
+      ((b as typeof ownedItems[number]).voteCount ?? 0) - ((a as typeof ownedItems[number]).voteCount ?? 0) ||
+      Number(b.online) - Number(a.online) || (b.playerCount ?? 0) - (a.playerCount ?? 0),
+    );
     return {
       items: combined.slice((page - 1) * pageSize, page * pageSize),
       page,
@@ -508,7 +508,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const server = await prisma.server.findFirst({
       where: { slug, publicListing: true, moderationStatus: "APPROVED" },
       select: {
-        ...publicServerSelect,
+      ...publicServerSelect,
+        _count: { select: { votes: true } },
         campaigns: {
           where: { status: "ACTIVE" },
           select: {
@@ -565,7 +566,42 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             )
           : null,
       reviewCount: server.reviews.length,
+      voteCount: server._count.votes,
     };
+  });
+  app.post("/v1/servers/:id/vote", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    ServerVoteInputSchema.parse(request.body ?? {});
+    const server = await prisma.server.findFirst({
+      where: { id, publicListing: true, moderationStatus: "APPROVED" },
+      select: { id: true },
+    });
+    if (!server) return reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
+    await prisma.serverVote.upsert({
+      where: { serverId_playerId: { serverId: id, playerId: request.user!.id } },
+      create: { serverId: id, playerId: request.user!.id },
+      update: {},
+    });
+    await questService.evaluateAndAward(request.user!.id);
+    const voteCount = await prisma.serverVote.count({ where: { serverId: id } });
+    return reply.code(201).send({ voted: true, voteCount });
+  });
+  app.post("/v1/servers/:id/reviews", { preHandler: app.authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const input = ServerReviewInputSchema.parse(request.body);
+    const server = await prisma.server.findFirst({
+      where: { id, publicListing: true, moderationStatus: "APPROVED" },
+      select: { id: true },
+    });
+    if (!server) return reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
+    const review = await prisma.review.upsert({
+      where: { serverId_playerId: { serverId: id, playerId: request.user!.id } },
+      create: { serverId: id, playerId: request.user!.id, rating: input.rating, text: input.text, moderationStatus: "APPROVED" },
+      update: { rating: input.rating, text: input.text, moderationStatus: "APPROVED", createdAt: new Date() },
+      select: { id: true, rating: true, text: true, createdAt: true },
+    });
+    await questService.evaluateAndAward(request.user!.id);
+    return reply.code(201).send(review);
   });
   app.post("/v1/servers", { preHandler: app.authenticate }, async (request, reply) => {
     const input = ServerInputSchema.parse(request.body);
@@ -1140,6 +1176,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           description: true,
           status: true,
           category: true,
+          quickStart: true,
+          quickStartConfig: true,
           startsAt: true,
           endsAt: true,
           maxParticipants: true,
@@ -1176,6 +1214,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         description: true,
         status: true,
         category: true,
+        quickStart: true,
+        quickStartConfig: true,
         startsAt: true,
         endsAt: true,
         maxParticipants: true,
@@ -1197,6 +1237,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const { id } = request.params as { id: string };
     const input = JoinCampaignSchema.parse(request.body);
     const result = await campaignService.join(request.user!.id, id, input.minecraftIdentityId, input.crackedAccountLinkId);
+    await questService.evaluateAndAward(request.user!.id);
     return reply.code(201).send(result);
   });
   app.get("/v1/campaigns/:id/participation", { preHandler: app.authenticate }, async (request) => {
@@ -1257,38 +1298,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       ...input.evidence,
       note: input.note,
     });
+    await questService.evaluateAndAward(request.user!.id);
     return reply.code(201).send(completion);
-  });
-
-  app.get("/v1/earnings/summary", { preHandler: app.authenticate }, async (request) => {
-    const entries = await prisma.earningsLedgerEntry.findMany({
-      where: { userId: request.user!.id, currency: "USD" },
-    });
-    const availableCents = entries.reduce((balance, entry) => balance + (entry.direction === "CREDIT" ? entry.amountCents : -entry.amountCents), 0);
-    return {
-      availableCents,
-      pendingCents: request.user!.pendingEarningsCache,
-      currency: "USD",
-      minimumWithdrawalCents: env.MIN_WITHDRAWAL_USD * 100,
-    };
-  });
-  app.get("/v1/earnings/transactions", { preHandler: app.authenticate }, async (request) =>
-    prisma.earningsLedgerEntry.findMany({
-      where: { userId: request.user!.id },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-  );
-  app.get("/v1/withdrawals", { preHandler: app.authenticate }, async (request) =>
-    prisma.withdrawalRequest.findMany({
-      where: { playerId: request.user!.id },
-      orderBy: { createdAt: "desc" },
-    }),
-  );
-  app.post("/v1/withdrawals", { preHandler: app.requirePermission("withdrawal:request") }, async (request, reply) => {
-    const input = WithdrawalInputSchema.parse(request.body);
-    const withdrawal = await withdrawalService.request(request.user!.id, input);
-    return reply.code(201).send(withdrawal);
   });
 
   app.get("/v1/sparks/summary", { preHandler: app.authenticate }, async (request) => {
@@ -1296,7 +1307,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       where: { userId: request.user!.id },
     });
     const balance = entries.reduce((total, entry) => total + (entry.direction === "CREDIT" ? entry.amount : -entry.amount), 0);
-    return { balance, cashValue: null, withdrawable: false };
+    return { balance };
   });
   app.get("/v1/sparks/transactions", { preHandler: app.authenticate }, async (request) =>
     prisma.sparksLedgerEntry.findMany({
@@ -1305,24 +1316,14 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       take: 100,
     }),
   );
-  app.get("/v1/quests", { preHandler: app.authenticate }, async (request) => {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const quests = await prisma.dailyQuest.findMany({
-      where: { active: true },
-      include: {
-        userQuests: {
-          where: { userId: request.user!.id, questDate: { gte: today } },
-          select: { progress: true, completedAt: true },
-          take: 1,
-        },
-      },
-      orderBy: { title: "asc" },
-    });
-    return quests.map(({ userQuests, ...quest }) => ({
+  app.get("/v1/quests", async (request) => {
+    if (request.user) return questService.evaluateAndAward(request.user.id);
+    const quests = await prisma.dailyQuest.findMany({ where: { active: true }, orderBy: { title: "asc" } });
+    return quests.map((quest) => ({
       ...quest,
-      progress: userQuests[0]?.progress ?? 0,
-      completedAt: userQuests[0]?.completedAt ?? null,
+      progress: 0,
+      completedAt: null,
+      verificationPending: ["DISCORD_JOIN", "LOGIN_STREAK", "FRIEND_REFERRAL"].includes(quest.type),
     }));
   });
   app.get("/v1/sparks/shop", async () => prisma.cosmeticItem.findMany({ where: { available: true }, orderBy: { sparksPrice: "asc" } }));
@@ -1360,6 +1361,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       },
       { isolationLevel: "Serializable" },
     );
+    await questService.evaluateAndAward(request.user!.id);
     return reply.code(201).send(purchase);
   });
 
@@ -1803,16 +1805,13 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     },
   );
   app.get("/v1/admin/overview", { preHandler: app.requirePermission("campaign:review") }, async () => {
-    const [users, servers, campaigns, withdrawals, cases] = await prisma.$transaction([
+    const [users, servers, campaigns, cases] = await prisma.$transaction([
       prisma.user.count(),
       prisma.server.count(),
       prisma.campaign.count(),
-      prisma.withdrawalRequest.count({
-        where: { status: { in: ["REQUESTED", "UNDER_REVIEW"] } },
-      }),
       prisma.moderationCase.count({ where: { status: "OPEN" } }),
     ]);
-    return { users, servers, campaigns, pendingWithdrawals: withdrawals, openCases: cases };
+    return { users, servers, campaigns, openCases: cases };
   });
   app.get("/v1/admin/entities", { preHandler: app.requirePermission("campaign:review") }, async (request) => {
     const { type } = z.object({ type: z.enum(["users", "servers"]) }).parse(request.query);
@@ -1898,54 +1897,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       return updated;
     });
   });
-  app.get("/v1/admin/withdrawals", { preHandler: app.requirePermission("withdrawal:review") }, async () =>
-    prisma.withdrawalRequest.findMany({
-      include: {
-        player: {
-          select: {
-            id: true,
-            username: true,
-            displayName: true,
-            email: true,
-            status: true,
-            reputationScore: true,
-            reputationTier: true,
-          },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    }),
-  );
-  app.post("/v1/admin/withdrawals/:id/transition", { preHandler: app.requirePermission("withdrawal:review") }, async (request) => {
-    const { id } = request.params as { id: string };
-    const { status, reason } = withdrawalTransitionSchema.parse(request.body);
-    const updated = await withdrawalService.transition(request.user!.id, id, status, reason);
-    if (status === "PROCESSING") {
-      const recipient = await payoutProvider.createRecipient({
-        userId: updated.playerId,
-        destinationReference: updated.payoutDestinationReference,
-      });
-      const payout = await payoutProvider.createPayout({
-        recipientId: recipient.id,
-        amountCents: updated.requestedAmountCents - updated.feesCents,
-        currency: updated.currency,
-      });
-      return prisma.withdrawalRequest.update({
-        where: { id },
-        data: { providerTransactionReference: payout.id },
-      });
-    }
-    return updated;
-  });
   app.get("/v1/admin/payment-events", { preHandler: app.requirePermission("ledger:view_internal") }, async () => prisma.paymentEvent.findMany({ orderBy: { createdAt: "desc" }, take: 200 }));
   app.get("/v1/admin/ledger", { preHandler: app.requirePermission("ledger:view_internal") }, async () => ({
-    earnings: await prisma.earningsLedgerEntry.findMany({
-      include: {
-        user: { select: { id: true, username: true, displayName: true, status: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
     sparks: await prisma.sparksLedgerEntry.findMany({
       include: {
         user: { select: { id: true, username: true, displayName: true, status: true } },
@@ -1973,7 +1926,12 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.post("/v1/admin/completions/:id/review", { preHandler: app.requirePermission("reward:approve") }, async (request) => {
     const { id } = request.params as { id: string };
     const { approved, reason } = completionReviewSchema.parse(request.body);
-    return campaignService.reviewCompletion(request.user!.id, id, approved, reason);
+    const completion = await campaignService.reviewCompletion(request.user!.id, id, approved, reason);
+    if (approved) {
+      const owner = await prisma.milestoneCompletion.findUnique({ where: { id: completion.id }, select: { participation: { select: { playerId: true } } } });
+      if (owner) await questService.evaluateAndAward(owner.participation.playerId);
+    }
+    return completion;
   });
 
   app.post("/v1/integrations/server/events", { config: { rateLimit: { max: 200, timeWindow: "1 minute" } } }, (_request, reply) =>

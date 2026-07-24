@@ -215,7 +215,7 @@ export function AdminOverviewPage() {
           {
             Icon: Sparkles,
             label: "Pending requests",
-            value: overview?.pendingWithdrawals ?? "—",
+            value: "—",
             note: "Legacy review queue",
           },
         ].map(({ Icon, label, value, note }) => (
@@ -462,7 +462,7 @@ export function CampaignReviewPage() {
   );
 }
 
-export function WithdrawalReviewPage() {
+export function SparksAdjustmentReviewPage() {
   const [editing, setEditing] = useState(false);
   return (
     <>
@@ -1050,7 +1050,7 @@ function AdminAnalyticsPage({ type }: { type: string }) {
           ["Seeded servers", (overview?.servers ?? 0).toLocaleString(), "Database"],
           ["Campaigns", (overview?.campaigns ?? 0).toLocaleString(), "Database"],
           ["Open cases", (overview?.openCases ?? 0).toLocaleString(), "Database"],
-          ["Pending adjustments", (overview?.pendingWithdrawals ?? 0).toLocaleString(), "Database"],
+          ["Sparks adjustments", "—", "Database"],
           ["Audit events", auditLogs.length.toLocaleString(), "Latest page"],
         ].map(([label, value, trend]) => (
           <Card key={label}>

@@ -18,18 +18,6 @@ export interface PaymentProvider {
   refundPayment(input: RefundInput): Promise<RefundResult>;
 }
 
-export type RecipientInput = { userId: string; destinationReference: string };
-export type RecipientResult = { id: string; status: "READY" | "REVIEW_REQUIRED" };
-export type PayoutInput = { recipientId: string; amountCents: number; currency: string };
-export type PayoutResult = { id: string; status: PayoutStatus };
-export type PayoutStatus = "PENDING" | "PROCESSING" | "PAID" | "FAILED" | "CANCELLED";
-
-export interface PayoutProvider {
-  createRecipient(input: RecipientInput): Promise<RecipientResult>;
-  createPayout(input: PayoutInput): Promise<PayoutResult>;
-  getPayoutStatus(providerPayoutId: string): Promise<PayoutStatus>;
-}
-
 export type VerificationChallenge = {
   id: string;
   type: string;
@@ -90,20 +78,6 @@ export class MockPaymentProvider implements PaymentProvider {
 
   async refundPayment(): Promise<RefundResult> {
     return { id: `mock_refund_${crypto.randomUUID()}`, status: "SUCCEEDED" };
-  }
-}
-
-export class MockPayoutProvider implements PayoutProvider {
-  async createRecipient(input: RecipientInput): Promise<RecipientResult> {
-    return { id: `mock_recipient_${input.userId}`, status: "READY" };
-  }
-
-  async createPayout(_input: PayoutInput): Promise<PayoutResult> {
-    return { id: `mock_payout_${crypto.randomUUID()}`, status: "PROCESSING" };
-  }
-
-  async getPayoutStatus(): Promise<PayoutStatus> {
-    return "PAID";
   }
 }
 

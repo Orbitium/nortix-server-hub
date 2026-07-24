@@ -19,7 +19,7 @@ import {
   AdminLayout,
   AdminOverviewPage,
   CampaignReviewPage,
-  WithdrawalReviewPage,
+  SparksAdjustmentReviewPage,
 } from "../routes/AdminPages";
 import { AuthPage } from "../routes/AuthPages";
 import { RouteSeo } from "../components/Seo";
@@ -45,8 +45,7 @@ function AdminRoutes() {
       <Routes>
         <Route index element={<AdminOverviewPage />} />
         <Route path="campaigns" element={<CampaignReviewPage />} />
-        <Route path="sparks-adjustments" element={<WithdrawalReviewPage />} />
-        <Route path="withdrawals" element={<Navigate to="/admin/sparks-adjustments" replace />} />
+        <Route path="sparks-adjustments" element={<SparksAdjustmentReviewPage />} />
         <Route path="messages" element={<AdminGenericPage title="Admin Messages" description="Send moderated service messages to players, owners, or selected accounts." type="messages" />} />
         <Route path="access" element={<AdminGenericPage title="Access Control" description="Manage roles, capabilities, and privileged access." type="access" />} />
         <Route path="monitor" element={<AdminGenericPage title="Activity Monitor" description="Inspect live product and moderation activity." type="monitor" />} />
@@ -86,8 +85,7 @@ export function App() {
         <Route path="dashboard/servers" element={<Navigate to="/servers" replace />} />
         <Route path="dashboard/campaigns" element={<Navigate to="/campaigns" replace />} />
         <Route path="dashboard/progress" element={<RequireSignIn><ProgressPage /></RequireSignIn>} />
-        <Route path="dashboard/earnings" element={<Navigate to="/dashboard/sparks-shop" replace />} />
-        <Route path="dashboard/quests" element={<RequireSignIn><QuestsPage /></RequireSignIn>} />
+        <Route path="dashboard/quests" element={<QuestsPage />} />
         <Route path="dashboard/sparks-shop" element={<RequireSignIn><SparksShopPage /></RequireSignIn>} />
         <Route path="dashboard/leaderboards" element={<LeaderboardsPage />} />
         <Route path="dashboard/community" element={<Navigate to="/dashboard" replace />} />

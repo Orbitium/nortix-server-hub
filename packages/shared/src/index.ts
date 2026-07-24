@@ -10,8 +10,6 @@ export const permissions = [
   "campaign:publish",
   "server:manage",
   "reward:approve",
-  "withdrawal:request",
-  "withdrawal:review",
   "user:suspend",
   "message:send",
   "ledger:view_internal",
@@ -19,9 +17,9 @@ export const permissions = [
 export type Permission = (typeof permissions)[number];
 
 export const rolePermissions: Record<UserRole, readonly Permission[]> = {
-  PLAYER: ["withdrawal:request"],
+  PLAYER: [],
   SERVER_OWNER: ["campaign:create", "server:manage"],
-  MODERATOR: ["campaign:review", "campaign:publish", "reward:approve", "withdrawal:review"],
+  MODERATOR: ["campaign:review", "campaign:publish", "reward:approve"],
   ADMIN: permissions,
 };
 
@@ -42,7 +40,13 @@ export const CampaignStatusSchema = z.enum(campaignStatuses);
 
 export const milestoneTypes = [
   "JOIN_SERVER",
+  "JOIN_DAILY",
+  "JOIN_WEEKLY",
   "ACTIVE_DURATION",
+  "PLAYTIME_TOTAL",
+  "JOIN_DISCORD",
+  "VOTE_SERVER",
+  "SERVER_REVIEW",
   "COMPLETE_TUTORIAL",
   "REACH_LEVEL",
   "REACH_REGION",
@@ -66,6 +70,23 @@ export const milestoneTypes = [
   "CUSTOM_MANUAL",
 ] as const;
 export const MilestoneTypeSchema = z.enum(milestoneTypes);
+
+export const campaignQuickStarts = [
+  "FIRST_JOIN",
+  "JOIN_DAILY",
+  "JOIN_WEEKLY",
+  "PLAYTIME",
+  "JOIN_DISCORD",
+  "VOTE_SERVER",
+  "TOTAL_PLAYTIME",
+  "SERVER_REVIEW",
+] as const;
+export const CampaignQuickStartSchema = z.enum(campaignQuickStarts);
+export const CampaignQuickStartConfigSchema = z.object({
+  minutes: z.union([z.literal(15), z.literal(30), z.literal(45)]).optional(),
+  hours: z.union([z.literal(1), z.literal(5), z.literal(15), z.literal(30)]).optional(),
+  optional: z.boolean().optional(),
+}).default({});
 
 export const ServerInputSchema = z.object({
   name: z.string().min(3).max(80),
@@ -147,9 +168,14 @@ export const CampaignMilestoneInputSchema = z.object({
   templateType: MilestoneTypeSchema,
   title: z.string().trim().min(3).max(72),
   instructions: z.string().trim().min(10).max(240),
-  rewardCents: z.literal(0).default(0),
   verificationMethod: z.enum(["MANUAL", "WEB_EVENT", "SERVER_PLUGIN", "CLIENT_MOD", "API"]),
   config: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const ServerVoteInputSchema = z.object({ vote: z.literal(true).default(true) });
+export const ServerReviewInputSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  text: z.string().trim().min(3).max(1_000),
 });
 
 export const CampaignInputSchema = z
@@ -168,6 +194,8 @@ export const CampaignInputSchema = z
     regionRestrictions: z.array(z.string()).default([]),
     versionRequirements: z.array(z.string()).default([]),
     milestones: z.array(CampaignMilestoneInputSchema).min(1).max(8),
+    quickStart: CampaignQuickStartSchema.optional(),
+    quickStartConfig: CampaignQuickStartConfigSchema,
   })
   .refine((value) => value.endsAt > value.startsAt, {
     message: "Campaign end must be after its start",
@@ -230,13 +258,6 @@ export const MilestoneSubmissionSchema = z.object({
   note: z.string().max(2000).optional(),
 });
 
-export const WithdrawalInputSchema = z.object({
-  amountCents: z.number().int().min(1000),
-  currency: z.literal("USD").default("USD"),
-  payoutProvider: z.string().min(2).max(30),
-  payoutDestinationReference: z.string().min(4).max(255),
-});
-
 export const AnalyticsEventSchema = z.object({
   id: z.string().min(8),
   userId: z.string().optional(),
@@ -251,16 +272,11 @@ export const AnalyticsEventSchema = z.object({
 
 export type CampaignInput = z.infer<typeof CampaignInputSchema>;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
-export type WithdrawalInput = z.infer<typeof WithdrawalInputSchema>;
-
 export type ApiError = {
   code: string;
   message: string;
   requestId?: string;
   details?: unknown;
 };
-
-export const formatMoney = (cents: number, currency = "USD") =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 
 export const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);

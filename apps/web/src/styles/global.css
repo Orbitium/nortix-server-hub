@@ -196,6 +196,17 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+.empty-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  min-height: 132px;
+  padding: 28px;
+}
+.empty-state-card p {
+  margin: 0;
+}
 .badge {
   display: inline-flex;
   align-items: center;
@@ -909,18 +920,20 @@ textarea:focus-visible {
 .steps-grid .card {
   position: relative;
   min-height: 250px;
-  padding: 28px;
+  padding: 30px;
 }
 .steps-grid .card > svg {
   width: 30px;
   height: 30px;
-  margin: 30px 0 20px;
+  margin: 0 0 24px;
   color: var(--nortix-green);
 }
 .steps-grid h3 {
+  margin: 0 0 10px;
   font-size: 17px;
 }
 .steps-grid p {
+  margin: 0;
   font-size: 12px;
 }
 .step-number {

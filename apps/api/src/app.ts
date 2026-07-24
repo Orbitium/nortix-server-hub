@@ -14,7 +14,6 @@ export const buildApp = async (env: Env) => {
       redact: [
         "req.headers.authorization",
         "req.headers.x-nortix-signature",
-        "body.payoutDestinationReference",
         "body.token",
         "body.code",
       ],
@@ -66,7 +65,6 @@ export const buildApp = async (env: Env) => {
       "full",
       "does not belong",
       "required",
-      "available earnings",
       "not enough Sparks",
       "not available",
       "cannot transition",

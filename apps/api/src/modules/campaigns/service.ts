@@ -59,6 +59,8 @@ export class CampaignService {
           title: input.title,
           description: input.description,
           category: input.category,
+          quickStart: input.quickStart,
+          quickStartConfig: input.quickStartConfig as Prisma.InputJsonValue,
           startsAt: input.startsAt,
           endsAt: input.endsAt,
           maxParticipants: capacity.capacity,
