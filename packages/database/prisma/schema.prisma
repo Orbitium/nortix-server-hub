@@ -446,6 +446,7 @@ model DiscoveredServer {
   playerCount         Int?
   maxPlayers          Int?
   version             String?
+  iconUrl             String?
   lastCheckedAt       DateTime?
   lastOnlineAt        DateTime?
   nextCheckAt         DateTime       @default(now())

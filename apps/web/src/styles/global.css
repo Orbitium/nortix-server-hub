@@ -1113,7 +1113,7 @@ textarea:focus-visible {
   top: 72px;
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(130px, auto) minmax(150px, auto) auto;
   gap: 14px;
   align-items: center;
   max-width: 1260px;
@@ -1150,6 +1150,16 @@ textarea:focus-visible {
   outline: 0;
   color: var(--text-primary);
   background: transparent;
+}
+.filter-select {
+  min-width: 130px;
+  height: 40px;
+  padding: 0 30px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  font-size: 12px;
 }
 .filter-bar > span {
   color: var(--text-muted);

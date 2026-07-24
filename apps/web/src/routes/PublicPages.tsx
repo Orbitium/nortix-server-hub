@@ -35,6 +35,7 @@ import {
 } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
+import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
 
 const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
 
@@ -355,6 +356,8 @@ export function BrowseServersPage() {
   const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
   const [edition, setEdition] = useState("ALL");
+  const [version, setVersion] = useState("ALL");
+  const [serverType, setServerType] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicServers();
   const servers = data?.items ?? [];
   const visible = useMemo(
@@ -362,11 +365,13 @@ export function BrowseServersPage() {
       servers.filter(
         (server) =>
           (edition === "ALL" || server.edition === edition) &&
+          (version === "ALL" || server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
+          (serverType === "ALL" || server.categories.includes(serverType)) &&
           `${server.name} ${server.description} ${server.categories.join(" ")}`
             .toLowerCase()
             .includes(search.toLowerCase()),
       ),
-    [search, edition],
+    [search, edition, version, serverType],
   );
   return (
     <div className="listing-page">
@@ -395,6 +400,14 @@ export function BrowseServersPage() {
             </button>
           ))}
         </div>
+        <select className="filter-select" value={version} onChange={(event) => setVersion(event.target.value)} aria-label="Minecraft version">
+          <option value="ALL">All versions</option>
+          {minecraftMajorVersions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select className="filter-select" value={serverType} onChange={(event) => setServerType(event.target.value)} aria-label="Server type">
+          <option value="ALL">All server types</option>
+          {serverTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
         <span>{t("listing.serverCount", { count: formatNumber(visible.length) })}</span>
       </div>
       <div className="server-grid">
@@ -421,12 +434,16 @@ export function BrowseCampaignsPage() {
   const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("__all__");
+  const [version, setVersion] = useState("ALL");
+  const [serverType, setServerType] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
   const campaigns = data?.items ?? [];
   const categories = ["__all__", ...new Set(campaigns.map((campaign) => campaign.category))];
   const visible = campaigns.filter(
     (campaign) =>
       (category === "__all__" || campaign.category === category) &&
+      (version === "ALL" || campaign.versionRequirements.some((item) => item === version || item.startsWith(`${version}.`)) || campaign.server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
+      (serverType === "ALL" || campaign.server.categories.includes(serverType)) &&
       `${campaign.title} ${campaign.server.name} ${campaign.category}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -458,6 +475,14 @@ export function BrowseCampaignsPage() {
             </button>
           ))}
         </div>
+        <select className="filter-select" value={version} onChange={(event) => setVersion(event.target.value)} aria-label="Minecraft version">
+          <option value="ALL">All versions</option>
+          {minecraftMajorVersions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select className="filter-select" value={serverType} onChange={(event) => setServerType(event.target.value)} aria-label="Server type">
+          <option value="ALL">All server types</option>
+          {serverTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
         <span>{t("listing.playtestCount", { count: formatNumber(visible.length) })}</span>
       </div>
       <div className="campaign-grid campaign-grid--listing">

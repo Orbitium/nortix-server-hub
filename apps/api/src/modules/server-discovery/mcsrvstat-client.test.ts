@@ -23,6 +23,7 @@ describe("McsrvstatClient", () => {
       playerCount: 12,
       maxPlayers: 100,
       version: "Paper 1.21.4",
+      icon: null,
     });
     expect(request).toHaveBeenCalledWith(
       "https://api.mcsrvstat.us/bedrock/3/play.example.net%3A19132",

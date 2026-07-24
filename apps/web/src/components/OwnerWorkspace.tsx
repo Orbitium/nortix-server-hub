@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 import { useNotificationPreferences, useOwnerAnalytics } from "../features/api-data";
+import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
 
 type ServerRecord = {
   id: string;
@@ -1752,6 +1753,7 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
   const [derivedCapacity, setDerivedCapacity] = useState(172);
   const [estimatedCreditCost, setEstimatedCreditCost] = useState(29);
   const [category, setCategory] = useState("Onboarding");
+  const [campaignVersions, setCampaignVersions] = useState<string[]>(["1.21"]);
   const [quickStart, setQuickStart] = useState("FIRST_JOIN");
   const [quickStartValue, setQuickStartValue] = useState("15");
   const [rewardRange, setRewardRange] = useState("50-100");
@@ -1915,6 +1917,10 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
       setBuilderMessage("Choose at least one suggested milestone.");
       return;
     }
+    if (!campaignVersions.length) {
+      setBuilderMessage("Choose at least one supported Minecraft version.");
+      return;
+    }
     if (campaignTitle.trim().length < 6 || objective.trim().length < 30) {
       setBuilderMessage("Add a short title and a clear objective before submitting.");
       return;
@@ -1941,7 +1947,7 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
             maximum: maximumSparks,
           },
           regionRestrictions: [],
-          versionRequirements: [server.version],
+          versionRequirements: campaignVersions,
           milestones: milestones.map((item) => ({
             templateType: item.metric,
             title: `${item.title} · ${item.target.toLocaleString()}`,
@@ -2007,6 +2013,13 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
             <label className="span-two">
               What should players help you learn? <small>{objective.length}/320</small>
               <textarea maxLength={320} rows={3} value={objective} onChange={(event) => setObjective(event.target.value)} />
+            </label>
+            <label>
+              Supported Minecraft versions
+              <select multiple size={4} value={campaignVersions} onChange={(event) => setCampaignVersions(Array.from(event.target.selectedOptions, (option) => option.value))}>
+                {minecraftMajorVersions.map((version) => <option key={version} value={version}>{version}</option>)}
+              </select>
+              <small>Choose the major versions this campaign targets.</small>
             </label>
           </div>
 
@@ -2305,6 +2318,8 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
   const [address, setAddress] = useState("");
   type RegistrationPlatform = "PAPER" | "VELOCITY" | "DOWNSTREAM";
   const [platform, setPlatform] = useState<RegistrationPlatform>("PAPER");
+  const [versions, setVersions] = useState<string[]>(["1.21"]);
+  const [categories, setCategories] = useState<string[]>(["Survival"]);
   const [verifiedProxies, setVerifiedProxies] = useState<Array<{ id: string; name: string; hostname: string }>>([]);
   const [verificationParentId, setVerificationParentId] = useState("");
   const [inheritedComplete, setInheritedComplete] = useState(false);
@@ -2361,6 +2376,10 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
 
   const beginVerification = async () => {
     setError("");
+    if (versions.length === 0 || categories.length === 0 || categories.length > 6) {
+      setError("Choose at least one Minecraft version and one server type, with no more than six server types.");
+      return;
+    }
     try {
       const target = parseAddress();
       const created = await api<{ id: string }>("/servers", {
@@ -2371,8 +2390,8 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
           port: target.port,
           description: `${name} is a Minecraft server registered through the Nortix owner portal.`,
           edition: "JAVA",
-          versions: ["1.16+"],
-          categories: [platform === "VELOCITY" ? "Network" : "Minecraft"],
+          versions,
+          categories,
           tags: [platform.toLowerCase()],
           serverValidationSignature: addressValidation?.validationSignature,
           ...(platform === "DOWNSTREAM" ? { verificationParentId } : {}),
@@ -2518,6 +2537,20 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                     </select>
                   </label>
                 )}
+                <label>
+                  Supported Minecraft versions
+                  <select multiple size={5} value={versions} onChange={(event) => setVersions(Array.from(event.target.selectedOptions, (option) => option.value))}>
+                    {minecraftMajorVersions.map((version) => <option key={version} value={version}>{version}</option>)}
+                  </select>
+                  <small>Choose every major version supported, from 1.8 through 1.21.</small>
+                </label>
+                <label>
+                  Server types
+                  <select multiple size={5} value={categories} onChange={(event) => setCategories(Array.from(event.target.selectedOptions, (option) => option.value))}>
+                    {serverTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                  <small>Select up to six types that best describe this server.</small>
+                </label>
               </div>
               {error && <p className="owner-verification-error">{error}</p>}
               {platform !== "DOWNSTREAM" && addressValidation && (

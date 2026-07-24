@@ -16,6 +16,18 @@ export const permissions = [
 ] as const;
 export type Permission = (typeof permissions)[number];
 
+export const minecraftMajorVersions = [
+  "1.8", "1.9", "1.10", "1.11", "1.12", "1.13", "1.14", "1.15",
+  "1.16", "1.17", "1.18", "1.19", "1.20", "1.21",
+] as const;
+export const MinecraftMajorVersionSchema = z.enum(minecraftMajorVersions);
+
+export const serverTypes = [
+  "Survival", "SMP", "Skyblock", "Factions", "Prison", "PvP", "Lifesteal",
+  "BedWars", "SkyWars", "KitPvP", "Anarchy", "Creative", "RPG", "Minigames", "Hardcore",
+] as const;
+export const ServerTypeSchema = z.enum(serverTypes);
+
 export const rolePermissions: Record<UserRole, readonly Permission[]> = {
   PLAYER: [],
   SERVER_OWNER: ["campaign:create", "server:manage"],

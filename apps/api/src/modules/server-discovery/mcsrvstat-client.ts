@@ -10,6 +10,7 @@ const StatusResponseSchema = z
       })
       .optional(),
     version: z.string().optional(),
+    icon: z.string().optional(),
   })
   .passthrough();
 
@@ -20,6 +21,7 @@ export type MinecraftServerStatus = {
   playerCount: number | null;
   maxPlayers: number | null;
   version: string | null;
+  icon: string | null;
 };
 
 export class McsrvstatRequestError extends Error {
@@ -46,6 +48,11 @@ const safeStatusText = (value: string | undefined) => {
     .trim()
     .slice(0, 120);
   return cleaned || null;
+};
+
+const safeServerIcon = (value: string | undefined) => {
+  if (!value || value.length > 500_000) return null;
+  return /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value) ? value : null;
 };
 
 export class McsrvstatClient {
@@ -82,7 +89,7 @@ export class McsrvstatClient {
     }
 
     const body = await response.text();
-    if (body.length > 100_000) {
+    if (body.length > 512_000) {
       throw new McsrvstatRequestError("RESPONSE_TOO_LARGE", "The status response was too large.");
     }
 
@@ -98,6 +105,7 @@ export class McsrvstatClient {
       playerCount: parsed.online ? (parsed.players?.online ?? null) : null,
       maxPlayers: parsed.online ? (parsed.players?.max ?? null) : null,
       version: safeStatusText(parsed.version),
+      icon: safeServerIcon(parsed.icon),
     };
   }
 }

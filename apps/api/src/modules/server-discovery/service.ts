@@ -17,6 +17,7 @@ const toPublicServer = (server: {
   playerCount: number | null;
   maxPlayers: number | null;
   version: string | null;
+  iconUrl: string | null;
   lastCheckedAt: Date | null;
 }) => ({
   id: server.id,
@@ -29,7 +30,7 @@ const toPublicServer = (server: {
   edition: server.edition,
   categories: ["Public server"],
   tags: [],
-  logoUrl: null,
+  logoUrl: server.iconUrl,
   bannerUrl: null,
   screenshotUrls: [],
   discordUrl: null,
@@ -93,6 +94,7 @@ export class ServerDiscoveryService {
         playerCount: true,
         maxPlayers: true,
         version: true,
+        iconUrl: true,
         lastCheckedAt: true,
       },
     });
@@ -113,6 +115,7 @@ export class ServerDiscoveryService {
         playerCount: true,
         maxPlayers: true,
         version: true,
+        iconUrl: true,
         lastCheckedAt: true,
       },
     });
@@ -187,6 +190,7 @@ export class ServerDiscoveryService {
             playerCount: status.playerCount,
             maxPlayers: status.maxPlayers,
             version: status.version,
+            iconUrl: status.icon,
             lastCheckedAt: checkedAt,
             lastOnlineAt: status.online ? checkedAt : candidate.lastOnlineAt,
             consecutiveFailures: 0,

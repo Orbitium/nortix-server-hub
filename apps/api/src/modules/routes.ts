@@ -633,6 +633,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     if (input.verificationParentId && !verificationParent) {
       throw new Error("A verified proxy network is required for inherited verification.");
     }
+    let serverIcon: string | null = null;
+    if (!verificationParent) {
+      try {
+        const status = await mcStatusClient.getStatus({ hostname: input.hostname, port: input.port, edition: input.edition });
+        serverIcon = status.icon;
+      } catch {
+        // Ownership validation already succeeded; an unavailable icon should not block registration.
+      }
+    }
     const roles = Array.from(new Set([...request.user!.roles, "SERVER_OWNER" as const]));
     const server = await prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: request.user!.id }, data: { roles } });
@@ -654,6 +663,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           claimed: Boolean(verificationParent),
           websiteUrl: input.websiteUrl,
           discordUrl: input.discordUrl,
+          logoUrl: serverIcon,
           screenshotUrls: [],
         },
       });
@@ -704,6 +714,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         playerCount: status.playerCount,
         maxPlayers: status.maxPlayers,
         version: status.version,
+        icon: status.icon,
       },
       validationSignature: `${expiresAt}.${signServerValidation(payload, env.SERVER_VALIDATION_SECRET)}`,
       expiresAt: new Date(expiresAt).toISOString(),
