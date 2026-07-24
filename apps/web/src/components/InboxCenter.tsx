@@ -24,6 +24,7 @@ import {
   useNotifications,
 } from "../features/api-data";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 const relativeTime = (value: string) => {
   const elapsed = Date.now() - new Date(value).getTime();
@@ -47,16 +48,18 @@ const notificationIcon = {
 } as const;
 
 function EmptyInbox({ type }: { type: "notifications" | "messages" }) {
+  const { t } = useI18n();
   return (
     <div className="inbox-empty">
       {type === "messages" ? <MessageSquare /> : <Bell />}
-      <h2>No {type} here</h2>
-      <p>{type === "messages" ? "Nortix staff messages" : "Account and activity updates"} will appear here.</p>
+      <h2>{type === "messages" ? t("ui.noMessages") : t("ui.noNotifications")}</h2>
+      <p>{type === "messages" ? t("ui.staffMessages") : t("ui.activityUpdates")}</p>
     </div>
   );
 }
 
 export function InboxPage() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<"notifications" | "messages">("notifications");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [busyId, setBusyId] = useState("");
@@ -112,12 +115,12 @@ export function InboxPage() {
     <div className="dashboard-page inbox-page">
       <div className="dashboard-heading">
         <div>
-          <span className="eyebrow">ACCOUNT COMMUNICATIONS</span>
-          <h1>Inbox</h1>
-          <p>Private Nortix messages and account-scoped activity updates, with persistent read state.</p>
+          <span className="eyebrow">{t("ui.accountCommunications")}</span>
+          <h1>{t("ui.inbox")}</h1>
+          <p>{t("ui.inboxDescription")}</p>
         </div>
         <Button variant="secondary" onClick={markAllRead} disabled={!items.some((item) => !item.readAt)}>
-          <CheckCheck /> Mark all read
+          <CheckCheck /> {t("ui.markAllRead")}
         </Button>
       </div>
 
@@ -125,22 +128,22 @@ export function InboxPage() {
         <div className="inbox-toolbar">
           <div className="inbox-tabs" role="tablist" aria-label="Inbox sections">
             <button className={tab === "notifications" ? "active" : ""} onClick={() => setTab("notifications")} role="tab">
-              <Bell /> Notifications
+              <Bell /> {t("ui.notifications")}
             </button>
             <button className={tab === "messages" ? "active" : ""} onClick={() => setTab("messages")} role="tab">
-              <MessageSquare /> Messages from Nortix
+              <MessageSquare /> {t("ui.messagesFromNortix")}
             </button>
           </div>
           <label className="inbox-unread-filter">
             <input type="checkbox" checked={unreadOnly} onChange={(event) => setUnreadOnly(event.target.checked)} />
-            Unread only
+            {t("ui.unreadOnly")}
           </label>
         </div>
 
         {activeQuery.isLoading ? <div className="inbox-loading">Loading your inbox…</div> : null}
         {activeQuery.isError ? (
           <div className="inbox-loading" role="alert">
-            The inbox could not be loaded. <button onClick={() => activeQuery.refetch()}>Retry</button>
+            {t("ui.inboxError")} <button onClick={() => activeQuery.refetch()}>{t("ui.retry")}</button>
           </div>
         ) : null}
 
@@ -160,7 +163,7 @@ export function InboxPage() {
                       <small>{relativeTime(item.createdAt)} · {item.category.toLowerCase()}</small>
                     </span>
                   </button>
-                  <button className="inbox-archive" disabled={busyId === item.id} onClick={() => archive("notification", item.id)} aria-label={`Archive ${item.title}`}>
+                  <button className="inbox-archive" disabled={busyId === item.id} onClick={() => archive("notification", item.id)} aria-label={t("ui.archive", { title: item.title })}>
                     <Archive />
                   </button>
                 </article>
@@ -181,7 +184,7 @@ export function InboxPage() {
                     <small>{relativeTime(delivery.deliveredAt)} · {delivery.message.createdBy.displayName}</small>
                   </span>
                 </button>
-                <button className="inbox-archive" disabled={busyId === delivery.id} onClick={() => archive("message", delivery.id)} aria-label={`Archive ${delivery.message.title}`}>
+                <button className="inbox-archive" disabled={busyId === delivery.id} onClick={() => archive("message", delivery.id)} aria-label={t("ui.archive", { title: delivery.message.title })}>
                   <Archive />
                 </button>
               </article>
@@ -190,7 +193,7 @@ export function InboxPage() {
         )}
       </Card>
       <p className="inbox-privacy-note">
-        <ShieldCheck /> Only you and authorized Nortix staff can access these communications.
+        <ShieldCheck /> {t("ui.inboxPrivacy")}
       </p>
     </div>
   );
@@ -210,6 +213,7 @@ const preferenceRows: Array<{
 ];
 
 export function NotificationSettingsPage() {
+  const { t } = useI18n();
   const { data, isLoading, isError, refetch } = useNotificationPreferences();
   const [draft, setDraft] = useState<NotificationPreferences | null>(null);
   const [status, setStatus] = useState("");
@@ -247,16 +251,16 @@ export function NotificationSettingsPage() {
     }
   };
 
-  if (isError) return <div className="dashboard-page"><p>Preferences could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></div>;
+  if (isError) return <div className="dashboard-page"><p>{t("ui.preferencesError")}</p><Button onClick={() => refetch()}>{t("ui.retry")}</Button></div>;
   if (isLoading || !draft) return <div className="dashboard-page"><p>Loading notification preferences…</p></div>;
 
   return (
     <div className="dashboard-page notification-settings-page">
       <div className="dashboard-heading">
         <div>
-          <span className="eyebrow">ACCOUNT SETTINGS</span>
-          <h1>Notifications</h1>
-          <p>Choose which non-essential activity appears in your Nortix inbox.</p>
+          <span className="eyebrow">{t("ui.accountSettings")}</span>
+          <h1>{t("ui.notificationSettings")}</h1>
+          <p>{t("ui.notificationDescription")}</p>
         </div>
         <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save preferences"}</Button>
       </div>
@@ -276,17 +280,17 @@ export function NotificationSettingsPage() {
         ))}
         <div className="notification-setting-row notification-setting-row--locked">
           <span>
-            <strong>Security and account notices</strong>
-            <small>Always enabled because these messages can affect account access or safety.</small>
+            <strong>{t("ui.securityNotices")}</strong>
+            <small>{t("ui.securityNoticesDescription")}</small>
           </span>
           <ShieldCheck />
         </div>
         <div className="notification-setting-row notification-setting-row--locked">
           <span>
-            <strong>Email delivery</strong>
-            <small>Unavailable until a verified transactional email provider is configured.</small>
+            <strong>{t("ui.emailDelivery")}</strong>
+            <small>{t("ui.emailDeliveryDescription")}</small>
           </span>
-          <span className="unavailable-chip">Unavailable</span>
+          <span className="unavailable-chip">{t("ui.unavailable")}</span>
         </div>
       </Card>
       {status ? <p className="settings-save-status" role="status">{status}</p> : null}

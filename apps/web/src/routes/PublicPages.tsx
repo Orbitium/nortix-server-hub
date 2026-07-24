@@ -39,10 +39,11 @@ import { useI18n } from "../lib/i18n";
 const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
 
 export function PublicProfilePage() {
+  const { t } = useI18n();
   const { username } = useParams();
   const { data: profile, isLoading, isError } = usePublicProfile(username);
   if (isLoading) return <div className="content-page narrow-page"><Card><p>Loading profile…</p></Card></div>;
-  if (isError || !profile) return <div className="content-page narrow-page"><Card><h1>Profile unavailable</h1><p>This profile may be private or no longer exists.</p></Card></div>;
+  if (isError || !profile) return <div className="content-page narrow-page"><Card><h1>{t("ui.profileUnavailable")}</h1><p>{t("ui.profileUnavailableDescription")}</p></Card></div>;
   const background = profileBackgrounds.has(profile.publicProfile.backgroundColor ?? "")
     ? profile.publicProfile.backgroundColor
     : "slate";
@@ -58,13 +59,13 @@ export function PublicProfilePage() {
             <p>@{profile.username}</p>
             {profile.publicProfile.bio ? <p className="public-profile-bio">{profile.publicProfile.bio}</p> : null}
           </div>
-          <Badge tone="success">Nortix tester</Badge>
+          <Badge tone="success">{t("ui.verified")} Nortix tester</Badge>
         </div>
         {profile.publicProfile.showReputation !== false ? (
           <div className="profile-stats">
-            <span><strong>{profile.reputationScore ?? 0}</strong><small>Reputation</small></span>
-            <span><strong>{profile.testerLevel ?? 0}</strong><small>Tester level</small></span>
-            <span><strong>{profile.reputationTier ?? "New Tester"}</strong><small>Tier</small></span>
+            <span><strong>{profile.reputationScore ?? 0}</strong><small>{t("ui.reputation")}</small></span>
+            <span><strong>{profile.testerLevel ?? 0}</strong><small>{t("ui.testerLevel")}</small></span>
+            <span><strong>{profile.reputationTier ?? t("ui.newTester")}</strong><small>{t("ui.tier")}</small></span>
           </div>
         ) : null}
       </Card>
@@ -481,6 +482,7 @@ export function BrowseCampaignsPage() {
 }
 
 export function ServerDetailPage() {
+  const { t } = useI18n();
   const { slug } = useParams();
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
   const { data: campaignData } = usePublicCampaigns();
@@ -502,8 +504,8 @@ export function ServerDetailPage() {
     return (
       <div className="detail-page">
         <Card>
-          <p>The server could not be loaded.</p>
-          <Button onClick={() => refetch()}>Retry</Button>
+          <p>{t("listing.serverError")}</p>
+          <Button onClick={() => refetch()}>{t("ui.retry")}</Button>
         </Card>
       </div>
     );
@@ -564,7 +566,7 @@ export function ServerDetailPage() {
         <div>
           <div className="detail-title-row">
             <h1>{server.name}</h1>
-            {isDiscovered ? <Badge tone="neutral">Public listing</Badge> : <VerifiedBadge />}
+            {isDiscovered ? <Badge tone="neutral">{t("ui.publicListing")}</Badge> : <VerifiedBadge />}
           </div>
           <p>{server.description}</p>
           <div className="chip-row">
@@ -587,14 +589,14 @@ export function ServerDetailPage() {
             disabled={!serverAddress}
             onClick={() => void copyServerAddress()}
           >
-            {addressCopied ? "Address copied" : "Copy server address"}
+            {addressCopied ? t("ui.addressCopied") : t("ui.copyAddress")}
           </button>
         </div>
       </div>
       <div className="detail-columns">
         <div className="detail-content">
           <Card>
-            <h2>About {server.name}</h2>
+            <h2>{t("ui.aboutServer", { name: server.name })}</h2>
             <p>{server.description}</p>
             {!isDiscovered ? (
               <p>
@@ -684,28 +686,28 @@ export function ServerDetailPage() {
         </div>
         <aside className="detail-aside">
           <Card>
-            <h3>Server details</h3>
+            <h3>{t("ui.serverInformation")}</h3>
             <dl>
               <div>
-                <dt>Edition</dt>
+                <dt>{t("ui.edition")}</dt>
                 <dd>{server.edition}</dd>
               </div>
               {serverAddress ? (
                 <div>
-                  <dt>Address</dt>
+                  <dt>{t("ui.address")}</dt>
                   <dd>{serverAddress}</dd>
                 </div>
               ) : null}
               <div>
-                <dt>Versions</dt>
+                <dt>{t("ui.versions")}</dt>
                 <dd>{server.versions.join(", ")}</dd>
               </div>
               <div>
-                <dt>Players online</dt>
+                <dt>{t("ui.playersOnline")}</dt>
                 <dd>{(server.playerCount ?? 0).toLocaleString()}</dd>
               </div>
               <div>
-                <dt>Community rating</dt>
+                <dt>{t("ui.communityRating")}</dt>
                 <dd>{server.rating == null ? "No reviews yet" : `${server.rating}/5`}</dd>
               </div>
               {isDiscovered && server.lastCheckedAt ? (

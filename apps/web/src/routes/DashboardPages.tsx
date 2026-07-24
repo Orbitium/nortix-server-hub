@@ -49,6 +49,7 @@ import {
   useSparksSummary,
 } from "../features/api-data";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 
 const PageHeading = ({
   eyebrow,
@@ -241,6 +242,7 @@ export function LegacyDashboardHomePage() {
 }
 
 export function DashboardServersPage() {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
   const { data, isLoading, isError, refetch } = usePublicServers();
   const servers = data?.items ?? [];
@@ -250,8 +252,8 @@ export function DashboardServersPage() {
   return (
     <div className="dashboard-page">
       <PageHeading
-        title="Servers"
-        description="Explore live public Minecraft servers and verified Nortix communities."
+        title={t("ui.servers")}
+        description={t("ui.serverDescription")}
       />
       <div className="dashboard-filter">
         <label>
@@ -259,16 +261,16 @@ export function DashboardServersPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search servers"
+            placeholder={t("ui.searchServers")}
           />
         </label>
-        <button className="button button--secondary">All categories</button>
-        <button className="button button--secondary">All editions</button>
+        <button className="button button--secondary">{t("ui.allCategories")}</button>
+        <button className="button button--secondary">{t("ui.allEditions")}</button>
       </div>
       <div className="server-grid">
         {isLoading ? <Card><p>Loading servers…</p></Card> : null}
-        {isError ? <Card><p>Servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
-        {!isLoading && !isError && filtered.length === 0 ? <Card><p>No servers match this search.</p></Card> : null}
+        {isError ? <Card><p>{t("listing.serverError")}</p><Button onClick={() => refetch()}>{t("ui.retry")}</Button></Card> : null}
+        {!isLoading && !isError && filtered.length === 0 ? <Card><p>{t("ui.noServers")}</p></Card> : null}
         {filtered.map((server) => <ServerCard server={server} key={server.id} />)}
       </div>
     </div>
@@ -276,6 +278,7 @@ export function DashboardServersPage() {
 }
 
 export function DashboardCampaignsPage() {
+  const { t } = useI18n();
   const [tab, setTab] = useState("Newest");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("ALL");
@@ -313,19 +316,19 @@ export function DashboardCampaignsPage() {
   return (
     <div className="dashboard-page">
       <PageHeading
-        title="Campaigns"
-        description="Explore optional playtests that may provide Sparks after verification."
+        title={t("ui.campaigns")}
+        description={t("ui.campaignDescription")}
       />
       <div className="dashboard-filter campaign-filters">
         <label>
           <Search />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns, servers, or versions" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("ui.searchCampaigns")} />
         </label>
-        <select aria-label="Filter campaigns by category" value={category} onChange={(event) => setCategory(event.target.value)}>
-          {categories.map((item) => <option value={item} key={item}>{item === "ALL" ? "All categories" : item}</option>)}
+        <select aria-label={t("ui.allCategories")} value={category} onChange={(event) => setCategory(event.target.value)}>
+          {categories.map((item) => <option value={item} key={item}>{item === "ALL" ? t("ui.allCategories") : item}</option>)}
         </select>
-        <select aria-label="Filter campaigns by edition" value={edition} onChange={(event) => setEdition(event.target.value)}>
-          <option value="ALL">All editions</option>
+        <select aria-label={t("ui.allEditions")} value={edition} onChange={(event) => setEdition(event.target.value)}>
+          <option value="ALL">{t("ui.allEditions")}</option>
           <option value="JAVA">Java</option>
           <option value="BEDROCK">Bedrock</option>
         </select>
@@ -339,8 +342,8 @@ export function DashboardCampaignsPage() {
       </div>
       <div className="campaign-grid">
         {isLoading ? <Card><p>Loading seeded campaigns…</p></Card> : null}
-        {isError ? <Card><p>Seeded campaigns could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
-        {!isLoading && !isError && visibleCampaigns.length === 0 ? <Card><p>No campaigns match these filters.</p></Card> : null}
+        {isError ? <Card><p>{t("listing.campaignError")}</p><Button onClick={() => refetch()}>{t("ui.retry")}</Button></Card> : null}
+        {!isLoading && !isError && visibleCampaigns.length === 0 ? <Card><p>{t("ui.noCampaigns")}</p></Card> : null}
         {visibleCampaigns.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}

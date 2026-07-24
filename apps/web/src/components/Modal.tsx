@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useI18n } from "../lib/i18n";
 
 export function Modal({
   title,
@@ -12,6 +13,7 @@ export function Modal({
   onClose: () => void;
   className?: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <div
@@ -23,7 +25,7 @@ export function Modal({
       >
         <div className="modal__header">
           <h2 id="modal-title">{title}</h2>
-          <button className="icon-button" onClick={onClose} aria-label="Close dialog">
+          <button className="icon-button" onClick={onClose} aria-label={t("ui.closeDialog")}>
             <X />
           </button>
         </div>
