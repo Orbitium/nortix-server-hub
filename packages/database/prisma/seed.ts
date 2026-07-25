@@ -409,6 +409,8 @@ async function main() {
   for (let index = 0; index < 8; index += 1) {
     const server = servers[index]!;
     const maximumSparksReward = Math.max(65, 100 - index * 5);
+    const campaignBudgetCredits = 5_000 + index * 500;
+    const maxParticipants = 100 + index * 25;
     const campaign = await prisma.campaign.create({
       data: {
         serverId: server.id,
@@ -427,7 +429,8 @@ async function main() {
         status: CampaignStatus.ACTIVE,
         category: ["Onboarding", "Retention", "Gameplay", "Tutorial"][index % 4]!,
         internalBudgetCents: 35_000 + index * 3_000,
-        campaignBudgetCredits: 5_000 + index * 500,
+        campaignBudgetCredits,
+        creditCostPerParticipant: Math.ceil(campaignBudgetCredits / maxParticipants),
         publicRewardCents: 300 + index * 40,
         minimumSparksReward: Math.max(25, 50 - index * 3),
         maximumSparksReward,
@@ -436,8 +439,8 @@ async function main() {
         automaticVerification: true,
         startsAt: new Date(Date.now() - 4 * 86_400_000),
         endsAt: new Date(Date.now() + (18 + index) * 86_400_000),
-        maxParticipants: 100 + index * 25,
-        completionLimit: 100 + index * 25,
+        maxParticipants,
+        completionLimit: maxParticipants,
         eligibilityRules: { minimumReputation: index > 4 ? 150 : 0, onePerUser: true },
         versionRequirements: server.versions,
         regionRestrictions: index % 3 === 0 ? ["US", "CA", "GB"] : [],
@@ -545,6 +548,21 @@ async function main() {
     });
   }
 
+  for (const campaign of campaigns) {
+    const participationCount = await prisma.campaignParticipation.count({
+      where: { campaignId: campaign.id },
+    });
+    await prisma.campaign.update({
+      where: { id: campaign.id },
+      data: {
+        consumedBudgetCredits: Math.min(
+          campaign.campaignBudgetCredits,
+          participationCount * campaign.creditCostPerParticipant,
+        ),
+      },
+    });
+  }
+
   await prisma.cosmeticItem.createMany({
     data: [
       {
@@ -619,6 +637,23 @@ async function main() {
         idempotencyKey: `seed:credit:owner:${index + 1}`,
         expiresAt: new Date(Date.now() + 60 * 86_400_000),
         internalNote: "Purchased and promotional components remain separately attributable.",
+      },
+    });
+  }
+
+  for (const campaign of campaigns) {
+    await prisma.campaignCreditLedgerEntry.create({
+      data: {
+        ownerId: campaign.ownerId,
+        direction: LedgerDirection.DEBIT,
+        amountCents: campaign.campaignBudgetCredits,
+        purchasedCents: 0,
+        promotionalCents: campaign.campaignBudgetCredits,
+        transactionType: "SPENT",
+        referenceType: "CAMPAIGN_BUDGET",
+        referenceId: campaign.id,
+        idempotencyKey: `campaign-budget:${campaign.id}`,
+        internalNote: "Seeded Campaign Credits reservation for an active campaign.",
       },
     });
   }

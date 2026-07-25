@@ -140,10 +140,7 @@ export const evaluateCampaignEligibility = (
   ) {
     return { ...base, eligible: false, reason: "INSUFFICIENT_ACTIVITY_HISTORY" as const };
   }
-  if (
-    !latest ||
-    now.getTime() - latest.getTime() > CAMPAIGN_ACTIVITY_FRESHNESS_MINUTES * 60_000
-  ) {
+  if (!latest || now.getTime() - latest.getTime() > CAMPAIGN_ACTIVITY_FRESHNESS_MINUTES * 60_000) {
     return { ...base, eligible: false, reason: "STALE_ACTIVITY" as const };
   }
   if (averagePlayers < CAMPAIGN_MINIMUM_AVERAGE_PLAYERS) {
@@ -189,6 +186,47 @@ export const allocateCampaignCreditBudget = (
   return {
     promotional,
     purchased: budgetCredits - promotional,
+  };
+};
+
+export const calculateCampaignTerminationRefund = (input: {
+  fundingSource: "OWNER_CREDITS" | "NORTIX_SPONSORED";
+  refundPolicy: "REFUND_ALL" | "REFUND_UNUSED" | "NO_REFUND";
+  allocatedCredits: number;
+  consumedCredits: number;
+  purchasedAllocatedCredits: number;
+  promotionalAllocatedCredits: number;
+}) => {
+  const allocatedCredits = Math.max(0, Math.floor(input.allocatedCredits));
+  const consumedCredits = Math.min(
+    allocatedCredits,
+    Math.max(0, Math.floor(input.consumedCredits)),
+  );
+  const refundableAllocation = Math.min(
+    allocatedCredits,
+    Math.max(
+      0,
+      Math.floor(input.purchasedAllocatedCredits) + Math.floor(input.promotionalAllocatedCredits),
+    ),
+  );
+  const requestedRefund =
+    input.fundingSource === "NORTIX_SPONSORED" || input.refundPolicy === "NO_REFUND"
+      ? 0
+      : input.refundPolicy === "REFUND_ALL"
+        ? allocatedCredits
+        : allocatedCredits - consumedCredits;
+  const refundedCredits = Math.min(requestedRefund, refundableAllocation);
+  const purchasedRefundCredits = Math.min(
+    Math.max(0, Math.floor(input.purchasedAllocatedCredits)),
+    refundedCredits,
+  );
+
+  return {
+    allocatedCredits,
+    consumedCredits,
+    refundedCredits,
+    purchasedRefundCredits,
+    promotionalRefundCredits: refundedCredits - purchasedRefundCredits,
   };
 };
 

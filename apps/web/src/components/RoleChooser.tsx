@@ -2,8 +2,7 @@ import { Gamepad2, ServerCog, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "../lib/i18n";
-
-const preferenceKey = "nortix-role-preference";
+import { readRolePreference, saveRolePreference } from "../lib/role-preference";
 
 export function RoleChooser() {
   const navigate = useNavigate();
@@ -11,11 +10,11 @@ export function RoleChooser() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setOpen(!window.localStorage.getItem(preferenceKey));
+    setOpen(!readRolePreference());
   }, []);
 
   const choose = (role: "player" | "owner") => {
-    window.localStorage.setItem(preferenceKey, role);
+    saveRolePreference(role);
     setOpen(false);
     navigate(role === "owner" ? "/owner" : "/dashboard");
   };

@@ -1,0 +1,39 @@
+import { describe, expect, it } from "vitest";
+import { filterServers, getServerFilterOptions, type FilterableServer } from "./server-filtering";
+
+const servers: FilterableServer[] = [
+  {
+    name: "Skyblock X",
+    description: "Island progression",
+    edition: "JAVA",
+    categories: ["Skyblock", "Economy"],
+    versions: ["1.20.4", "1.21"],
+    tags: ["Friendly"],
+  },
+  {
+    name: "Bedrock Realm",
+    description: "Cross-device survival",
+    edition: "BEDROCK",
+    categories: ["Survival"],
+    versions: ["1.21"],
+    tags: ["Mobile"],
+  },
+];
+
+describe("server filtering", () => {
+  it("builds unique, naturally sorted category and version options", () => {
+    expect(getServerFilterOptions(servers)).toEqual({
+      categories: ["Economy", "Skyblock", "Survival"],
+      versions: ["1.20.4", "1.21"],
+    });
+  });
+
+  it("combines search, category, and exact version filters", () => {
+    expect(
+      filterServers(servers, { search: "island", category: "Skyblock", version: "1.21" }),
+    ).toEqual([servers[0]]);
+    expect(
+      filterServers(servers, { search: "", category: "Survival", version: "1.20.4" }),
+    ).toEqual([]);
+  });
+});

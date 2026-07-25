@@ -61,6 +61,18 @@ enum CampaignStatus {
   COMPLETED
   REJECTED
   ARCHIVED
+  TERMINATED
+}
+
+enum CampaignFundingSource {
+  OWNER_CREDITS
+  NORTIX_SPONSORED
+}
+
+enum CampaignTerminationRefundPolicy {
+  REFUND_ALL
+  REFUND_UNUSED
+  NO_REFUND
 }
 
 enum ParticipationStatus {
@@ -244,6 +256,8 @@ model User {
   createdSparksEntries      SparksLedgerEntry[]         @relation("SparksCreator")
   campaignCreditLedger      CampaignCreditLedgerEntry[] @relation("CampaignCreditOwner")
   createdCreditEntries      CampaignCreditLedgerEntry[] @relation("CampaignCreditCreator")
+  sponsoredCampaigns        Campaign[]                  @relation("CampaignSponsorAdmin")
+  campaignTerminations      CampaignTermination[]       @relation("CampaignTerminationActor")
   reviewedCompletions       MilestoneCompletion[]       @relation("CompletionReviewer")
   cosmeticPurchases         CosmeticPurchase[]
   analyticsEvents           AnalyticsEvent[]
@@ -449,11 +463,11 @@ model DiscoveredServer {
   iconUrl             String?
   lastCheckedAt       DateTime?
   lastOnlineAt        DateTime?
-  nextCheckAt         DateTime       @default(now())
-  consecutiveFailures Int            @default(0)
+  nextCheckAt         DateTime      @default(now())
+  consecutiveFailures Int           @default(0)
   lastErrorCode       String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   @@unique([edition, hostname, port])
   @@index([enabled, nextCheckAt])
@@ -565,47 +579,75 @@ model ServerVerification {
 }
 
 model Campaign {
-  id                    String                  @id @default(cuid())
-  serverId              String
-  server                Server                  @relation(fields: [serverId], references: [id])
-  ownerId               String
-  owner                 User                    @relation("CampaignOwner", fields: [ownerId], references: [id])
-  title                 String
-  description           String
-  status                CampaignStatus          @default(DRAFT)
-  category              String
-  quickStart            String?
-  quickStartConfig      Json                    @default("{}")
-  internalBudgetCents   Int
-  campaignBudgetCredits Int                     @default(0)
-  publicRewardCents     Int
-  startsAt              DateTime
-  endsAt                DateTime
-  maxParticipants       Int
-  completionLimit       Int
-  minimumSparksReward   Int                     @default(0)
-  maximumSparksReward   Int                     @default(0)
-  potentialExposureMin  Int                     @default(0)
-  potentialExposureMax  Int                     @default(0)
-  automaticVerification Boolean                 @default(true)
-  eligibilityRules      Json                    @default("{}")
-  versionRequirements   String[]
-  regionRestrictions    String[]
-  moderationNotes       String?
-  rejectionReason       String?
-  internalRiskScore     Int                     @default(0)
-  publishedAt           DateTime?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-  milestones            CampaignMilestone[]
-  participations        CampaignParticipation[]
-  analyticsEvents       AnalyticsEvent[]
-  fraudFlags            FraudFlag[]
-  moderationCases       ModerationCase[]
+  id                       String                  @id @default(cuid())
+  serverId                 String
+  server                   Server                  @relation(fields: [serverId], references: [id])
+  ownerId                  String
+  owner                    User                    @relation("CampaignOwner", fields: [ownerId], references: [id])
+  title                    String
+  description              String
+  status                   CampaignStatus          @default(DRAFT)
+  category                 String
+  quickStart               String?
+  quickStartConfig         Json                    @default("{}")
+  internalBudgetCents      Int
+  campaignBudgetCredits    Int                     @default(0)
+  fundingSource            CampaignFundingSource   @default(OWNER_CREDITS)
+  creditCostPerParticipant Int                     @default(0)
+  consumedBudgetCredits    Int                     @default(0)
+  createdByAdminId         String?
+  createdByAdmin           User?                   @relation("CampaignSponsorAdmin", fields: [createdByAdminId], references: [id])
+  publicRewardCents        Int
+  startsAt                 DateTime
+  endsAt                   DateTime
+  maxParticipants          Int
+  completionLimit          Int
+  minimumSparksReward      Int                     @default(0)
+  maximumSparksReward      Int                     @default(0)
+  potentialExposureMin     Int                     @default(0)
+  potentialExposureMax     Int                     @default(0)
+  automaticVerification    Boolean                 @default(true)
+  eligibilityRules         Json                    @default("{}")
+  versionRequirements      String[]
+  regionRestrictions       String[]
+  moderationNotes          String?
+  rejectionReason          String?
+  internalRiskScore        Int                     @default(0)
+  publishedAt              DateTime?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  milestones               CampaignMilestone[]
+  participations           CampaignParticipation[]
+  analyticsEvents          AnalyticsEvent[]
+  fraudFlags               FraudFlag[]
+  moderationCases          ModerationCase[]
+  termination              CampaignTermination?
 
   @@index([status, startsAt, endsAt])
   @@index([serverId])
   @@index([ownerId])
+  @@index([fundingSource, status])
+}
+
+model CampaignTermination {
+  id                       String                          @id @default(cuid())
+  campaignId               String                          @unique
+  campaign                 Campaign                        @relation(fields: [campaignId], references: [id])
+  terminatedById           String
+  terminatedBy             User                            @relation("CampaignTerminationActor", fields: [terminatedById], references: [id])
+  previousStatus           CampaignStatus
+  fundingSource            CampaignFundingSource
+  refundPolicy             CampaignTerminationRefundPolicy
+  reason                   String?
+  allocatedCredits         Int
+  consumedCredits          Int
+  refundedCredits          Int
+  purchasedRefundCredits   Int                             @default(0)
+  promotionalRefundCredits Int                             @default(0)
+  terminatedAt             DateTime                        @default(now())
+
+  @@index([terminatedById, terminatedAt])
+  @@index([terminatedAt])
 }
 
 model MilestoneTemplate {

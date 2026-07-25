@@ -28,6 +28,7 @@ const en = {
   "nav.sparksShop": "Sparks Shop",
   "nav.leaderboards": "Leaderboards",
   "nav.createCampaign": "Create Campaign",
+  "nav.registerServer": "Register Server",
   "nav.dashboard": "Dashboard",
   "nav.analytics": "Analytics",
   "nav.credits": "Campaign Credits",
@@ -55,6 +56,9 @@ const en = {
   "role.ownerDescription":
     "Manage listings, create campaigns, review feedback, and configure potential Sparks limits.",
   "role.close": "Close role chooser",
+  "profile.serverOwnerMode": "Server Owner",
+  "profile.serverOwnerModeDescription":
+    "Show server-owner tools in your navigation. This preference does not grant ownership or access.",
   "auth.trusted": "TRUSTED PLAYTESTS",
   "auth.registerTitle": "Build a reputation for useful participation.",
   "auth.signInTitle": "Welcome back to the signal.",
@@ -195,6 +199,7 @@ const en = {
   "ui.searchServers": "Search servers",
   "ui.allCategories": "All categories",
   "ui.allEditions": "All editions",
+  "ui.allVersions": "All versions",
   "ui.noServers": "No servers match this search.",
   "ui.campaigns": "Campaigns",
   "ui.campaignDescription": "Explore optional playtests that may provide Sparks after verification.",
@@ -270,6 +275,7 @@ const tr: Messages = {
   "nav.quests": "Görevler",
   "nav.leaderboards": "Liderlik tablosu",
   "nav.createCampaign": "Kampanya oluştur",
+  "nav.registerServer": "Sunucu kaydet",
   "nav.dashboard": "Kontrol paneli",
   "nav.analytics": "Analizler",
   "nav.credits": "Kampanya Kredileri",
@@ -297,6 +303,10 @@ const tr: Messages = {
   "role.ownerDescription":
     "Listelemeleri yönet, kampanyalar oluştur, geri bildirimleri incele ve olası Sparks sınırlarını ayarla.",
   "role.close": "Rol seçimini kapat",
+  "profile.serverOwnerMode": "Sunucu Sahibi",
+  "profile.serverOwnerModeDescription":
+    "Gezinmede sunucu sahibi araçlarını gösterir. Bu tercih sahiplik veya erişim yetkisi vermez.",
+  "ui.allVersions": "Tüm sürümler",
   "auth.trusted": "GÜVENİLİR OYUN TESTLERİ",
   "auth.registerTitle": "Faydalı katılımınla itibar kazan.",
   "auth.signInTitle": "Tekrar hoş geldin.",
@@ -448,6 +458,7 @@ const es: Messages = {
   "nav.quests": "Misiones",
   "nav.leaderboards": "Clasificación",
   "nav.createCampaign": "Crear campaña",
+  "nav.registerServer": "Registrar servidor",
   "nav.dashboard": "Panel",
   "nav.analytics": "Analítica",
   "nav.credits": "Créditos de campaña",
@@ -475,6 +486,10 @@ const es: Messages = {
   "role.ownerDescription":
     "Gestiona anuncios, crea campañas, revisa comentarios y configura posibles límites de Sparks.",
   "role.close": "Cerrar selector de rol",
+  "profile.serverOwnerMode": "Propietario de servidor",
+  "profile.serverOwnerModeDescription":
+    "Muestra las herramientas para propietarios en la navegación. Esta preferencia no concede propiedad ni acceso.",
+  "ui.allVersions": "Todas las versiones",
   "auth.trusted": "PRUEBAS DE CONFIANZA",
   "auth.registerTitle": "Construye una reputación por participar de forma útil.",
   "auth.signInTitle": "Te damos la bienvenida de nuevo.",
@@ -626,6 +641,7 @@ const de: Messages = {
   "nav.quests": "Aufgaben",
   "nav.leaderboards": "Bestenliste",
   "nav.createCampaign": "Kampagne erstellen",
+  "nav.registerServer": "Server registrieren",
   "nav.dashboard": "Dashboard",
   "nav.analytics": "Analysen",
   "nav.credits": "Kampagnen-Credits",
@@ -653,6 +669,10 @@ const de: Messages = {
   "role.ownerDescription":
     "Verwalte Einträge, erstelle Kampagnen, prüfe Feedback und lege mögliche Sparks-Grenzen fest.",
   "role.close": "Rollenauswahl schließen",
+  "profile.serverOwnerMode": "Serverbetreiber",
+  "profile.serverOwnerModeDescription":
+    "Zeigt Betreiberwerkzeuge in der Navigation. Diese Einstellung gewährt keine Eigentums- oder Zugriffsrechte.",
+  "ui.allVersions": "Alle Versionen",
   "auth.trusted": "VERTRAUENSWÜRDIGE SPIELTESTS",
   "auth.registerTitle": "Baue dir einen Ruf für hilfreiche Teilnahme auf.",
   "auth.signInTitle": "Willkommen zurück.",
@@ -804,6 +824,7 @@ const pt: Messages = {
   "nav.quests": "Missões",
   "nav.leaderboards": "Classificação",
   "nav.createCampaign": "Criar campanha",
+  "nav.registerServer": "Registrar servidor",
   "nav.dashboard": "Painel",
   "nav.analytics": "Análises",
   "nav.credits": "Créditos de campanha",
@@ -831,6 +852,10 @@ const pt: Messages = {
   "role.ownerDescription":
     "Gerencie listagens, crie campanhas, analise feedback e configure possíveis limites de Sparks.",
   "role.close": "Fechar seletor de função",
+  "profile.serverOwnerMode": "Dono de servidor",
+  "profile.serverOwnerModeDescription":
+    "Mostra as ferramentas de proprietário na navegação. Esta preferência não concede propriedade nem acesso.",
+  "ui.allVersions": "Todas as versões",
   "auth.trusted": "TESTES CONFIÁVEIS",
   "auth.registerTitle": "Construa uma reputação por participação útil.",
   "auth.signInTitle": "Boas-vindas de volta.",

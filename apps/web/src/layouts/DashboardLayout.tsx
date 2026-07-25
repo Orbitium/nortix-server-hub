@@ -43,6 +43,11 @@ import {
 import { api } from "../lib/api";
 import { useAuthSession } from "../lib/auth-session";
 import { useI18n, type TranslationKey } from "../lib/i18n";
+import {
+  readRolePreference,
+  ROLE_PREFERENCE_CHANGED_EVENT,
+  type RolePreference,
+} from "../lib/role-preference";
 
 const playerNav = [
   ["/dashboard", "nav.home", Home],
@@ -73,6 +78,7 @@ export function DashboardLayout() {
   const [query, setQuery] = useState("");
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [serverOwnerMode, setServerOwnerMode] = useState(() => readRolePreference() === "owner");
   const queryClient = useQueryClient();
   const { isAuthenticated, isInitializing } = useAuthSession();
   const showRightRail = location.pathname === "/dashboard";
@@ -104,6 +110,22 @@ export function DashboardLayout() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const updatePreference = (event: Event) => {
+      const preference =
+        event instanceof CustomEvent
+          ? (event as CustomEvent<RolePreference>).detail
+          : readRolePreference();
+      setServerOwnerMode(preference === "owner");
+    };
+    window.addEventListener(ROLE_PREFERENCE_CHANGED_EVENT, updatePreference);
+    window.addEventListener("storage", updatePreference);
+    return () => {
+      window.removeEventListener(ROLE_PREFERENCE_CHANGED_EVENT, updatePreference);
+      window.removeEventListener("storage", updatePreference);
+    };
   }, []);
 
   const results = useMemo(() => {
@@ -188,18 +210,29 @@ export function DashboardLayout() {
             </NavLink>
           ))}
           <span className="nav-section-label">{t("nav.forOwners")}</span>
-          {ownerNav.map(([href, label, Icon]) => (
+          {serverOwnerMode ? (
+            ownerNav.map(([href, label, Icon]) => (
+              <NavLink
+                key={href}
+                to={href}
+                end={href === "/owner"}
+                onClick={() => setMobileNavOpen(false)}
+                title={navCollapsed ? t(label) : undefined}
+              >
+                <Icon size={18} />
+                <span>{t(label)}</span>
+              </NavLink>
+            ))
+          ) : (
             <NavLink
-              key={href}
-              to={href}
-              end={href === "/owner"}
+              to="/owner/servers/new"
               onClick={() => setMobileNavOpen(false)}
-              title={navCollapsed ? t(label) : undefined}
+              title={navCollapsed ? t("nav.registerServer") : undefined}
             >
-              <Icon size={18} />
-              <span>{t(label)}</span>
+              <PlusCircle size={18} />
+              <span>{t("nav.registerServer")}</span>
             </NavLink>
-          ))}
+          )}
         </nav>
 
         <div className="sidebar__bottom">

@@ -16,4 +16,12 @@ describe("campaign authorization", () => {
   it("gives admins the internal ledger permission", () => {
     expect(rolePermissions.ADMIN).toContain("ledger:view_internal");
   });
+
+  it("reserves sponsored creation and termination for Nortix admins", () => {
+    expect(rolePermissions.ADMIN).toContain("campaign:admin_create");
+    expect(rolePermissions.ADMIN).toContain("campaign:terminate");
+    expect(rolePermissions.MODERATOR).not.toContain("campaign:admin_create");
+    expect(rolePermissions.MODERATOR).not.toContain("campaign:terminate");
+    expect(rolePermissions.SERVER_OWNER).not.toContain("campaign:terminate");
+  });
 });

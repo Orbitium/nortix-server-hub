@@ -80,6 +80,10 @@ HMAC signature, stores a unique provider event, and creates one idempotent purch
 
 - `GET /admin/overview`
 - `GET /admin/campaigns`
+- `GET /admin/campaign-servers` — admin-only sponsored-campaign targets
+- `GET /admin/campaigns/ongoing` — admin-only termination candidates
+- `POST /admin/campaigns/sponsored` — admin-only Nortix-funded campaign creation
+- `POST /admin/campaigns/:id/terminate` — admin-only termination and Campaign Credits refund policy
 - `POST /admin/campaigns/:id/review`
 - `POST /admin/completions/:id/review`
 - `GET /admin/payment-events`
@@ -88,6 +92,12 @@ HMAC signature, stores a unique provider event, and creates one idempotent purch
 
 Moderator and administrator permissions are checked server-side. Internal economics, risk signals,
 and ledgers are never serialized from public campaign endpoints.
+
+Sponsored campaigns use the normal campaign and milestone contract, but have an explicit
+`NORTIX_SPONSORED` funding source and never debit the server owner's Campaign Credits ledger.
+Termination requires an exact campaign-ID confirmation and records an immutable termination
+snapshot. `REFUND_ALL`, `REFUND_UNUSED`, and `NO_REFUND` affect only the owner's Campaign Credits
+reservation. Already verified player Sparks are not reversed.
 
 ## Integrations
 
@@ -114,6 +124,7 @@ activity.
 List endpoints use `page` and `pageSize`; page size is capped at 50. Payment provider events,
 Sparks rewards, campaign-credit purchases, and cosmetic purchases use unique idempotency keys
 stored in PostgreSQL.
+
 ## Inbox, messages, and notifications
 
 Authenticated account endpoints:

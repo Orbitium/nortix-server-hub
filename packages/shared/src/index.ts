@@ -8,6 +8,8 @@ export const permissions = [
   "campaign:create",
   "campaign:review",
   "campaign:publish",
+  "campaign:admin_create",
+  "campaign:terminate",
   "server:manage",
   "reward:approve",
   "user:suspend",
@@ -17,14 +19,39 @@ export const permissions = [
 export type Permission = (typeof permissions)[number];
 
 export const minecraftMajorVersions = [
-  "1.8", "1.9", "1.10", "1.11", "1.12", "1.13", "1.14", "1.15",
-  "1.16", "1.17", "1.18", "1.19", "1.20", "1.21",
+  "1.8",
+  "1.9",
+  "1.10",
+  "1.11",
+  "1.12",
+  "1.13",
+  "1.14",
+  "1.15",
+  "1.16",
+  "1.17",
+  "1.18",
+  "1.19",
+  "1.20",
+  "1.21",
 ] as const;
 export const MinecraftMajorVersionSchema = z.enum(minecraftMajorVersions);
 
 export const serverTypes = [
-  "Survival", "SMP", "Skyblock", "Factions", "Prison", "PvP", "Lifesteal",
-  "BedWars", "SkyWars", "KitPvP", "Anarchy", "Creative", "RPG", "Minigames", "Hardcore",
+  "Survival",
+  "SMP",
+  "Skyblock",
+  "Factions",
+  "Prison",
+  "PvP",
+  "Lifesteal",
+  "BedWars",
+  "SkyWars",
+  "KitPvP",
+  "Anarchy",
+  "Creative",
+  "RPG",
+  "Minigames",
+  "Hardcore",
 ] as const;
 export const ServerTypeSchema = z.enum(serverTypes);
 
@@ -47,8 +74,19 @@ export const campaignStatuses = [
   "COMPLETED",
   "REJECTED",
   "ARCHIVED",
+  "TERMINATED",
 ] as const;
 export const CampaignStatusSchema = z.enum(campaignStatuses);
+
+export const campaignFundingSources = ["OWNER_CREDITS", "NORTIX_SPONSORED"] as const;
+export const CampaignFundingSourceSchema = z.enum(campaignFundingSources);
+
+export const campaignTerminationRefundPolicies = [
+  "REFUND_ALL",
+  "REFUND_UNUSED",
+  "NO_REFUND",
+] as const;
+export const CampaignTerminationRefundPolicySchema = z.enum(campaignTerminationRefundPolicies);
 
 export const milestoneTypes = [
   "JOIN_SERVER",
@@ -94,11 +132,13 @@ export const campaignQuickStarts = [
   "SERVER_REVIEW",
 ] as const;
 export const CampaignQuickStartSchema = z.enum(campaignQuickStarts);
-export const CampaignQuickStartConfigSchema = z.object({
-  minutes: z.union([z.literal(15), z.literal(30), z.literal(45)]).optional(),
-  hours: z.union([z.literal(1), z.literal(5), z.literal(15), z.literal(30)]).optional(),
-  optional: z.boolean().optional(),
-}).default({});
+export const CampaignQuickStartConfigSchema = z
+  .object({
+    minutes: z.union([z.literal(15), z.literal(30), z.literal(45)]).optional(),
+    hours: z.union([z.literal(1), z.literal(5), z.literal(15), z.literal(30)]).optional(),
+    optional: z.boolean().optional(),
+  })
+  .default({});
 
 export const ServerInputSchema = z.object({
   name: z.string().min(3).max(80),
@@ -246,6 +286,16 @@ export const CampaignInputSchema = z
     },
   );
 
+export const AdminSponsoredCampaignInputSchema = CampaignInputSchema;
+
+export const AdminCampaignTerminationInputSchema = z
+  .object({
+    refundPolicy: CampaignTerminationRefundPolicySchema,
+    reason: z.string().trim().max(2_000).optional(),
+    confirmation: z.string().min(1).max(200),
+  })
+  .strict();
+
 export const JoinCampaignSchema = z
   .object({
     acceptedTerms: z.literal(true),
@@ -283,6 +333,8 @@ export const AnalyticsEventSchema = z.object({
 });
 
 export type CampaignInput = z.infer<typeof CampaignInputSchema>;
+export type AdminSponsoredCampaignInput = z.infer<typeof AdminSponsoredCampaignInputSchema>;
+export type AdminCampaignTerminationInput = z.infer<typeof AdminCampaignTerminationInputSchema>;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
 export type ApiError = {
   code: string;

@@ -167,6 +167,38 @@ export type AdminReviewCampaign = {
   };
 };
 
+export type AdminCampaignServer = {
+  id: string;
+  name: string;
+  slug: string;
+  edition: "JAVA" | "BEDROCK";
+  versions: string[];
+  categories: string[];
+  online: boolean;
+  playerCount?: number | null;
+  owner: { username: string; displayName?: string | null };
+};
+
+export type AdminOngoingCampaign = {
+  id: string;
+  title: string;
+  status: "APPROVED" | "SCHEDULED" | "ACTIVE" | "PAUSED";
+  startsAt: string;
+  endsAt: string;
+  fundingSource: "OWNER_CREDITS" | "NORTIX_SPONSORED";
+  campaignBudgetCredits: number;
+  consumedBudgetCredits: number;
+  minimumSparksReward: number;
+  maximumSparksReward: number;
+  _count: { participations: number };
+  server: {
+    id: string;
+    name: string;
+    slug: string;
+    owner: { username: string; displayName?: string | null };
+  };
+};
+
 export type DailyQuest = {
   id: string;
   slug: string;
@@ -361,8 +393,7 @@ export const useCosmetics = () =>
 export const useSparksSummary = (enabled = true) =>
   useQuery({
     queryKey: ["sparks-summary"],
-    queryFn: () =>
-      api<{ balance: number }>("/sparks/summary"),
+    queryFn: () => api<{ balance: number }>("/sparks/summary"),
     enabled,
   });
 
@@ -397,6 +428,20 @@ export const useAdminReviewCampaigns = () =>
   useQuery({
     queryKey: ["admin-review-campaigns"],
     queryFn: () => api<AdminReviewCampaign[]>("/admin/campaigns"),
+  });
+
+export const useAdminCampaignServers = (enabled = true) =>
+  useQuery({
+    queryKey: ["admin-campaign-servers"],
+    queryFn: () => api<AdminCampaignServer[]>("/admin/campaign-servers"),
+    enabled,
+  });
+
+export const useAdminOngoingCampaigns = (enabled = true) =>
+  useQuery({
+    queryKey: ["admin-ongoing-campaigns"],
+    queryFn: () => api<AdminOngoingCampaign[]>("/admin/campaigns/ongoing"),
+    enabled,
   });
 
 export const useDailyQuests = (enabled = true) =>

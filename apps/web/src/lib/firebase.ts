@@ -1,5 +1,10 @@
 import { getApps, initializeApp } from "firebase/app";
-import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
+import {
+  getAnalytics,
+  isSupported as analyticsIsSupported,
+  setAnalyticsCollectionEnabled,
+  type Analytics,
+} from "firebase/analytics";
 import {
   createUserWithEmailAndPassword,
   getAuth,
@@ -23,11 +28,22 @@ const config = {
 export const firebaseConfigured = Boolean(config.apiKey && config.authDomain && config.projectId);
 const app = firebaseConfigured ? (getApps()[0] ?? initializeApp(config)) : null;
 export const auth = app ? getAuth(app) : null;
-export const analytics = app
-  ? analyticsIsSupported()
-      .then((supported) => (supported ? getAnalytics(app) : null))
-      .catch(() => null)
-  : Promise.resolve(null);
+let analyticsInstance: Promise<Analytics | null> | null = null;
+
+const loadAnalytics = () => {
+  if (!app) return Promise.resolve(null);
+  analyticsInstance ??= analyticsIsSupported()
+    .then((supported) => (supported ? getAnalytics(app) : null))
+    .catch(() => null);
+  return analyticsInstance;
+};
+
+export async function setFirebaseAnalyticsConsent(enabled: boolean) {
+  if (!enabled && !analyticsInstance) return;
+
+  const analytics = await loadAnalytics();
+  if (analytics) setAnalyticsCollectionEnabled(analytics, enabled);
+}
 
 export const firebaseActions = {
   async signIn(email: string, password: string) {

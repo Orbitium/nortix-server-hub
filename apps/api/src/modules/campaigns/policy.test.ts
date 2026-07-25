@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateCampaignCreditBudget,
   calculateCampaignCreditBalance,
+  calculateCampaignTerminationRefund,
   canAutomaticallyApprovePluginMilestone,
   deriveCampaignCapacity,
   evaluateCampaignEligibility,
@@ -33,20 +34,78 @@ describe("campaign policy", () => {
   it("excludes expired Campaign Credits and allocates promotional credits first", () => {
     const balance = calculateCampaignCreditBalance(
       [
-        { direction: "CREDIT", amountCents: 5_000, purchasedCents: 3_500, promotionalCents: 1_500, expiresAt: new Date("2026-08-01T00:00:00Z") },
-        { direction: "CREDIT", amountCents: 500, purchasedCents: 0, promotionalCents: 500, expiresAt: new Date("2026-06-01T00:00:00Z") },
+        {
+          direction: "CREDIT",
+          amountCents: 5_000,
+          purchasedCents: 3_500,
+          promotionalCents: 1_500,
+          expiresAt: new Date("2026-08-01T00:00:00Z"),
+        },
+        {
+          direction: "CREDIT",
+          amountCents: 500,
+          purchasedCents: 0,
+          promotionalCents: 500,
+          expiresAt: new Date("2026-06-01T00:00:00Z"),
+        },
       ],
       new Date("2026-07-20T00:00:00Z"),
     );
     expect(balance).toEqual({ total: 5_000, purchased: 3_500, promotional: 1_500 });
-    expect(allocateCampaignCreditBudget(balance, 2_000)).toEqual({ promotional: 1_500, purchased: 500 });
-    expect(() => allocateCampaignCreditBudget(balance, 5_001)).toThrow("available Campaign Credits");
+    expect(allocateCampaignCreditBudget(balance, 2_000)).toEqual({
+      promotional: 1_500,
+      purchased: 500,
+    });
+    expect(() => allocateCampaignCreditBudget(balance, 5_001)).toThrow(
+      "available Campaign Credits",
+    );
+  });
+
+  it("calculates explicit campaign termination refund policies", () => {
+    const allocation = {
+      fundingSource: "OWNER_CREDITS" as const,
+      allocatedCredits: 5_000,
+      consumedCredits: 1_200,
+      purchasedAllocatedCredits: 3_500,
+      promotionalAllocatedCredits: 1_500,
+    };
+    expect(
+      calculateCampaignTerminationRefund({ ...allocation, refundPolicy: "REFUND_ALL" }),
+    ).toEqual({
+      allocatedCredits: 5_000,
+      consumedCredits: 1_200,
+      refundedCredits: 5_000,
+      purchasedRefundCredits: 3_500,
+      promotionalRefundCredits: 1_500,
+    });
+    expect(
+      calculateCampaignTerminationRefund({ ...allocation, refundPolicy: "REFUND_UNUSED" }),
+    ).toEqual({
+      allocatedCredits: 5_000,
+      consumedCredits: 1_200,
+      refundedCredits: 3_800,
+      purchasedRefundCredits: 3_500,
+      promotionalRefundCredits: 300,
+    });
+    expect(
+      calculateCampaignTerminationRefund({ ...allocation, refundPolicy: "NO_REFUND" })
+        .refundedCredits,
+    ).toBe(0);
+    expect(
+      calculateCampaignTerminationRefund({
+        ...allocation,
+        fundingSource: "NORTIX_SPONSORED",
+        refundPolicy: "REFUND_ALL",
+      }).refundedCredits,
+    ).toBe(0);
   });
 
   it("suggests core milestones and gates provider metrics", () => {
     const suggestions = suggestCampaignMilestones(["SKYBLOCK_LEVEL"], false);
     expect(suggestions.find((item) => item.metric === "PLAYTIME_SECONDS")?.available).toBe(true);
-    expect(suggestions.find((item) => item.metric === "PLAYTIME_SECONDS")?.maximumTarget).toBe(86_400);
+    expect(suggestions.find((item) => item.metric === "PLAYTIME_SECONDS")?.maximumTarget).toBe(
+      86_400,
+    );
     expect(suggestions.find((item) => item.metric === "SKYBLOCK_LEVEL")?.available).toBe(true);
     expect(suggestions.find((item) => item.metric === "LIFESTEAL_HEARTS")?.available).toBe(false);
   });

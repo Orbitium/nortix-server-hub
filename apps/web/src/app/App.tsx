@@ -24,6 +24,7 @@ import {
 import { AuthPage } from "../routes/AuthPages";
 import { RouteSeo } from "../components/Seo";
 import { InboxPage, NotificationSettingsPage } from "../components/InboxCenter";
+import { CookieConsent } from "../components/CookieConsent";
 
 const managedPages = [
   ["users", "Users", "Edit account data, roles, access, restrictions, and moderation context.", "users"],
@@ -114,6 +115,7 @@ export function App() {
       <Route path="/admin/*" element={<RequireSignIn><AdminRoutes /></RequireSignIn>} />
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <CookieConsent />
     </>
   );
 }

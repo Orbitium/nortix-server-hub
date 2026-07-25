@@ -180,8 +180,12 @@ export function UnifiedInfoPage({
       eyebrow: "PRIVACY",
       title: "Use only what the platform needs.",
       description:
-        "Nortix may process account, campaign, moderation, device, and activity signals to operate and protect the service.",
-      points: ["Purpose-limited data", "Restricted admin access", "Logged administrative actions"],
+        "Nortix processes account, campaign, moderation, Minecraft activity, and security records to provide and protect the service. Optional site analytics stays off until you consent.",
+      points: [
+        "Essential sign-in and preferences",
+        "Optional Firebase site analytics",
+        "Restricted, audited operational data",
+      ],
     },
   }[type];
 
@@ -198,14 +202,29 @@ export function UnifiedInfoPage({
             <article className="card" key={point}>
               <Icon />
               <h2>{point}</h2>
-              <p>Details may vary by campaign, account status, region, and moderation context.</p>
+              <p>
+                {type === "privacy"
+                  ? index === 0
+                    ? "Firebase authentication may persist your session. Nortix also saves language, role, and consent choices in your browser."
+                    : index === 1
+                      ? "If enabled, Firebase Analytics may process device, browser, page, and interaction data. You can change this choice at any time."
+                      : "Account, campaign, moderation, Sparks, Minecraft identity, plugin event, and security records are processed only for platform operations and permitted analytics."
+                  : "Details may vary by campaign, account status, region, and moderation context."}
+              </p>
               <Check />
             </article>
           );
         })}
       </div>
-      <Link className="button button--primary" to={type === "owners" ? "/owner" : "/campaigns"}>
-        {type === "owners" ? "Open owner workspace" : "Explore campaigns"}
+      <Link
+        className="button button--primary"
+        to={type === "owners" ? "/owner" : type === "privacy" ? "/dashboard" : "/campaigns"}
+      >
+        {type === "owners"
+          ? "Open owner workspace"
+          : type === "privacy"
+            ? "Return to Nortix"
+            : "Explore campaigns"}
       </Link>
     </div>
   );

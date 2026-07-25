@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CampaignInputSchema } from "./index.js";
+import {
+  AdminCampaignTerminationInputSchema,
+  AdminSponsoredCampaignInputSchema,
+  CampaignInputSchema,
+} from "./index.js";
 
 const campaign = {
   serverId: "server-1",
@@ -57,5 +61,25 @@ describe("campaign input", () => {
   it("requires enough Campaign Credits for a minimum viable exposure", () => {
     expect(CampaignInputSchema.safeParse({ ...campaign, budgetCredits: 100 }).success).toBe(false);
     expect(CampaignInputSchema.safeParse({ ...campaign, budgetCredits: 5_000 }).success).toBe(true);
+  });
+
+  it("uses the normal campaign contract for Nortix-sponsored campaigns", () => {
+    expect(AdminSponsoredCampaignInputSchema.safeParse(campaign).success).toBe(true);
+  });
+
+  it("validates typed campaign termination choices", () => {
+    expect(
+      AdminCampaignTerminationInputSchema.safeParse({
+        refundPolicy: "REFUND_UNUSED",
+        reason: "",
+        confirmation: "campaign-1",
+      }).success,
+    ).toBe(true);
+    expect(
+      AdminCampaignTerminationInputSchema.safeParse({
+        refundPolicy: "SOMETHING_ELSE",
+        confirmation: "campaign-1",
+      }).success,
+    ).toBe(false);
   });
 });

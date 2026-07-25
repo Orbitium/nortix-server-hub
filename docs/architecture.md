@@ -71,6 +71,13 @@ Campaigns move through explicit states. Owners can draft and submit verified-ser
 Moderators approve, request changes, reject, pause, or archive them. Every important action writes
 an audit record containing actor, entity, before/after state, reason, request context, and time.
 
+Nortix administrators have separate permissions for sponsored campaign creation and campaign
+termination. Sponsorship is stored as a campaign funding source rather than simulated owner
+credits. Campaign joins consume a persisted per-participant portion of the allocation so an
+unused-credit refund is deterministic. Termination is a terminal state with a one-to-one immutable
+snapshot of the prior state, funding source, refund policy, allocated/consumed/refunded credits,
+actor, optional reason, and time. Refund ledger entries use campaign-scoped idempotency keys.
+
 First-version milestone evidence is manual or a trusted web event. The same campaign service can
 later accept verified plugin/client events because verification sources and integration events are
 generic.

@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   MessageSquare,
   Pause,
+  Plus,
   Radio,
   Save,
   Search,
@@ -31,7 +32,11 @@ import { Modal } from "../components/Modal";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import {
   artIndexFor,
+  type AdminCampaignServer,
+  type AdminOngoingCampaign,
   type AdminReviewCampaign,
+  useAdminCampaignServers,
+  useAdminOngoingCampaigns,
   useAdminOverview,
   useAdminMessages,
   useAdminReviewCampaigns,
@@ -303,12 +308,56 @@ export function AdminOverviewPage() {
   );
 }
 
+const toLocalDateTimeInput = (date: Date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
+
+const createSponsoredCampaignDraft = () => {
+  const endsAt = new Date(Date.now() + 7 * 24 * 60 * 60_000);
+  return {
+    serverId: "",
+    title: "",
+    description:
+      "Help this Minecraft server evaluate a focused player experience and provide useful feedback.",
+    category: "Playtest",
+    endsAt: toLocalDateTimeInput(endsAt),
+    budgetCredits: "5000",
+    minimumSparksReward: "50",
+    maximumSparksReward: "100",
+    versions: "",
+    milestoneTitle: "Share structured feedback",
+    milestoneInstructions:
+      "Complete the playtest and submit specific feedback about your experience.",
+  };
+};
+
 export function CampaignReviewPage() {
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = currentUser?.roles.includes("ADMIN") === true;
   const { data, isLoading, isError, refetch } = useAdminReviewCampaigns();
+  const { data: campaignServers = [] } = useAdminCampaignServers(isAdmin);
+  const {
+    data: ongoingCampaigns = [],
+    isLoading: ongoingLoading,
+    refetch: refetchOngoing,
+  } = useAdminOngoingCampaigns(isAdmin);
   const campaigns = data ?? [];
   const [selected, setSelected] = useState<AdminReviewCampaign | null>(null);
   const [reason, setReason] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createMessage, setCreateMessage] = useState("");
+  const [campaignDraft, setCampaignDraft] = useState(createSponsoredCampaignDraft);
+  const [terminating, setTerminating] = useState<AdminOngoingCampaign | null>(null);
+  const [terminationReason, setTerminationReason] = useState("");
+  const [refundPolicy, setRefundPolicy] = useState<"REFUND_ALL" | "REFUND_UNUSED" | "NO_REFUND">(
+    "REFUND_UNUSED",
+  );
+  const [terminationConfirmation, setTerminationConfirmation] = useState("");
+  const [terminationBusy, setTerminationBusy] = useState(false);
+  const [terminationMessage, setTerminationMessage] = useState("");
 
   const review = async (action: "APPROVE" | "REJECT" | "PAUSE") => {
     if (!selected) return;
@@ -330,12 +379,113 @@ export function CampaignReviewPage() {
     }
   };
 
+  const openSponsoredCampaign = () => {
+    const draft = createSponsoredCampaignDraft();
+    const firstServer = campaignServers[0];
+    setCampaignDraft({
+      ...draft,
+      serverId: firstServer?.id ?? "",
+      versions: firstServer?.versions.join(", ") ?? "",
+      category: firstServer?.categories[0] ?? draft.category,
+    });
+    setCreateMessage("");
+    setCreateOpen(true);
+  };
+
+  const createSponsoredCampaign = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreateBusy(true);
+    setCreateMessage("");
+    try {
+      await api("/admin/campaigns/sponsored", {
+        method: "POST",
+        body: JSON.stringify({
+          serverId: campaignDraft.serverId,
+          title: campaignDraft.title,
+          description: campaignDraft.description,
+          category: campaignDraft.category,
+          startsAt: new Date().toISOString(),
+          endsAt: new Date(campaignDraft.endsAt).toISOString(),
+          budgetCredits: Number(campaignDraft.budgetCredits),
+          sparksRewardRange: {
+            minimum: Number(campaignDraft.minimumSparksReward),
+            maximum: Number(campaignDraft.maximumSparksReward),
+          },
+          regionRestrictions: [],
+          versionRequirements: campaignDraft.versions
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+          quickStartConfig: {},
+          milestones: [
+            {
+              templateType: "SUBMIT_FEEDBACK",
+              title: campaignDraft.milestoneTitle,
+              instructions: campaignDraft.milestoneInstructions,
+              verificationMethod: "WEB_EVENT",
+              config: { source: "NORTIX_ADMIN" },
+            },
+          ],
+        }),
+      });
+      setCreateOpen(false);
+      setCreateMessage("Nortix-sponsored campaign created without using owner Campaign Credits.");
+      await refetchOngoing();
+    } catch (error) {
+      setCreateMessage(
+        error instanceof Error ? error.message : "The sponsored campaign could not be created.",
+      );
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const openTermination = (campaign: AdminOngoingCampaign) => {
+    setTerminating(campaign);
+    setRefundPolicy(campaign.fundingSource === "NORTIX_SPONSORED" ? "NO_REFUND" : "REFUND_UNUSED");
+    setTerminationReason("");
+    setTerminationConfirmation("");
+    setTerminationMessage("");
+  };
+
+  const terminateCampaign = async () => {
+    if (!terminating) return;
+    setTerminationBusy(true);
+    setTerminationMessage("");
+    try {
+      await api(`/admin/campaigns/${terminating.id}/terminate`, {
+        method: "POST",
+        body: JSON.stringify({
+          refundPolicy,
+          reason: terminationReason.trim() || undefined,
+          confirmation: terminationConfirmation,
+        }),
+      });
+      setTerminating(null);
+      await refetchOngoing();
+    } catch (error) {
+      setTerminationMessage(
+        error instanceof Error ? error.message : "The campaign could not be terminated.",
+      );
+    } finally {
+      setTerminationBusy(false);
+    }
+  };
+
   return (
     <>
       <AdminHeading
         title="Campaign moderation"
         description="Review task clarity, Sparks limits, verification, safety, and owner history."
+        action={
+          isAdmin ? (
+            <Button onClick={openSponsoredCampaign}>
+              <Plus /> Create sponsored campaign
+            </Button>
+          ) : undefined
+        }
       />
+      {createMessage && !createOpen ? <p role="status">{createMessage}</p> : null}
       {isLoading ? (
         <Card>
           <p>Loading seeded moderation queue…</p>
@@ -407,6 +557,83 @@ export function CampaignReviewPage() {
           </Card>
         ))}
       </div>
+      {isAdmin ? (
+        <section className="admin-campaign-operations">
+          <div className="data-card__header">
+            <div>
+              <h2>Ongoing campaigns</h2>
+              <p>
+                Termination stops new joins and milestone approvals. Refund choices affect Campaign
+                Credits only; already verified player Sparks are not reversed.
+              </p>
+            </div>
+          </div>
+          {ongoingLoading ? (
+            <Card>
+              <p>Loading ongoing campaigns…</p>
+            </Card>
+          ) : null}
+          {!ongoingLoading && ongoingCampaigns.length === 0 ? (
+            <Card>
+              <p>No campaigns are currently eligible for termination.</p>
+            </Card>
+          ) : null}
+          <div className="admin-queue">
+            {ongoingCampaigns.map((campaign) => (
+              <Card className="review-queue-card" key={campaign.id}>
+                <div className="review-queue-card__header">
+                  <span
+                    className={`server-inline__logo server-art--${artIndexFor(campaign.server.id)}`}
+                  >
+                    {campaign.server.name.slice(0, 2)}
+                  </span>
+                  <div>
+                    <h2>{campaign.title}</h2>
+                    <p>
+                      {campaign.server.name} · @{campaign.server.owner.username}
+                    </p>
+                  </div>
+                  <span className="admin-status">{campaign.status}</span>
+                </div>
+                <div className="review-card-stats">
+                  <span>
+                    <small>Funding</small>
+                    <strong>
+                      {campaign.fundingSource === "NORTIX_SPONSORED"
+                        ? "Nortix sponsored"
+                        : "Owner credits"}
+                    </strong>
+                  </span>
+                  <span>
+                    <small>Allocated credits</small>
+                    <strong>{campaign.campaignBudgetCredits.toLocaleString()}</strong>
+                  </span>
+                  <span>
+                    <small>Consumed credits</small>
+                    <strong>{campaign.consumedBudgetCredits.toLocaleString()}</strong>
+                  </span>
+                  <span>
+                    <small>Participants</small>
+                    <strong>{campaign._count.participations.toLocaleString()}</strong>
+                  </span>
+                  <span>
+                    <small>Ends</small>
+                    <strong>{new Date(campaign.endsAt).toLocaleDateString()}</strong>
+                  </span>
+                </div>
+                <div className="review-queue-card__footer">
+                  <span>
+                    Up to {campaign.maximumSparksReward} Sparks · ID {campaign.id}
+                  </span>
+                  <Button variant="danger" onClick={() => openTermination(campaign)}>
+                    <Trash2 /> Terminate
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {selected && (
         <Modal title="Moderate campaign" onClose={() => setSelected(null)}>
           <div className="modal__body admin-editor">
@@ -458,6 +685,254 @@ export function CampaignReviewPage() {
           </div>
         </Modal>
       )}
+      {createOpen ? (
+        <Modal title="Create Nortix-sponsored campaign" onClose={() => setCreateOpen(false)}>
+          <form onSubmit={createSponsoredCampaign}>
+            <div className="modal__body admin-editor">
+              <p className="admin-editor-note">
+                This creates a normal player-facing campaign funded by Nortix. The allocation
+                controls capacity but never debits the server owner’s Campaign Credits.
+              </p>
+              <div className="form-grid form-grid--two">
+                <label className="span-two">
+                  Server
+                  <select
+                    required
+                    value={campaignDraft.serverId}
+                    onChange={(event) => {
+                      const server = campaignServers.find((item) => item.id === event.target.value);
+                      setCampaignDraft({
+                        ...campaignDraft,
+                        serverId: event.target.value,
+                        versions: server?.versions.join(", ") ?? "",
+                        category: server?.categories[0] ?? campaignDraft.category,
+                      });
+                    }}
+                  >
+                    <option value="">Select an approved, verified server</option>
+                    {campaignServers.map((server: AdminCampaignServer) => (
+                      <option value={server.id} key={server.id}>
+                        {server.name} · @{server.owner.username}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Campaign title
+                  <input
+                    required
+                    minLength={6}
+                    maxLength={64}
+                    value={campaignDraft.title}
+                    onChange={(event) =>
+                      setCampaignDraft({ ...campaignDraft, title: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Category
+                  <input
+                    required
+                    minLength={2}
+                    maxLength={40}
+                    value={campaignDraft.category}
+                    onChange={(event) =>
+                      setCampaignDraft({ ...campaignDraft, category: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="span-two">
+                  Player-facing description
+                  <textarea
+                    required
+                    minLength={30}
+                    maxLength={320}
+                    rows={3}
+                    value={campaignDraft.description}
+                    onChange={(event) =>
+                      setCampaignDraft({ ...campaignDraft, description: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Ends
+                  <input
+                    required
+                    type="datetime-local"
+                    value={campaignDraft.endsAt}
+                    onChange={(event) =>
+                      setCampaignDraft({ ...campaignDraft, endsAt: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Nortix sponsorship allocation
+                  <input
+                    required
+                    type="number"
+                    min={100}
+                    max={10_000_000}
+                    value={campaignDraft.budgetCredits}
+                    onChange={(event) =>
+                      setCampaignDraft({ ...campaignDraft, budgetCredits: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Minecraft versions
+                  <input
+                    value={campaignDraft.versions}
+                    onChange={(event) =>
+                      setCampaignDraft({ ...campaignDraft, versions: event.target.value })
+                    }
+                    placeholder="1.20.4, 1.21"
+                  />
+                </label>
+                <label>
+                  Minimum potential Sparks
+                  <input
+                    required
+                    type="number"
+                    min={5}
+                    max={2000}
+                    value={campaignDraft.minimumSparksReward}
+                    onChange={(event) =>
+                      setCampaignDraft({
+                        ...campaignDraft,
+                        minimumSparksReward: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Maximum potential Sparks
+                  <input
+                    required
+                    type="number"
+                    min={10}
+                    max={2000}
+                    value={campaignDraft.maximumSparksReward}
+                    onChange={(event) =>
+                      setCampaignDraft({
+                        ...campaignDraft,
+                        maximumSparksReward: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Milestone title
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={72}
+                    value={campaignDraft.milestoneTitle}
+                    onChange={(event) =>
+                      setCampaignDraft({
+                        ...campaignDraft,
+                        milestoneTitle: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Milestone instructions
+                  <input
+                    required
+                    minLength={10}
+                    maxLength={240}
+                    value={campaignDraft.milestoneInstructions}
+                    onChange={(event) =>
+                      setCampaignDraft({
+                        ...campaignDraft,
+                        milestoneInstructions: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              {createMessage ? <p role="alert">{createMessage}</p> : null}
+            </div>
+            <div className="modal__footer">
+              <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createBusy || campaignServers.length === 0}>
+                {createBusy ? "Creating…" : "Create sponsored campaign"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+      {terminating ? (
+        <Modal title="Terminate ongoing campaign" onClose={() => setTerminating(null)}>
+          <div className="modal__body admin-editor">
+            <div className="admin-destructive-summary">
+              <strong>{terminating.title}</strong>
+              <span>
+                {terminating.server.name} · {terminating.status}
+              </span>
+              <p>
+                {terminating.campaignBudgetCredits.toLocaleString()} credits allocated ·{" "}
+                {terminating.consumedBudgetCredits.toLocaleString()} consumed
+              </p>
+            </div>
+            <label>
+              Campaign Credits refund
+              <select
+                value={refundPolicy}
+                disabled={terminating.fundingSource === "NORTIX_SPONSORED"}
+                onChange={(event) =>
+                  setRefundPolicy(
+                    event.target.value as "REFUND_ALL" | "REFUND_UNUSED" | "NO_REFUND",
+                  )
+                }
+              >
+                <option value="REFUND_ALL">Refund all allocated credits</option>
+                <option value="REFUND_UNUSED">Refund only unconsumed credits</option>
+                <option value="NO_REFUND">No Campaign Credits refund</option>
+              </select>
+              {terminating.fundingSource === "NORTIX_SPONSORED" ? (
+                <small>Nortix-sponsored campaigns never debit or refund owner credits.</small>
+              ) : null}
+            </label>
+            <label>
+              Reason (optional)
+              <textarea
+                rows={3}
+                maxLength={2000}
+                value={terminationReason}
+                onChange={(event) => setTerminationReason(event.target.value)}
+                placeholder="Internal moderation or operational context"
+              />
+            </label>
+            <label>
+              Type the campaign ID to confirm: <code>{terminating.id}</code>
+              <input
+                value={terminationConfirmation}
+                onChange={(event) => setTerminationConfirmation(event.target.value)}
+              />
+            </label>
+            <p className="admin-editor-note">
+              This is final. New joins and new milestone approvals stop immediately. Previously
+              verified player Sparks remain in place.
+            </p>
+            {terminationMessage ? <p role="alert">{terminationMessage}</p> : null}
+          </div>
+          <div className="modal__footer">
+            <Button variant="secondary" onClick={() => setTerminating(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={terminationBusy || terminationConfirmation !== terminating.id}
+              onClick={terminateCampaign}
+            >
+              <Trash2 /> {terminationBusy ? "Terminating…" : "Terminate campaign"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
 }

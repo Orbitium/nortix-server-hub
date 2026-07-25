@@ -33,25 +33,21 @@ export const buildApp = async (env: Env) => {
   await registerRoutes(app, env);
 
   app.setNotFoundHandler((request, reply) =>
-    reply
-      .code(404)
-      .send({
-        code: "NOT_FOUND",
-        message: "The requested endpoint does not exist.",
-        requestId: request.id,
-      }),
+    reply.code(404).send({
+      code: "NOT_FOUND",
+      message: "The requested endpoint does not exist.",
+      requestId: request.id,
+    }),
   );
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, "request failed");
     if (error instanceof ZodError) {
-      return reply
-        .code(400)
-        .send({
-          code: "VALIDATION_ERROR",
-          message: "The submitted data is invalid.",
-          details: error.issues,
-          requestId: request.id,
-        });
+      return reply.code(400).send({
+        code: "VALIDATION_ERROR",
+        message: "The submitted data is invalid.",
+        details: error.issues,
+        requestId: request.id,
+      });
     }
     const message = error instanceof Error ? error.message : "Unexpected error";
     const explicitStatus =
@@ -103,13 +99,20 @@ export const buildApp = async (env: Env) => {
       "syncing previous player names",
       "Campaign Credits",
       "campaign budget",
+      "sponsored campaign",
+      "ongoing campaign",
+      "campaign termination",
+      "budget reservation",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),
     );
-    const statusCode = explicitStatus && explicitStatus >= 400 && explicitStatus < 500
-      ? explicitStatus
-      : expose ? 400 : 500;
+    const statusCode =
+      explicitStatus && explicitStatus >= 400 && explicitStatus < 500
+        ? explicitStatus
+        : expose
+          ? 400
+          : 500;
     return reply.code(statusCode).send({
       code: statusCode === 500 ? "INTERNAL_ERROR" : "DOMAIN_ERROR",
       message: expose ? message : "The request could not be completed.",

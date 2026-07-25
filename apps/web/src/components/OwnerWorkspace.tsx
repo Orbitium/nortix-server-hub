@@ -1598,13 +1598,25 @@ function SettingRow({ title, description, checked, onChange, disabled = false }:
 
 function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
   const [balance, setBalance] = useState<CampaignCreditBalance>({ availableCredits: 0, purchasedCredits: 0, promotionalCredits: 0, promotionalTerms: "Promotional Campaign Credits may expire.", entries: [] });
-  const [ownerCampaigns, setOwnerCampaigns] = useState<Array<{ id: string; serverId: string; status: string; campaignBudgetCredits: number }>>([]);
+  const [ownerCampaigns, setOwnerCampaigns] = useState<Array<{
+    id: string;
+    serverId: string;
+    status: string;
+    campaignBudgetCredits: number;
+    fundingSource: "OWNER_CREDITS" | "NORTIX_SPONSORED";
+  }>>([]);
   const { servers } = useContext(OwnerServersContext);
   const [balanceMessage, setBalanceMessage] = useState("Loading Campaign Credits…");
   useEffect(() => {
     Promise.all([
       api<CampaignCreditBalance>("/owner/campaign-balance"),
-      api<Array<{ id: string; serverId: string; status: string; campaignBudgetCredits: number }>>("/owner/campaigns"),
+      api<Array<{
+        id: string;
+        serverId: string;
+        status: string;
+        campaignBudgetCredits: number;
+        fundingSource: "OWNER_CREDITS" | "NORTIX_SPONSORED";
+      }>>("/owner/campaigns"),
     ])
       .then(([balanceResult, campaignsResult]) => {
         setBalance(balanceResult);
@@ -1632,7 +1644,7 @@ function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: 
           ["Available Campaign Credits", balance.availableCredits.toLocaleString(), "Maximum available for a new campaign budget"],
           ["Purchased Credits", balance.purchasedCredits.toLocaleString(), "Non-expiring account allocation"],
           ["Promotional Credits", balance.promotionalCredits.toLocaleString(), "Used first and may expire"],
-          ["Active campaign budgets", ownerCampaigns.filter((item) => ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "ACTIVE"].includes(item.status)).length.toLocaleString(), "Credits reserved on submission"],
+          ["Owner-funded active budgets", ownerCampaigns.filter((item) => item.fundingSource === "OWNER_CREDITS" && ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "ACTIVE"].includes(item.status)).length.toLocaleString(), "Owner credits reserved on submission"],
           ["Portfolio campaigns", ownerCampaigns.length.toLocaleString(), "Across owned and managed servers"],
         ].map(([label, value, note]) => (
           <article className="card owner-kpi" key={label}>
@@ -1674,7 +1686,7 @@ function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: 
           {servers.map((item) => {
             const campaigns = ownerCampaigns.filter((campaign) => campaign.serverId === item.id);
             const reserved = campaigns
-              .filter((campaign) => campaign.status !== "DRAFT")
+              .filter((campaign) => campaign.fundingSource === "OWNER_CREDITS" && campaign.status !== "DRAFT")
               .reduce((total, campaign) => total + campaign.campaignBudgetCredits, 0);
             return (
             <div className="owner-allocation-row" key={item.id}>

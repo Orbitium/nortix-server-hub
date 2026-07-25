@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Palette,
   Search,
+  ServerCog,
   Target,
   ThumbsUp,
   Settings,
@@ -47,6 +48,8 @@ import {
 } from "../features/api-data";
 import { api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { readRolePreference, saveRolePreference } from "../lib/role-preference";
+import { filterServers, getServerFilterOptions } from "../lib/server-filtering";
 
 const PageHeading = ({
   eyebrow,
@@ -241,10 +244,14 @@ export function LegacyDashboardHomePage() {
 export function DashboardServersPage() {
   const { t } = useI18n();
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("ALL");
+  const [version, setVersion] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicServers();
   const servers = data?.items ?? [];
-  const filtered = servers.filter((server) =>
-    `${server.name} ${server.categories.join(" ")}`.toLowerCase().includes(search.toLowerCase()),
+  const filterOptions = useMemo(() => getServerFilterOptions(servers), [servers]);
+  const filtered = useMemo(
+    () => filterServers(servers, { search, category, version }),
+    [servers, search, category, version],
   );
   return (
     <div className="dashboard-page">
@@ -252,7 +259,7 @@ export function DashboardServersPage() {
         title={t("ui.servers")}
         description={t("ui.serverDescription")}
       />
-      <div className="dashboard-filter">
+      <div className="dashboard-filter server-filters">
         <label>
           <Search />
           <input
@@ -261,8 +268,28 @@ export function DashboardServersPage() {
             placeholder={t("ui.searchServers")}
           />
         </label>
-        <button className="button button--secondary">{t("ui.allCategories")}</button>
-        <button className="button button--secondary">{t("ui.allEditions")}</button>
+        <select
+          className="filter-select"
+          aria-label={t("ui.allCategories")}
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+        >
+          <option value="ALL">{t("ui.allCategories")}</option>
+          {filterOptions.categories.map((item) => (
+            <option value={item} key={item}>{item}</option>
+          ))}
+        </select>
+        <select
+          className="filter-select"
+          aria-label={t("ui.allVersions")}
+          value={version}
+          onChange={(event) => setVersion(event.target.value)}
+        >
+          <option value="ALL">{t("ui.allVersions")}</option>
+          {filterOptions.versions.map((item) => (
+            <option value={item} key={item}>{item}</option>
+          ))}
+        </select>
       </div>
       <div className="server-grid">
         {isLoading ? <Card><p>Loading servers…</p></Card> : null}
@@ -1080,6 +1107,7 @@ export function ProfilePage() {
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  const [serverOwnerMode, setServerOwnerMode] = useState(() => readRolePreference() === "owner");
   const [profileDraft, setProfileDraft] = useState({
     username: "",
     displayName: "",
@@ -1090,6 +1118,7 @@ export function ProfilePage() {
   });
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const { data: participations = [] } = useParticipations();
   const approvedMilestones = participations.reduce(
     (total, participation) => total + participation.completions.filter((item) => item.status === "APPROVED").length,
@@ -1202,6 +1231,12 @@ export function ProfilePage() {
     }
   };
 
+  const toggleServerOwnerMode = () => {
+    const next = !serverOwnerMode;
+    setServerOwnerMode(next);
+    saveRolePreference(next ? "owner" : "player");
+  };
+
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -1234,6 +1269,25 @@ export function ProfilePage() {
           </button>
         </div>
         <p className="profile-bio">{currentUser?.publicProfile?.bio || "Add a short intro so other testers know what you enjoy playing."}</p>
+        <div className="profile-owner-mode">
+          <span className="profile-owner-mode__icon">
+            <ServerCog />
+          </span>
+          <span>
+            <strong>{t("profile.serverOwnerMode")}</strong>
+            <small>{t("profile.serverOwnerModeDescription")}</small>
+          </span>
+          <button
+            type="button"
+            className={`owner-toggle ${serverOwnerMode ? "is-on" : ""}`}
+            role="switch"
+            aria-checked={serverOwnerMode}
+            aria-label={t("profile.serverOwnerMode")}
+            onClick={toggleServerOwnerMode}
+          >
+            <span />
+          </button>
+        </div>
         {profileMessage ? <p className="profile-message" role="status">{profileMessage}</p> : null}
         <div className="profile-stats">
           <span>
