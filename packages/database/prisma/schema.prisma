@@ -121,6 +121,20 @@ enum SparksTransactionType {
   MANUAL_ADJUSTMENT
 }
 
+enum CosmeticType {
+  AVATAR
+  BANNER
+  BADGE
+  TITLE
+  THEME
+}
+
+enum CosmeticUnlockMethod {
+  DEFAULT
+  LEVEL
+  SPARKS
+}
+
 enum CampaignCreditTransactionType {
   PURCHASED
   PROMOTIONAL
@@ -233,6 +247,7 @@ model User {
   reputationScore           Int                         @default(0)
   reputationTier            String                      @default("New Tester")
   testerLevel               Int                         @default(1)
+  testerExperience          Int                         @default(0)
   sparksBalanceCache        Int                         @default(0)
   earningsBalanceCache      Int                         @default(0)
   pendingEarningsCache      Int                         @default(0)
@@ -260,6 +275,7 @@ model User {
   campaignTerminations      CampaignTermination[]       @relation("CampaignTerminationActor")
   reviewedCompletions       MilestoneCompletion[]       @relation("CompletionReviewer")
   cosmeticPurchases         CosmeticPurchase[]
+  equippedCosmetics         EquippedCosmetic[]
   analyticsEvents           AnalyticsEvent[]
   fraudFlags                FraudFlag[]                 @relation("FraudSubjectUser")
   createdFraudFlags         FraudFlag[]                 @relation("FraudFlagCreator")
@@ -276,6 +292,7 @@ model User {
   createdAdminMessages      AdminMessage[]              @relation("AdminMessageCreator")
   targetedAdminMessages     AdminMessage[]              @relation("AdminMessageTarget")
   adminMessageDeliveries    AdminMessageDelivery[]
+  dailyActivities           UserDailyActivity[]
 
   @@index([status])
   @@index([reputationScore])
@@ -870,18 +887,26 @@ model CampaignCreditLedgerEntry {
 }
 
 model CosmeticItem {
-  id          String             @id @default(cuid())
-  slug        String             @unique
-  name        String
-  description String
-  type        String
-  sparksPrice Int
-  rarity      String
-  season      String?
-  preview     Json
-  available   Boolean            @default(true)
-  purchases   CosmeticPurchase[]
-  createdAt   DateTime           @default(now())
+  id            String               @id @default(cuid())
+  slug          String               @unique
+  name          String
+  description   String
+  type          CosmeticType
+  unlockMethod  CosmeticUnlockMethod @default(SPARKS)
+  requiredLevel Int?
+  sparksPrice   Int                  @default(0)
+  rarity        String
+  season        String?
+  preview       Json
+  sortOrder     Int                  @default(0)
+  available     Boolean              @default(true)
+  purchases     CosmeticPurchase[]
+  equippedBy    EquippedCosmetic[]
+  createdAt     DateTime             @default(now())
+
+  @@unique([id, type])
+  @@index([type, available, sortOrder])
+  @@index([unlockMethod, requiredLevel])
 }
 
 model CosmeticPurchase {
@@ -894,6 +919,18 @@ model CosmeticPurchase {
   createdAt           DateTime     @default(now())
 
   @@unique([userId, itemId])
+}
+
+model EquippedCosmetic {
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       CosmeticType
+  itemId     String
+  item       CosmeticItem @relation(fields: [itemId, type], references: [id, type])
+  equippedAt DateTime     @default(now())
+
+  @@id([userId, type])
+  @@index([itemId])
 }
 
 model AnalyticsEvent {
@@ -1035,6 +1072,20 @@ model UserQuest {
   questDate   DateTime
 
   @@unique([userId, questId, questDate])
+}
+
+model UserDailyActivity {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityDate   DateTime
+  webOpened      Boolean  @default(false)
+  campaignPlayed Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, activityDate])
+  @@index([userId, activityDate])
 }
 
 model Badge {

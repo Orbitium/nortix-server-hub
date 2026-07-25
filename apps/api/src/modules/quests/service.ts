@@ -2,7 +2,7 @@ import { prisma, type Prisma } from "@nortix/database";
 
 const ACCOUNT_QUEST_DATE = new Date("1970-01-01T00:00:00.000Z");
 
-const placeholderQuestTypes = new Set(["DISCORD_JOIN", "LOGIN_STREAK", "FRIEND_REFERRAL"]);
+const placeholderQuestTypes = new Set(["DISCORD_JOIN", "FRIEND_REFERRAL"]);
 
 type QuestTransaction = Prisma.TransactionClient;
 
@@ -30,9 +30,19 @@ async function isQuestComplete(tx: QuestTransaction, userId: string, type: strin
         select: { id: true },
       }));
     case "DISCORD_JOIN":
-    case "LOGIN_STREAK":
     case "FRIEND_REFERRAL":
       return false;
+    case "LOGIN_STREAK": {
+      const rows = await tx.userDailyActivity.findMany({
+        where: { userId, activityDate: { lte: new Date() } },
+        select: { activityDate: true, webOpened: true, campaignPlayed: true },
+        orderBy: { activityDate: "desc" }, take: 7,
+      });
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      if (rows.length < 7 || rows[0]?.activityDate.getTime() !== today.getTime() || rows.some((row) => !row.webOpened && !row.campaignPlayed)) return false;
+      return rows.every((row, index) => index === 0 || rows[index - 1]!.activityDate.getTime() - row.activityDate.getTime() === 86_400_000);
+    }
     case "SPARKS_SHOP_PURCHASED":
       return Boolean(await tx.cosmeticPurchase.findFirst({ where: { userId }, select: { id: true } }));
     case "SERVER_REVIEW_WRITTEN":

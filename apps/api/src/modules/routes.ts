@@ -16,6 +16,8 @@ import {
   CrackedAccountClaimSchema,
   ServerReviewInputSchema,
   ServerVoteInputSchema,
+  EquipCosmeticInputSchema,
+  UnequipCosmeticInputSchema,
 } from "@nortix/shared";
 import {
   CreateServerVerificationSchema,
@@ -53,12 +55,17 @@ import { createNotification, NotificationService } from "./notifications/service
 import { ServerDiscoveryService } from "./server-discovery/service.js";
 import { McsrvstatClient, McsrvstatRequestError } from "./server-discovery/mcsrvstat-client.js";
 import { QuestService } from "./quests/service.js";
+import { ActivityService } from "./activity/service.js";
+import { CosmeticService } from "./cosmetics/service.js";
+import { normalizeCosmeticPreview } from "./cosmetics/policy.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
 const minecraftIdentityService = new MinecraftIdentityService();
 const notificationService = new NotificationService();
 const questService = new QuestService();
+const activityService = new ActivityService();
+const cosmeticService = new CosmeticService();
 
 const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
 const normalizeServerHostname = (hostname: string) =>
@@ -156,6 +163,7 @@ const selfUserSelect = {
   reputationScore: true,
   reputationTier: true,
   testerLevel: true,
+  testerExperience: true,
   createdAt: true,
   lastActiveAt: true,
 } as const;
@@ -521,6 +529,20 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         reputationTier: true,
         testerLevel: true,
         publicProfile: true,
+        equippedCosmetics: {
+          select: {
+            type: true,
+            item: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                rarity: true,
+                preview: true,
+              },
+            },
+          },
+        },
       },
     });
     if (
@@ -550,6 +572,13 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         isPublic: profile.isPublic !== false,
         showReputation: profile.showReputation !== false,
       },
+      cosmetics: user.equippedCosmetics.map((selection) => ({
+        id: selection.item.id,
+        name: selection.item.name,
+        type: selection.item.type,
+        rarity: selection.item.rarity,
+        preview: normalizeCosmeticPreview(selection.item.preview),
+      })),
     };
   });
   app.get("/v1/leaderboard", async () =>
@@ -1463,6 +1492,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           where: { id: participation.id },
           data: { status: "ACTIVE", lastActivityAt: new Date() },
         });
+        await activityService.record(participation.playerId, "CAMPAIGN_PLAY", validated.occurredAt);
+        await questService.evaluateAndAward(participation.playerId);
       }
       await prisma.server.update({
         where: { id: input.serverId },
@@ -1656,55 +1687,77 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       ...quest,
       progress: 0,
       completedAt: null,
-      verificationPending: ["DISCORD_JOIN", "LOGIN_STREAK", "FRIEND_REFERRAL"].includes(quest.type),
+      verificationPending: ["DISCORD_JOIN", "FRIEND_REFERRAL"].includes(quest.type),
     }));
   });
   app.get("/v1/sparks/shop", async () =>
-    prisma.cosmeticItem.findMany({ where: { available: true }, orderBy: { sparksPrice: "asc" } }),
-  );
-  app.post("/v1/sparks/purchases", { preHandler: app.authenticate }, async (request, reply) => {
-    const { itemId } = sparksPurchaseSchema.parse(request.body);
-    const purchase = await prisma.$transaction(
-      async (tx) => {
-        const [item, entries] = await Promise.all([
-          tx.cosmeticItem.findUnique({ where: { id: itemId } }),
-          tx.sparksLedgerEntry.findMany({ where: { userId: request.user!.id } }),
-        ]);
-        if (!item?.available) throw new Error("Cosmetic is not available.");
-        const balance = entries.reduce(
-          (sum, entry) => sum + (entry.direction === "CREDIT" ? entry.amount : -entry.amount),
-          0,
-        );
-        if (balance < item.sparksPrice) throw new Error("Not enough Sparks.");
-        const ledger = await tx.sparksLedgerEntry.create({
-          data: {
-            userId: request.user!.id,
-            direction: "DEBIT",
-            amount: item.sparksPrice,
-            transactionType: "COSMETIC_PURCHASE",
-            referenceType: "COSMETIC_ITEM",
-            referenceId: item.id,
-            idempotencyKey: `cosmetic:${request.user!.id}:${item.id}`,
-          },
-        });
-        const cosmeticPurchase = await tx.cosmeticPurchase.create({
-          data: { userId: request.user!.id, itemId: item.id, sparksLedgerEntryId: ledger.id },
-        });
-        await createNotification(tx, {
-          recipientId: request.user!.id,
-          category: "SPARKS",
-          title: `${item.name} unlocked`,
-          body: `${item.sparksPrice.toLocaleString()} Sparks were used for this cosmetic. Sparks have no cash value.`,
-          actionUrl: "/dashboard/sparks-shop",
-          dedupeKey: `cosmetic-purchase:${cosmeticPurchase.id}`,
-        });
-        return cosmeticPurchase;
+    prisma.cosmeticItem.findMany({
+      where: { available: true, unlockMethod: "SPARKS" },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        type: true,
+        sparksPrice: true,
+        rarity: true,
+        season: true,
+        preview: true,
       },
-      { isolationLevel: "Serializable" },
-    );
-    await questService.evaluateAndAward(request.user!.id);
-    return reply.code(201).send(purchase);
-  });
+      orderBy: { sparksPrice: "asc" },
+    }),
+  );
+  app.post(
+    "/v1/sparks/purchases",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { itemId } = sparksPurchaseSchema.parse(request.body);
+      const purchase = await cosmeticService.purchase(request.user!.id, itemId);
+      await questService.evaluateAndAward(request.user!.id);
+      return reply.code(201).send(purchase);
+    },
+  );
+  app.get("/v1/profile/cosmetics", { preHandler: app.authenticate }, async (request) =>
+    cosmeticService.collection(request.user!.id),
+  );
+  app.get("/v1/profile/activity", { preHandler: app.authenticate }, async (request) =>
+    cosmeticService.activity(request.user!.id),
+  );
+  app.post(
+    "/v1/profile/activity/streak",
+    { preHandler: app.authenticate, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    async (request) => {
+      await activityService.record(request.user!.id, "WEB_OPEN");
+      await questService.evaluateAndAward(request.user!.id);
+      return activityService.streak(request.user!.id);
+    },
+  );
+  app.get("/v1/profile/activity/streak", { preHandler: app.authenticate }, async (request) =>
+    activityService.streak(request.user!.id),
+  );
+  app.put(
+    "/v1/profile/cosmetics/equipped",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    },
+    async (request) => {
+      const { itemId } = EquipCosmeticInputSchema.parse(request.body);
+      return cosmeticService.equip(request.user!.id, itemId);
+    },
+  );
+  app.delete(
+    "/v1/profile/cosmetics/equipped",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { type } = UnequipCosmeticInputSchema.parse(request.body);
+      await cosmeticService.unequip(request.user!.id, type);
+      return reply.code(204).send();
+    },
+  );
 
   app.get("/v1/owner/servers", { preHandler: app.authenticate }, async (request) => {
     const userId = request.user!.id;

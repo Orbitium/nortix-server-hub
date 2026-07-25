@@ -61,9 +61,17 @@ promise.
 - `GET /sparks/transactions`
 - `GET /sparks/shop`
 - `POST /sparks/purchases`
+- `GET /profile/cosmetics`
+- `PUT /profile/cosmetics/equipped`
+- `DELETE /profile/cosmetics/equipped`
+- `GET /profile/activity`
 
 Sparks are non-withdrawable, non-transferable platform points with no cash value. Purchase routes
 only debit Sparks and there is no cash-out or conversion endpoint.
+Cosmetic prices and level requirements come from the server catalog. Clients cannot claim an
+unlock or choose an arbitrary slot. Sparks purchases debit the append-only ledger and create
+durable ownership in one serializable transaction; level rewards derive from the server-owned
+tester level. Equipped selections are constrained to one item per typed slot.
 
 ## Owner operations
 

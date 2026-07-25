@@ -107,6 +107,54 @@ export type CosmeticItem = {
   preview: Record<string, unknown>;
 };
 
+export type ProfileCosmeticType = "AVATAR" | "BANNER" | "BADGE" | "TITLE" | "THEME";
+
+export type ProfileCosmeticItem = CosmeticItem & {
+  type: ProfileCosmeticType;
+  unlockMethod: "DEFAULT" | "LEVEL" | "SPARKS";
+  requiredLevel: number | null;
+  sortOrder: number;
+  available: boolean;
+  purchased: boolean;
+  unlocked: boolean;
+  equipped: boolean;
+  preview: {
+    primary: string;
+    accent: string;
+    icon: string;
+    pattern: "grid" | "aurora" | "mountains" | "cosmic" | "waves" | "plain";
+  };
+};
+
+export type ProfileCosmetics = {
+  testerLevel: number;
+  testerExperience: number;
+  currentLevelExperience: number;
+  nextLevelExperience: number;
+  reputationScore: number;
+  nextLevelUnlock: { level: number; name: string; itemId: string } | null;
+  equipped: Partial<Record<ProfileCosmeticType, string>>;
+  items: ProfileCosmeticItem[];
+};
+
+export type ProfileActivity = {
+  stats: {
+    verifiedPlaytests: number;
+    participationRecords: number;
+    premiumIdentities: number;
+    serverScopedIdentities: number;
+    feedbackGiven: number;
+  };
+  activities: Array<{
+    id: string;
+    kind: "PLAYTEST" | "FEEDBACK" | "JOINED" | "SPARKS";
+    title: string;
+    detail: string;
+    occurredAt: string;
+    sparks: number | null;
+  }>;
+};
+
 export type CurrentUser = {
   id: string;
   username: string;
@@ -117,6 +165,7 @@ export type CurrentUser = {
   reputationScore: number;
   reputationTier: string;
   testerLevel: number;
+  testerExperience: number;
   publicProfile?: UserPublicProfile;
 };
 
@@ -135,6 +184,7 @@ export type PublicUserProfile = {
   reputationTier: string | null;
   testerLevel: number | null;
   publicProfile: UserPublicProfile;
+  cosmetics: Array<Pick<ProfileCosmeticItem, "id" | "name" | "type" | "rarity" | "preview">>;
 };
 
 export type AdminReviewCampaign = {
@@ -330,6 +380,13 @@ export type NotificationPreferences = {
   updatedAt: string;
 };
 
+export type Streak = {
+  current: number;
+  longest: number;
+  today: { webOpened: boolean; campaignPlayed: boolean; active: boolean };
+  days: Array<{ date: string; active: boolean }>;
+};
+
 export type AdminMessageRecord = {
   id: string;
   title: string;
@@ -388,6 +445,25 @@ export const useCosmetics = () =>
   useQuery({
     queryKey: ["sparks-shop"],
     queryFn: () => api<CosmeticItem[]>("/sparks/shop"),
+  });
+
+export const useProfileCosmetics = () =>
+  useQuery({
+    queryKey: ["profile-cosmetics"],
+    queryFn: () => api<ProfileCosmetics>("/profile/cosmetics"),
+  });
+
+export const useProfileActivity = () =>
+  useQuery({
+    queryKey: ["profile-activity"],
+    queryFn: () => api<ProfileActivity>("/profile/activity"),
+  });
+
+export const useStreak = (enabled = true) =>
+  useQuery({
+    queryKey: ["profile-streak"],
+    queryFn: () => api<Streak>("/profile/activity/streak", { method: "POST" }),
+    enabled,
   });
 
 export const useSparksSummary = (enabled = true) =>

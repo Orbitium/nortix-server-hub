@@ -65,6 +65,23 @@ separately attributable; promotional expiry cannot debit purchased credits.
 Cached balances are never authoritative. They are updated for responsive summaries after ledger
 transactions and can be rebuilt from ledger entries.
 
+## Player cosmetics
+
+Profile presentation uses a typed cosmetic catalog (`AVATAR`, `BANNER`, `BADGE`, `TITLE`, and
+`THEME`) with explicit `DEFAULT`, `LEVEL`, or `SPARKS` unlock methods. Level eligibility derives
+from the backend-owned tester level. Purchased ownership remains linked to its Sparks ledger debit,
+and equipped selections have a database-enforced item/slot type match.
+
+Verified milestone completions add a fixed, idempotent amount of tester experience in the same
+transaction as verification. Levels are derived from stable cumulative thresholds and never from
+browser state; reputation remains a separate, non-purchasable signal.
+
+Preview metadata is reduced to allowlisted colors, icons, and patterns before it reaches CSS;
+arbitrary catalog JSON is never rendered as markup or passed through as a CSS expression. The
+private profile activity endpoint scopes all aggregates and events to the authenticated player.
+Public profiles expose only equipped presentation metadata and still honor profile visibility and
+reputation preferences.
+
 ## Campaign state and moderation
 
 Campaigns move through explicit states. Owners can draft and submit verified-server campaigns.

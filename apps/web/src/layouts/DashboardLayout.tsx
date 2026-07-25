@@ -39,6 +39,7 @@ import {
   usePublicCampaigns,
   usePublicServers,
   useSparksSummary,
+  useStreak,
 } from "../features/api-data";
 import { api } from "../lib/api";
 import { useAuthSession } from "../lib/auth-session";
@@ -88,6 +89,7 @@ export function DashboardLayout() {
   const { data: sparksSummary } = useSparksSummary(isAuthenticated);
   const { data: leaderboardData } = useLeaderboard();
   const { data: dailyQuests = [] } = useDailyQuests(isAuthenticated);
+  const { data: streak } = useStreak(isAuthenticated);
   const servers = serverData?.items ?? [];
   const campaigns = campaignData?.items ?? [];
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
@@ -474,17 +476,15 @@ export function DashboardLayout() {
               <span>
                 <Crown size={18} /> {t("dashboard.streak")}
               </span>
-              <b>{t("dashboard.notTracked")}</b>
+              <b>{streak ? `${streak.current} days` : "—"}</b>
             </div>
-            <p>{t("dashboard.streakUnavailable")}</p>
+            <p>{streak?.today.active ? "Active today. Keep it going." : "Open Nortix or play an active campaign server today."}</p>
             <div className="streak-days">
-              {["—", "—", "—", "—", "—", "—", "—"].map((day, index) => (
-                <i key={`${day}-${index}`}>{day}</i>
+              {(streak?.days ?? Array.from({ length: 7 }, () => ({ date: "", active: false }))).map((day, index) => (
+                <i className={day.active ? "done" : undefined} key={`${day.date}-${index}`}>{day.active ? "✓" : "·"}</i>
               ))}
             </div>
-            <button className="rail-action" disabled>
-              {t("dashboard.endpointRequired")}
-            </button>
+            <span className="rail-action">{streak ? `Best: ${streak.longest} days` : "Loading streak…"}</span>
           </div>}
 
           <div className="rail-card rail-leaderboard">

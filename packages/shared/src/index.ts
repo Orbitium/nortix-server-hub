@@ -88,6 +88,23 @@ export const campaignTerminationRefundPolicies = [
 ] as const;
 export const CampaignTerminationRefundPolicySchema = z.enum(campaignTerminationRefundPolicies);
 
+export const cosmeticTypes = ["AVATAR", "BANNER", "BADGE", "TITLE", "THEME"] as const;
+export const CosmeticTypeSchema = z.enum(cosmeticTypes);
+export const cosmeticUnlockMethods = ["DEFAULT", "LEVEL", "SPARKS"] as const;
+export const CosmeticUnlockMethodSchema = z.enum(cosmeticUnlockMethods);
+
+export const EquipCosmeticInputSchema = z
+  .object({
+    itemId: z.string().min(1).max(120),
+  })
+  .strict();
+
+export const UnequipCosmeticInputSchema = z
+  .object({
+    type: CosmeticTypeSchema,
+  })
+  .strict();
+
 export const milestoneTypes = [
   "JOIN_SERVER",
   "JOIN_DAILY",
@@ -335,6 +352,10 @@ export const AnalyticsEventSchema = z.object({
 export type CampaignInput = z.infer<typeof CampaignInputSchema>;
 export type AdminSponsoredCampaignInput = z.infer<typeof AdminSponsoredCampaignInputSchema>;
 export type AdminCampaignTerminationInput = z.infer<typeof AdminCampaignTerminationInputSchema>;
+export type CosmeticType = z.infer<typeof CosmeticTypeSchema>;
+export type CosmeticUnlockMethod = z.infer<typeof CosmeticUnlockMethodSchema>;
+export type EquipCosmeticInput = z.infer<typeof EquipCosmeticInputSchema>;
+export type UnequipCosmeticInput = z.infer<typeof UnequipCosmeticInputSchema>;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
 export type ApiError = {
   code: string;

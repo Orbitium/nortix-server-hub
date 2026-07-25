@@ -1,5 +1,7 @@
 import {
   ArrowRight,
+  Award,
+  Bot,
   Check,
   CheckCircle2,
   CircleDollarSign,
@@ -12,9 +14,12 @@ import {
   Heart,
   History,
   Link2,
+  Lock,
+  Mountain,
   MessageSquareText,
   MoreHorizontal,
   Palette,
+  Radio,
   Search,
   ServerCog,
   Target,
@@ -22,9 +27,11 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Tag,
   UserPlus,
   Unlink2,
   Users,
+  Zap,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -37,11 +44,15 @@ import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
 import { SeededProgressPage } from "../components/SeededProgressPage";
 import {
   type CosmeticItem,
+  type ProfileCosmeticItem,
+  type ProfileCosmeticType,
   useCosmetics,
   useCurrentUser,
   useDailyQuests,
   useLeaderboard,
   useParticipations,
+  useProfileActivity,
+  useProfileCosmetics,
   usePublicCampaigns,
   usePublicServers,
   useSparksSummary,
@@ -71,6 +82,45 @@ const PageHeading = ({
     {action}
   </div>
 );
+
+const cosmeticTypes: Array<{ type: ProfileCosmeticType; label: string }> = [
+  { type: "AVATAR", label: "Avatars" },
+  { type: "BANNER", label: "Banners" },
+  { type: "BADGE", label: "Badges" },
+  { type: "TITLE", label: "Titles" },
+  { type: "THEME", label: "Themes" },
+];
+
+const CosmeticGlyph = ({ item }: { item: ProfileCosmeticItem }) => {
+  const icons = {
+    award: Award,
+    bot: Bot,
+    compass: Target,
+    leaf: Palette,
+    message: MessageSquareText,
+    mountain: Mountain,
+    orbit: Globe2,
+    radio: Radio,
+    "shield-check": ShieldCheck,
+    sparkles: Sparkles,
+    tag: Tag,
+    user: Users,
+    waves: Flame,
+    zap: Zap,
+  };
+  const Icon = icons[item.preview.icon as keyof typeof icons] ?? Sparkles;
+  return <Icon aria-hidden="true" />;
+};
+
+const relativeActivityTime = (occurredAt: string) => {
+  const elapsed = Date.now() - Date.parse(occurredAt);
+  const minutes = Math.max(1, Math.floor(elapsed / 60_000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+};
 
 export function DashboardHomePage() {
   return <ReferenceDashboardHome />;
@@ -255,10 +305,7 @@ export function DashboardServersPage() {
   );
   return (
     <div className="dashboard-page">
-      <PageHeading
-        title={t("ui.servers")}
-        description={t("ui.serverDescription")}
-      />
+      <PageHeading title={t("ui.servers")} description={t("ui.serverDescription")} />
       <div className="dashboard-filter server-filters">
         <label>
           <Search />
@@ -276,7 +323,9 @@ export function DashboardServersPage() {
         >
           <option value="ALL">{t("ui.allCategories")}</option>
           {filterOptions.categories.map((item) => (
-            <option value={item} key={item}>{item}</option>
+            <option value={item} key={item}>
+              {item}
+            </option>
           ))}
         </select>
         <select
@@ -287,15 +336,32 @@ export function DashboardServersPage() {
         >
           <option value="ALL">{t("ui.allVersions")}</option>
           {filterOptions.versions.map((item) => (
-            <option value={item} key={item}>{item}</option>
+            <option value={item} key={item}>
+              {item}
+            </option>
           ))}
         </select>
       </div>
       <div className="server-grid">
-        {isLoading ? <Card><p>Loading servers…</p></Card> : null}
-        {isError ? <Card><p>{t("listing.serverError")}</p><Button onClick={() => refetch()}>{t("ui.retry")}</Button></Card> : null}
-        {!isLoading && !isError && filtered.length === 0 ? <Card><p>{t("ui.noServers")}</p></Card> : null}
-        {filtered.map((server) => <ServerCard server={server} key={server.id} />)}
+        {isLoading ? (
+          <Card>
+            <p>Loading servers…</p>
+          </Card>
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>{t("listing.serverError")}</p>
+            <Button onClick={() => refetch()}>{t("ui.retry")}</Button>
+          </Card>
+        ) : null}
+        {!isLoading && !isError && filtered.length === 0 ? (
+          <Card>
+            <p>{t("ui.noServers")}</p>
+          </Card>
+        ) : null}
+        {filtered.map((server) => (
+          <ServerCard server={server} key={server.id} />
+        ))}
       </div>
     </div>
   );
@@ -324,7 +390,9 @@ export function DashboardCampaignsPage() {
         campaign.server.edition,
         ...campaign.server.categories,
         ...campaign.versionRequirements,
-      ].join(" ").toLowerCase();
+      ]
+        .join(" ")
+        .toLowerCase();
       return (
         (category === "ALL" || campaign.category === category) &&
         (edition === "ALL" || campaign.server.edition === edition) &&
@@ -332,26 +400,41 @@ export function DashboardCampaignsPage() {
       );
     });
     return [...filtered].sort((left, right) => {
-      if (tab === "Highest Sparks limit") return right.maximumSparksReward - left.maximumSparksReward;
-      if (tab === "Ending soon") return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
+      if (tab === "Highest Sparks limit")
+        return right.maximumSparksReward - left.maximumSparksReward;
+      if (tab === "Ending soon")
+        return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
       return new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime();
     });
   }, [campaigns, category, edition, search, tab]);
   return (
     <div className="dashboard-page">
-      <PageHeading
-        title={t("ui.campaigns")}
-        description={t("ui.campaignDescription")}
-      />
+      <PageHeading title={t("ui.campaigns")} description={t("ui.campaignDescription")} />
       <div className="dashboard-filter campaign-filters">
         <label>
           <Search />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("ui.searchCampaigns")} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t("ui.searchCampaigns")}
+          />
         </label>
-        <select aria-label={t("ui.allCategories")} value={category} onChange={(event) => setCategory(event.target.value)}>
-          {categories.map((item) => <option value={item} key={item}>{item === "ALL" ? t("ui.allCategories") : item}</option>)}
+        <select
+          aria-label={t("ui.allCategories")}
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+        >
+          {categories.map((item) => (
+            <option value={item} key={item}>
+              {item === "ALL" ? t("ui.allCategories") : item}
+            </option>
+          ))}
         </select>
-        <select aria-label={t("ui.allEditions")} value={edition} onChange={(event) => setEdition(event.target.value)}>
+        <select
+          aria-label={t("ui.allEditions")}
+          value={edition}
+          onChange={(event) => setEdition(event.target.value)}
+        >
           <option value="ALL">{t("ui.allEditions")}</option>
           <option value="JAVA">Java</option>
           <option value="BEDROCK">Bedrock</option>
@@ -365,9 +448,22 @@ export function DashboardCampaignsPage() {
         ))}
       </div>
       <div className="campaign-grid">
-        {isLoading ? <Card><p>Loading seeded campaigns…</p></Card> : null}
-        {isError ? <Card><p>{t("listing.campaignError")}</p><Button onClick={() => refetch()}>{t("ui.retry")}</Button></Card> : null}
-        {!isLoading && !isError && visibleCampaigns.length === 0 ? <Card><p>{t("ui.noCampaigns")}</p></Card> : null}
+        {isLoading ? (
+          <Card>
+            <p>Loading seeded campaigns…</p>
+          </Card>
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>{t("listing.campaignError")}</p>
+            <Button onClick={() => refetch()}>{t("ui.retry")}</Button>
+          </Card>
+        ) : null}
+        {!isLoading && !isError && visibleCampaigns.length === 0 ? (
+          <Card>
+            <p>{t("ui.noCampaigns")}</p>
+          </Card>
+        ) : null}
         {visibleCampaigns.map((campaign) => (
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
@@ -671,8 +767,13 @@ export function QuestsPage() {
       <Card className="quest-hero">
         <div>
           <Badge tone="purple">DAILY SET</Badge>
-          <h2>{quests.length} quests · up to {totalPotentialSparks} Sparks may be available</h2>
-          <p>These account quests are available to everyone. Sign in to earn Sparks when the backend verifies your progress.</p>
+          <h2>
+            {quests.length} quests · up to {totalPotentialSparks} Sparks may be available
+          </h2>
+          <p>
+            These account quests are available to everyone. Sign in to earn Sparks when the backend
+            verifies your progress.
+          </p>
         </div>
         <div className="streak-large">
           <Flame />
@@ -681,20 +782,36 @@ export function QuestsPage() {
         </div>
       </Card>
       <div className="quest-grid">
-        {isLoading ? <Card><p>Loading seeded quests…</p></Card> : null}
-        {isError ? <Card><p>Seeded quests could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {isLoading ? (
+          <Card>
+            <p>Loading seeded quests…</p>
+          </Card>
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>Seeded quests could not be loaded.</p>
+            <Button onClick={() => refetch()}>Retry</Button>
+          </Card>
+        ) : null}
         {quests.map((quest) => {
           const Icon = questIcons[quest.type as keyof typeof questIcons] ?? Target;
           return (
-          <Card key={quest.id}>
-            <span className="quest-icon">
-              <Icon />
-            </span>
-            <Badge tone={quest.verificationPending ? "warning" : "purple"}>{quest.verificationPending ? "Verification pending" : `${quest.sparksReward} Sparks`}</Badge>
-            <h3>{quest.title}</h3>
-            <p>{quest.description}</p>
-            <ProgressBar value={(quest.progress / quest.target) * 100} label={`${quest.progress} of ${quest.target}`} />
-          </Card>
+            <Card key={quest.id}>
+              <span className="quest-icon">
+                <Icon />
+              </span>
+              <Badge tone={quest.verificationPending ? "warning" : "purple"}>
+                {quest.verificationPending
+                  ? "Verification pending"
+                  : `${quest.sparksReward} Sparks`}
+              </Badge>
+              <h3>{quest.title}</h3>
+              <p>{quest.description}</p>
+              <ProgressBar
+                value={(quest.progress / quest.target) * 100}
+                label={`${quest.progress} of ${quest.target}`}
+              />
+            </Card>
           );
         })}
       </div>
@@ -738,26 +855,37 @@ export function SparksShopPage() {
         <button>Seasonal</button>
       </div>
       <div className="cosmetic-grid">
-        {isLoading ? <Card><p>Loading seeded cosmetics…</p></Card> : null}
-        {isError ? <Card><p>Seeded cosmetics could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
-        {cosmetics.filter((item) => item.type !== "BADGE").map((item) => (
-          <Card key={item.id} className="cosmetic-card">
-            <div
-              className="cosmetic-preview"
-              style={{ backgroundColor: String(item.preview.color ?? "") || undefined }}
-            >
-              <Palette />
-              <Badge tone={item.rarity === "EPIC" ? "purple" : "neutral"}>{item.rarity}</Badge>
-            </div>
-            <div>
-              <small>{item.type.replaceAll("_", " ")}</small>
-              <h3>{item.name}</h3>
-              <button disabled={balance < item.sparksPrice} onClick={() => setSelected(item)}>
-                <Sparks value={item.sparksPrice.toLocaleString()} />
-              </button>
-            </div>
+        {isLoading ? (
+          <Card>
+            <p>Loading seeded cosmetics…</p>
           </Card>
-        ))}
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>Seeded cosmetics could not be loaded.</p>
+            <Button onClick={() => refetch()}>Retry</Button>
+          </Card>
+        ) : null}
+        {cosmetics
+          .filter((item) => item.type !== "BADGE")
+          .map((item) => (
+            <Card key={item.id} className="cosmetic-card">
+              <div
+                className="cosmetic-preview"
+                style={{ backgroundColor: String(item.preview.color ?? "") || undefined }}
+              >
+                <Palette />
+                <Badge tone={item.rarity === "EPIC" ? "purple" : "neutral"}>{item.rarity}</Badge>
+              </div>
+              <div>
+                <small>{item.type.replaceAll("_", " ")}</small>
+                <h3>{item.name}</h3>
+                <button disabled={balance < item.sparksPrice} onClick={() => setSelected(item)}>
+                  <Sparks value={item.sparksPrice.toLocaleString()} />
+                </button>
+              </div>
+            </Card>
+          ))}
       </div>
       {selected && (
         <Modal title={`Unlock ${selected.name}`} onClose={() => setSelected(null)}>
@@ -769,8 +897,8 @@ export function SparksShopPage() {
               <Palette />
             </div>
             <p>
-              This cosmetic costs <strong>{selected.sparksPrice.toLocaleString()} Sparks</strong>. Your
-              Your remaining Sparks balance will update after confirmation.
+              This cosmetic costs <strong>{selected.sparksPrice.toLocaleString()} Sparks</strong>.
+              Your Your remaining Sparks balance will update after confirmation.
             </p>
             <div className="withdraw-summary">
               <span>
@@ -822,8 +950,17 @@ export function LeaderboardsPage() {
         description="Recognition for reputation and consistent, useful participation—not spending."
       />
       <div className="leaderboard-podium">
-        {isLoading ? <Card><p>Loading seeded leaderboard…</p></Card> : null}
-        {isError ? <Card><p>The seeded leaderboard could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+        {isLoading ? (
+          <Card>
+            <p>Loading seeded leaderboard…</p>
+          </Card>
+        ) : null}
+        {isError ? (
+          <Card>
+            <p>The seeded leaderboard could not be loaded.</p>
+            <Button onClick={() => refetch()}>Retry</Button>
+          </Card>
+        ) : null}
         {leaderboard.slice(0, 3).map((entry, index) => (
           <Card className={`podium podium--${index + 1}`} key={entry.username}>
             <span className="podium-rank">{index + 1}</span>
@@ -1098,7 +1235,11 @@ export function ProfilePage() {
     activity: [],
   });
   const [serverOptions, setServerOptions] = useState<ServerOption[]>([]);
-  const [claim, setClaim] = useState<{ code: string; expiresAt: string; verificationServer: string }>();
+  const [claim, setClaim] = useState<{
+    code: string;
+    expiresAt: string;
+    verificationServer: string;
+  }>();
   const [claimOpen, setClaimOpen] = useState(false);
   const [serverId, setServerId] = useState("");
   const [crackedName, setCrackedName] = useState("");
@@ -1107,6 +1248,8 @@ export function ProfilePage() {
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  const [cosmeticType, setCosmeticType] = useState<ProfileCosmeticType>("AVATAR");
+  const [cosmeticBusy, setCosmeticBusy] = useState<string>();
   const [serverOwnerMode, setServerOwnerMode] = useState(() => readRolePreference() === "owner");
   const [profileDraft, setProfileDraft] = useState({
     username: "",
@@ -1117,13 +1260,28 @@ export function ProfilePage() {
     showReputation: true,
   });
   const { data: currentUser } = useCurrentUser();
+  const { data: cosmetics, refetch: refetchCosmetics } = useProfileCosmetics();
+  const { data: profileActivity } = useProfileActivity();
+  const { data: sparksSummary, refetch: refetchSparks } = useSparksSummary();
   const queryClient = useQueryClient();
   const { t } = useI18n();
   const { data: participations = [] } = useParticipations();
   const approvedMilestones = participations.reduce(
-    (total, participation) => total + participation.completions.filter((item) => item.status === "APPROVED").length,
+    (total, participation) =>
+      total + participation.completions.filter((item) => item.status === "VERIFIED").length,
     0,
   );
+  const cosmeticItems = cosmetics?.items.filter((item) => item.type === cosmeticType) ?? [];
+  const equippedBanner = cosmetics?.items.find((item) => item.type === "BANNER" && item.equipped);
+  const equippedAvatar = cosmetics?.items.find((item) => item.type === "AVATAR" && item.equipped);
+  const equippedBadge = cosmetics?.items.find((item) => item.type === "BADGE" && item.equipped);
+  const equippedTitle = cosmetics?.items.find((item) => item.type === "TITLE" && item.equipped);
+  const equippedTheme = cosmetics?.items.find((item) => item.type === "THEME" && item.equipped);
+  const levelUnlocks =
+    cosmetics?.items
+      .filter((item) => item.unlockMethod === "LEVEL" && item.requiredLevel !== null)
+      .sort((left, right) => left.requiredLevel! - right.requiredLevel!)
+      .slice(0, 5) ?? [];
 
   const refreshIdentities = async () => {
     const result = await api<IdentityData>("/minecraft-identities");
@@ -1135,7 +1293,10 @@ export function ProfilePage() {
     api<{ items: ServerOption[] }>("/servers?pageSize=50")
       .then((result) => {
         setServerOptions(result.items);
-        setServerId((current) => current || result.items.find((item) => item.crackedAccountLinkingAvailable)?.id || "");
+        setServerId(
+          (current) =>
+            current || result.items.find((item) => item.crackedAccountLinkingAvailable)?.id || "",
+        );
       })
       .catch(() => undefined);
   }, []);
@@ -1144,7 +1305,10 @@ export function ProfilePage() {
     setIdentityBusy(true);
     setIdentityMessage("");
     try {
-      const newClaim = await api<{ code: string; expiresAt: string; verificationServer: string }>("/minecraft-identities/premium/claims", { method: "POST", body: "{}" });
+      const newClaim = await api<{ code: string; expiresAt: string; verificationServer: string }>(
+        "/minecraft-identities/premium/claims",
+        { method: "POST", body: "{}" },
+      );
       setClaim(newClaim);
       setClaimOpen(true);
       await refreshIdentities();
@@ -1174,11 +1338,12 @@ export function ProfilePage() {
   };
 
   const unlink = async (kind: "premium" | "cracked", id: string, activated = false) => {
-    const warning = kind === "cracked" && activated
-      ? "Release this server-scoped name? Because it has already played on the server, it cannot be reserved again."
-      : kind === "cracked"
-        ? "Cancel this pending name reservation?"
-        : "Unlink this premium Minecraft account? It can be verified again later.";
+    const warning =
+      kind === "cracked" && activated
+        ? "Release this server-scoped name? Because it has already played on the server, it cannot be reserved again."
+        : kind === "cracked"
+          ? "Cancel this pending name reservation?"
+          : "Unlink this premium Minecraft account? It can be verified again later.";
     if (!window.confirm(warning)) return;
     await api(`/minecraft-identities/${kind}/${id}`, { method: "DELETE" });
     await refreshIdentities();
@@ -1221,7 +1386,10 @@ export function ProfilePage() {
     const url = `${window.location.origin}/profile/${encodeURIComponent(currentUser.username)}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: `${currentUser.displayName ?? currentUser.username} on Nortix`, url });
+        await navigator.share({
+          title: `${currentUser.displayName ?? currentUser.username} on Nortix`,
+          url,
+        });
       } else {
         await navigator.clipboard.writeText(url);
         setProfileMessage("Profile link copied.");
@@ -1237,193 +1405,673 @@ export function ProfilePage() {
     saveRolePreference(next ? "owner" : "player");
   };
 
+  const selectCosmetic = async (item: ProfileCosmeticItem) => {
+    if (item.equipped || cosmeticBusy) return;
+    if (!item.unlocked && item.unlockMethod === "LEVEL") {
+      setProfileMessage(`Reach level ${item.requiredLevel} to unlock ${item.name}.`);
+      return;
+    }
+    if (!item.unlocked && item.unlockMethod === "SPARKS") {
+      if ((sparksSummary?.balance ?? 0) < item.sparksPrice) {
+        setProfileMessage(
+          `You need ${item.sparksPrice.toLocaleString()} Sparks to unlock ${item.name}.`,
+        );
+        return;
+      }
+      if (
+        !window.confirm(
+          `Unlock ${item.name} for ${item.sparksPrice.toLocaleString()} Sparks? Sparks have no cash value.`,
+        )
+      ) {
+        return;
+      }
+    }
+    setCosmeticBusy(item.id);
+    setProfileMessage("");
+    try {
+      if (!item.unlocked) {
+        await api("/sparks/purchases", {
+          method: "POST",
+          body: JSON.stringify({ itemId: item.id }),
+        });
+      }
+      await api("/profile/cosmetics/equipped", {
+        method: "PUT",
+        body: JSON.stringify({ itemId: item.id }),
+      });
+      await Promise.all([refetchCosmetics(), refetchSparks()]);
+      setProfileMessage(`${item.name} equipped.`);
+    } catch (error) {
+      setProfileMessage((error as Error).message);
+    } finally {
+      setCosmeticBusy(undefined);
+    }
+  };
+
   return (
-    <div className="dashboard-page">
-      <PageHeading
-        title="Profile"
-        description="Your public tester identity, reputation, and profile settings."
-        action={
-          <button className="button button--secondary" onClick={openProfileEditor}>
-            <Settings /> Edit profile
-          </button>
-        }
-      />
-      <Card className="profile-card">
-        <div className={`profile-banner profile-banner--${currentUser?.publicProfile?.backgroundColor ?? "slate"}`}>
-          <span className="profile-avatar">{currentUser?.username.slice(0, 2).toUpperCase() ?? "—"}</span>
-        </div>
-        <div className="profile-card__body">
-          <div>
-            <h1>
-              {currentUser?.displayName ?? currentUser?.username ?? "Loading profile…"} <ShieldCheck />
-            </h1>
-            <p>@{currentUser?.username ?? "loading"}</p>
-            <div className="chip-row">
-              <Badge tone="purple">{currentUser?.reputationTier ?? "Unranked"}</Badge>
-              <Badge>Level {currentUser?.testerLevel ?? 0}</Badge>
-              <Badge>{currentUser?.reputationScore ?? 0} reputation</Badge>
+    <div
+      className="dashboard-page profile-experience"
+      style={
+        {
+          "--profile-theme-primary": equippedTheme?.preview.primary ?? "#0d1926",
+          "--profile-theme-accent": equippedTheme?.preview.accent ?? "#68e34b",
+        } as React.CSSProperties
+      }
+    >
+      <div className="profile-top-grid">
+        <Card
+          className={`profile-identity-card profile-pattern--${equippedBanner?.preview.pattern ?? "grid"}`}
+          style={
+            {
+              "--profile-primary": equippedBanner?.preview.primary ?? "#10251d",
+              "--profile-accent": equippedBanner?.preview.accent ?? "#68e34b",
+            } as React.CSSProperties
+          }
+        >
+          <div className="profile-identity-card__actions">
+            <button className="button button--secondary button--small" onClick={openProfileEditor}>
+              <Settings /> Edit profile
+            </button>
+            <button
+              className="button button--ghost button--small"
+              aria-label="Share profile"
+              onClick={() => void shareProfile()}
+            >
+              <Link2 />
+            </button>
+          </div>
+          <div className="profile-identity-card__main">
+            <span
+              className="profile-avatar profile-avatar--cosmetic"
+              style={
+                {
+                  "--avatar-primary": equippedAvatar?.preview.primary ?? "#3b2868",
+                  "--avatar-accent": equippedAvatar?.preview.accent ?? "#b99cff",
+                } as React.CSSProperties
+              }
+            >
+              {equippedAvatar ? (
+                <CosmeticGlyph item={equippedAvatar} />
+              ) : (
+                (currentUser?.username.slice(0, 2).toUpperCase() ?? "—")
+              )}
+            </span>
+            <div className="profile-identity-card__copy">
+              <h1>
+                {currentUser?.displayName ?? currentUser?.username ?? "Loading profile…"}
+                <ShieldCheck aria-label="Nortix account" />
+              </h1>
+              <p>@{currentUser?.username ?? "loading"}</p>
+              <div className="chip-row">
+                <Badge tone="purple">
+                  {equippedTitle?.name ?? currentUser?.reputationTier ?? "Tester"}
+                </Badge>
+                <Badge tone="success">Level {currentUser?.testerLevel ?? 0}</Badge>
+                {equippedBadge ? <Badge>{equippedBadge.name}</Badge> : null}
+              </div>
+              <p className="profile-bio">
+                {currentUser?.publicProfile?.bio ||
+                  "Add a short intro so other testers know what you enjoy playing."}
+              </p>
             </div>
           </div>
-          <button className="button button--secondary" onClick={() => void shareProfile()}>
-            <Link2 /> Share profile
-          </button>
-        </div>
-        <p className="profile-bio">{currentUser?.publicProfile?.bio || "Add a short intro so other testers know what you enjoy playing."}</p>
-        <div className="profile-owner-mode">
-          <span className="profile-owner-mode__icon">
-            <ServerCog />
-          </span>
-          <span>
-            <strong>{t("profile.serverOwnerMode")}</strong>
-            <small>{t("profile.serverOwnerModeDescription")}</small>
-          </span>
-          <button
-            type="button"
-            className={`owner-toggle ${serverOwnerMode ? "is-on" : ""}`}
-            role="switch"
-            aria-checked={serverOwnerMode}
-            aria-label={t("profile.serverOwnerMode")}
-            onClick={toggleServerOwnerMode}
-          >
-            <span />
-          </button>
-        </div>
-        {profileMessage ? <p className="profile-message" role="status">{profileMessage}</p> : null}
-        <div className="profile-stats">
-          <span>
-            <strong>{approvedMilestones}</strong>
-            <small>Verified playtests</small>
-          </span>
-          <span>
-            <strong>{participations.length}</strong>
-            <small>Participation records</small>
-          </span>
-          <span>
-            <strong>{identityData.premium.length}</strong>
-            <small>Premium identities</small>
-          </span>
-          <span>
-            <strong>{identityData.cracked.length}</strong>
-            <small>Server-scoped identities</small>
-          </span>
-        </div>
-      </Card>
+          <div className="profile-stats profile-stats--integrated">
+            <span>
+              <strong>{profileActivity?.stats.verifiedPlaytests ?? approvedMilestones}</strong>
+              <small>Verified playtests</small>
+            </span>
+            <span>
+              <strong>
+                {profileActivity?.stats.participationRecords ?? participations.length}
+              </strong>
+              <small>Participation records</small>
+            </span>
+            <span>
+              <strong>
+                {profileActivity?.stats.premiumIdentities ?? identityData.premium.length}
+              </strong>
+              <small>Premium identities</small>
+            </span>
+            <span>
+              <strong>
+                {profileActivity?.stats.serverScopedIdentities ?? identityData.cracked.length}
+              </strong>
+              <small>Server-scoped identities</small>
+            </span>
+          </div>
+        </Card>
+
+        <Card className="profile-level-card">
+          <div className="profile-level-card__heading">
+            <span>
+              <small>TESTER PROGRESSION</small>
+              <strong>Level {currentUser?.testerLevel ?? 1}</strong>
+            </span>
+            <b>
+              {(cosmetics?.testerExperience ?? currentUser?.testerExperience ?? 0).toLocaleString()}{" "}
+              / {(cosmetics?.nextLevelExperience ?? 1_000).toLocaleString()} XP
+            </b>
+          </div>
+          <div className="profile-level-card__meter">
+            <span
+              style={{
+                width: `${
+                  cosmetics
+                    ? Math.min(
+                        100,
+                        ((cosmetics.testerExperience - cosmetics.currentLevelExperience) /
+                          Math.max(
+                            1,
+                            cosmetics.nextLevelExperience - cosmetics.currentLevelExperience,
+                          )) *
+                          100,
+                      )
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          <p>
+            {cosmetics?.nextLevelUnlock
+              ? `${cosmetics.nextLevelUnlock.name} unlocks at level ${cosmetics.nextLevelUnlock.level}.`
+              : "All currently published level cosmetics are available to you."}
+          </p>
+          <div className="profile-level-track" aria-label="Cosmetic level unlocks">
+            {levelUnlocks.map((item) => (
+              <span
+                key={item.id}
+                className={
+                  (currentUser?.testerLevel ?? 0) >= item.requiredLevel! ? "is-reached" : ""
+                }
+                title={`${item.name} · level ${item.requiredLevel}`}
+              >
+                <i>
+                  <CosmeticGlyph item={item} />
+                </i>
+                <small>Level {item.requiredLevel}</small>
+              </span>
+            ))}
+          </div>
+          <div className="profile-level-card__next">
+            <Sparkles />
+            <span>
+              <strong>{(sparksSummary?.balance ?? 0).toLocaleString()} Sparks</strong>
+              <small>Optional, non-withdrawable points for cosmetic unlocks</small>
+            </span>
+            <Link to="/dashboard/sparks-shop">Open shop</Link>
+          </div>
+        </Card>
+      </div>
+
+      {profileMessage ? (
+        <p className="profile-message profile-message--standalone" role="status">
+          {profileMessage}
+        </p>
+      ) : null}
+
+      <div className="profile-content-grid">
+        <Card className="profile-activity-panel">
+          <div className="profile-panel-heading">
+            <span>
+              <small>OVERVIEW</small>
+              <h2>Recent activity</h2>
+            </span>
+            <History />
+          </div>
+          <div className="profile-activity-list">
+            {profileActivity?.activities.length ? (
+              profileActivity.activities.map((activity) => (
+                <div className="profile-activity-row" key={activity.id}>
+                  <i className={`profile-activity-row__icon is-${activity.kind.toLowerCase()}`}>
+                    {activity.kind === "FEEDBACK" ? (
+                      <MessageSquareText />
+                    ) : activity.kind === "JOINED" ? (
+                      <UserPlus />
+                    ) : activity.kind === "SPARKS" ? (
+                      <Sparkles />
+                    ) : (
+                      <CheckCircle2 />
+                    )}
+                  </i>
+                  <span>
+                    <strong>{activity.title}</strong>
+                    <small>
+                      {activity.detail} · {relativeActivityTime(activity.occurredAt)}
+                    </small>
+                  </span>
+                  {activity.sparks ? <b>+{activity.sparks} Sparks</b> : null}
+                </div>
+              ))
+            ) : (
+              <div className="profile-activity-empty">
+                <Gamepad2 />
+                <strong>Your activity will appear here</strong>
+                <small>Join a campaign or complete a verified milestone to get started.</small>
+              </div>
+            )}
+          </div>
+          <div className="profile-activity-summary">
+            <span>
+              <small>Reputation</small>
+              <strong>{currentUser?.reputationScore ?? 0}</strong>
+            </span>
+            <span>
+              <small>Playtests</small>
+              <strong>{profileActivity?.stats.verifiedPlaytests ?? 0}</strong>
+            </span>
+            <span>
+              <small>Feedback</small>
+              <strong>{profileActivity?.stats.feedbackGiven ?? 0}</strong>
+            </span>
+          </div>
+        </Card>
+
+        <Card className="profile-cosmetics-panel">
+          <div className="profile-panel-heading">
+            <span>
+              <small>COLLECTION</small>
+              <h2>Cosmetics</h2>
+            </span>
+            <b>
+              {cosmetics?.items.filter((item) => item.unlocked).length ?? 0}/
+              {cosmetics?.items.length ?? 0} unlocked
+            </b>
+          </div>
+          <div className="profile-cosmetic-tabs" role="tablist" aria-label="Cosmetic categories">
+            {cosmeticTypes.map((category) => (
+              <button
+                key={category.type}
+                role="tab"
+                aria-selected={cosmeticType === category.type}
+                className={cosmeticType === category.type ? "is-active" : ""}
+                onClick={() => setCosmeticType(category.type)}
+              >
+                {category.label}
+              </button>
+            ))}
+          </div>
+          <div className="profile-cosmetic-grid">
+            {cosmeticItems.map((item) => (
+              <button
+                className={`profile-cosmetic-item ${item.equipped ? "is-equipped" : ""} ${
+                  !item.unlocked ? "is-locked" : ""
+                }`}
+                key={item.id}
+                disabled={cosmeticBusy === item.id}
+                onClick={() => void selectCosmetic(item)}
+                style={
+                  {
+                    "--cosmetic-primary": item.preview.primary,
+                    "--cosmetic-accent": item.preview.accent,
+                  } as React.CSSProperties
+                }
+                aria-label={`${item.name}. ${
+                  item.equipped
+                    ? "Equipped"
+                    : item.unlocked
+                      ? "Unlocked; equip"
+                      : item.unlockMethod === "LEVEL"
+                        ? `Unlocks at level ${item.requiredLevel}`
+                        : `Costs ${item.sparksPrice} Sparks`
+                }`}
+              >
+                <i>
+                  <CosmeticGlyph item={item} />
+                  {!item.unlocked ? <Lock className="profile-cosmetic-item__lock" /> : null}
+                  {item.equipped ? <Check className="profile-cosmetic-item__check" /> : null}
+                </i>
+                <strong>{item.name}</strong>
+                <small>
+                  {item.equipped
+                    ? "Equipped"
+                    : item.unlockMethod === "LEVEL"
+                      ? `Level ${item.requiredLevel}`
+                      : item.unlockMethod === "SPARKS" && !item.purchased
+                        ? `${item.sparksPrice.toLocaleString()} Sparks`
+                        : item.rarity.toLowerCase()}
+                </small>
+              </button>
+            ))}
+          </div>
+          <p className="profile-cosmetics-note">
+            Level rewards unlock automatically. Sparks purchases are permanent and cosmetic only.
+          </p>
+        </Card>
+      </div>
+
       {profileEditOpen ? (
-        <Modal title="Edit profile" className="modal--compact" onClose={() => setProfileEditOpen(false)}>
+        <Modal
+          title="Edit profile"
+          className="modal--compact"
+          onClose={() => setProfileEditOpen(false)}
+        >
           <form onSubmit={saveProfile}>
             <div className="modal__body profile-edit-form">
-              <p>Keep it simple. These details can appear on your shared public profile.</p>
-              <label>Username<input required minLength={3} maxLength={16} pattern="[A-Za-z0-9_]{3,16}" value={profileDraft.username} onChange={(event) => setProfileDraft({ ...profileDraft, username: event.target.value })} /></label>
-              <label>Display name<input required maxLength={80} value={profileDraft.displayName} onChange={(event) => setProfileDraft({ ...profileDraft, displayName: event.target.value })} /></label>
-              <label>Bio<textarea rows={3} maxLength={240} placeholder="A short intro about your Minecraft interests" value={profileDraft.bio} onChange={(event) => setProfileDraft({ ...profileDraft, bio: event.target.value })} /></label>
-              <label>Profile background<select value={profileDraft.backgroundColor} onChange={(event) => setProfileDraft({ ...profileDraft, backgroundColor: event.target.value as typeof profileDraft.backgroundColor })}><option value="slate">Slate</option><option value="violet">Violet</option><option value="ocean">Ocean</option><option value="moss">Moss</option><option value="ember">Ember</option></select></label>
-              <label className="checkbox-row"><input type="checkbox" checked={profileDraft.isPublic} onChange={(event) => setProfileDraft({ ...profileDraft, isPublic: event.target.checked })} /> Show my profile when someone opens my link</label>
-              <label className="checkbox-row"><input type="checkbox" checked={profileDraft.showReputation} onChange={(event) => setProfileDraft({ ...profileDraft, showReputation: event.target.checked })} /> Show my reputation and tester level</label>
+              <p>These details can appear on your shared public profile.</p>
+              <label>
+                Username
+                <input
+                  required
+                  minLength={3}
+                  maxLength={16}
+                  pattern="[A-Za-z0-9_]{3,16}"
+                  value={profileDraft.username}
+                  onChange={(event) =>
+                    setProfileDraft({ ...profileDraft, username: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Display name
+                <input
+                  required
+                  maxLength={80}
+                  value={profileDraft.displayName}
+                  onChange={(event) =>
+                    setProfileDraft({ ...profileDraft, displayName: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Bio
+                <textarea
+                  rows={3}
+                  maxLength={240}
+                  placeholder="A short intro about your Minecraft interests"
+                  value={profileDraft.bio}
+                  onChange={(event) =>
+                    setProfileDraft({ ...profileDraft, bio: event.target.value })
+                  }
+                />
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={profileDraft.isPublic}
+                  onChange={(event) =>
+                    setProfileDraft({ ...profileDraft, isPublic: event.target.checked })
+                  }
+                />
+                Show my profile when someone opens my link
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={profileDraft.showReputation}
+                  onChange={(event) =>
+                    setProfileDraft({ ...profileDraft, showReputation: event.target.checked })
+                  }
+                />
+                Show my reputation and tester level
+              </label>
+              <div className="profile-owner-mode">
+                <span className="profile-owner-mode__icon">
+                  <ServerCog />
+                </span>
+                <span>
+                  <strong>{t("profile.serverOwnerMode")}</strong>
+                  <small>{t("profile.serverOwnerModeDescription")}</small>
+                </span>
+                <button
+                  type="button"
+                  className={`owner-toggle ${serverOwnerMode ? "is-on" : ""}`}
+                  role="switch"
+                  aria-checked={serverOwnerMode}
+                  aria-label={t("profile.serverOwnerMode")}
+                  onClick={toggleServerOwnerMode}
+                >
+                  <span />
+                </button>
+              </div>
             </div>
             <div className="modal__footer">
-              <button className="button button--ghost" type="button" onClick={() => setProfileEditOpen(false)}>Cancel</button>
-              <Button type="submit" disabled={profileBusy}>{profileBusy ? "Saving…" : "Save profile"}</Button>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => setProfileEditOpen(false)}
+              >
+                Cancel
+              </button>
+              <Button type="submit" disabled={profileBusy}>
+                {profileBusy ? "Saving…" : "Save profile"}
+              </Button>
             </div>
           </form>
         </Modal>
       ) : null}
-      <div className="profile-grid">
-        <Card>
-          <h2>Participation summary</h2>
-          <p>Verified activity may contribute to reputation and future campaign matching.</p>
-          <div className="profile-stats">
-            <span><strong>{participations.length}</strong><small>Campaign records</small></span>
-            <span><strong>{approvedMilestones}</strong><small>Verified milestones</small></span>
-          </div>
-        </Card>
-        <Card>
-          <h2>Reputation</h2>
-          <div className="reputation-meter">
-            <span style={{ width: `${Math.min(100, (currentUser?.reputationScore ?? 0) / 10)}%` }} />
-          </div>
-          <div className="reputation-labels">
-            <strong>{currentUser?.reputationTier ?? "Unranked"}</strong>
-            <span>{currentUser?.reputationScore ?? 0} reputation</span>
-          </div>
-          <p>Reputation reflects verified work and cannot be purchased with Sparks.</p>
-        </Card>
-      </div>
       <section className="identity-center">
         <div className="identity-center__heading">
           <div>
             <span className="eyebrow">MINECRAFT IDENTITY</span>
             <h2>Account linking</h2>
-            <p>Premium accounts are verified once on Nortix. Cracked names are private, temporary, and scoped to one server.</p>
+            <p>
+              Premium accounts are verified once on Nortix. Cracked names are private, temporary,
+              and scoped to one server.
+            </p>
           </div>
           <button className="button button--secondary" onClick={() => refreshIdentities()}>
             <History /> Refresh status
           </button>
         </div>
-        {identityMessage && <div className="identity-notice" role="status">{identityMessage}</div>}
+        {identityMessage && (
+          <div className="identity-notice" role="status">
+            {identityMessage}
+          </div>
+        )}
         <div className="identity-link-grid">
           <Card className="identity-link-card">
-            <div className="identity-link-card__title"><ShieldCheck /><div><h3>Premium Java account</h3><p>Verified through Nortix’s online-mode server. No OAuth or account password is requested.</p></div></div>
+            <div className="identity-link-card__title">
+              <ShieldCheck />
+              <div>
+                <h3>Premium Java account</h3>
+                <p>
+                  Verified through Nortix’s online-mode server. No OAuth or account password is
+                  requested.
+                </p>
+              </div>
+            </div>
             {identityData.premium.map((identity) => (
               <div className="identity-record" key={identity.id}>
-                <span><strong>{identity.username}</strong><small>{identity.uuid}</small></span>
+                <span>
+                  <strong>{identity.username}</strong>
+                  <small>{identity.uuid}</small>
+                </span>
                 <Badge>Verified once</Badge>
-                <button aria-label={`Unlink ${identity.username}`} onClick={() => unlink("premium", identity.id)}><Unlink2 /></button>
+                <button
+                  aria-label={`Unlink ${identity.username}`}
+                  onClick={() => unlink("premium", identity.id)}
+                >
+                  <Unlink2 />
+                </button>
               </div>
             ))}
-            {identityData.premium.length === 0 && <p className="identity-empty">No premium Minecraft account is linked yet.</p>}
+            {identityData.premium.length === 0 && (
+              <p className="identity-empty">No premium Minecraft account is linked yet.</p>
+            )}
             {claim ? (
               <div className="identity-claim-ready">
-                <span><strong>Claim code ready</strong><small>Expires {new Date(claim.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></span>
-                <button className="button button--secondary button--small" onClick={() => setClaimOpen(true)}>View instructions</button>
+                <span>
+                  <strong>Claim code ready</strong>
+                  <small>
+                    Expires{" "}
+                    {new Date(claim.expiresAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </small>
+                </span>
+                <button
+                  className="button button--secondary button--small"
+                  onClick={() => setClaimOpen(true)}
+                >
+                  View instructions
+                </button>
               </div>
             ) : (
-              <button className="button button--primary" disabled={identityBusy} onClick={createPremiumClaim}>
+              <button
+                className="button button--primary"
+                disabled={identityBusy}
+                onClick={createPremiumClaim}
+              >
                 <Link2 /> Verify a premium account
               </button>
             )}
           </Card>
           <Card className="identity-link-card">
-            <div className="identity-link-card__title"><Gamepad2 /><div><h3>Cracked server account</h3><p>Reserve the exact name before its first-ever join. This does not appear on your public profile.</p></div></div>
-            <label className="identity-field"><span>Server</span><select value={serverId} onChange={(event) => setServerId(event.target.value)}><option value="">Choose a supported server</option>{serverOptions.map((server) => <option value={server.id} key={server.id} disabled={!server.crackedAccountLinkingAvailable}>{server.name}{server.crackedAccountLinkingAvailable ? "" : " · linking unavailable"}</option>)}</select></label>
-            <label className="identity-field"><span>Exact Minecraft name</span><input value={crackedName} maxLength={16} placeholder="nortix123" onChange={(event) => setCrackedName(event.target.value)} /></label>
-            <button className="button button--primary" disabled={identityBusy || !serverId || !/^[A-Za-z0-9_]{3,16}$/.test(crackedName)} onClick={reserveCracked}><Clock3 /> Reserve for 30 minutes</button>
-            <small className="identity-rules">Up to 3 reservations per hour and 5 per rolling day. Unused reservations expire automatically.</small>
+            <div className="identity-link-card__title">
+              <Gamepad2 />
+              <div>
+                <h3>Cracked server account</h3>
+                <p>
+                  Reserve the exact name before its first-ever join. This does not appear on your
+                  public profile.
+                </p>
+              </div>
+            </div>
+            <label className="identity-field">
+              <span>Server</span>
+              <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
+                <option value="">Choose a supported server</option>
+                {serverOptions.map((server) => (
+                  <option
+                    value={server.id}
+                    key={server.id}
+                    disabled={!server.crackedAccountLinkingAvailable}
+                  >
+                    {server.name}
+                    {server.crackedAccountLinkingAvailable ? "" : " · linking unavailable"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="identity-field">
+              <span>Exact Minecraft name</span>
+              <input
+                value={crackedName}
+                maxLength={16}
+                placeholder="nortix123"
+                onChange={(event) => setCrackedName(event.target.value)}
+              />
+            </label>
+            <button
+              className="button button--primary"
+              disabled={identityBusy || !serverId || !/^[A-Za-z0-9_]{3,16}$/.test(crackedName)}
+              onClick={reserveCracked}
+            >
+              <Clock3 /> Reserve for 30 minutes
+            </button>
+            <small className="identity-rules">
+              Up to 3 reservations per hour and 5 per rolling day. Unused reservations expire
+              automatically.
+            </small>
           </Card>
         </div>
-        {identityData.cracked.length > 0 && <Card className="identity-active-card">
-          <h3>Server-scoped links</h3>
-          {identityData.cracked.map((link) => <div className="identity-record" key={link.id}>
-            <span><strong>{link.minecraftUsername}</strong><small>{link.server.name} · {link.status === "PENDING" ? "Waiting for first join" : "First join confirmed"}</small></span>
-            <Badge tone={link.status === "ACTIVE" ? "success" : "purple"}>{link.status}</Badge>
-            <button aria-label={`Release ${link.minecraftUsername}`} onClick={() => unlink("cracked", link.id, link.status === "ACTIVE")}><Unlink2 /></button>
-          </div>)}
-        </Card>}
+        {identityData.cracked.length > 0 && (
+          <Card className="identity-active-card">
+            <h3>Server-scoped links</h3>
+            {identityData.cracked.map((link) => (
+              <div className="identity-record" key={link.id}>
+                <span>
+                  <strong>{link.minecraftUsername}</strong>
+                  <small>
+                    {link.server.name} ·{" "}
+                    {link.status === "PENDING" ? "Waiting for first join" : "First join confirmed"}
+                  </small>
+                </span>
+                <Badge tone={link.status === "ACTIVE" ? "success" : "purple"}>{link.status}</Badge>
+                <button
+                  aria-label={`Release ${link.minecraftUsername}`}
+                  onClick={() => unlink("cracked", link.id, link.status === "ACTIVE")}
+                >
+                  <Unlink2 />
+                </button>
+              </div>
+            ))}
+          </Card>
+        )}
         <Card className="identity-activity-card">
           <h3>Private identity activity</h3>
           <p>Only you and authorized Nortix safety staff can see this history.</p>
           <div className="identity-timeline">
-            {identityData.activity.length === 0 && <span className="identity-empty">No identity activity yet.</span>}
-            {identityData.activity.map((event) => <div key={event.id}><i /><span><strong>{event.type.replaceAll("_", " ").toLowerCase()}</strong><small>{event.minecraftUsername || "Minecraft account"}{event.server ? ` · ${event.server.name}` : ""} · {new Date(event.createdAt).toLocaleString()}</small></span></div>)}
+            {identityData.activity.length === 0 && (
+              <span className="identity-empty">No identity activity yet.</span>
+            )}
+            {identityData.activity.map((event) => (
+              <div key={event.id}>
+                <i />
+                <span>
+                  <strong>{event.type.replaceAll("_", " ").toLowerCase()}</strong>
+                  <small>
+                    {event.minecraftUsername || "Minecraft account"}
+                    {event.server ? ` · ${event.server.name}` : ""} ·{" "}
+                    {new Date(event.createdAt).toLocaleString()}
+                  </small>
+                </span>
+              </div>
+            ))}
           </div>
         </Card>
       </section>
       {claim && claimOpen ? (
-        <Modal title="Link your premium Minecraft account" className="modal--compact premium-claim-modal" onClose={() => setClaimOpen(false)}>
+        <Modal
+          title="Link your premium Minecraft account"
+          className="modal--compact premium-claim-modal"
+          onClose={() => setClaimOpen(false)}
+        >
           <div className="modal__body">
             <div className="identity-claim-code premium-claim-modal__code">
-              <small>Join <strong>{claim.verificationServer}</strong>, then run</small>
+              <small>
+                Join <strong>{claim.verificationServer}</strong>, then run
+              </small>
               <code>/nortixclaim {claim.code}</code>
-              <button className="button button--ghost button--small" onClick={() => void navigator.clipboard.writeText(`/nortixclaim ${claim.code}`)}><Copy /> Copy command</button>
-              <span>Expires {new Date(claim.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              <button
+                className="button button--ghost button--small"
+                onClick={() => void navigator.clipboard.writeText(`/nortixclaim ${claim.code}`)}
+              >
+                <Copy /> Copy command
+              </button>
+              <span>
+                Expires{" "}
+                {new Date(claim.expiresAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
             </div>
             <div className="premium-link-steps">
-              <div><b>1</b><span><strong>Join the verification server</strong><small>Open Minecraft Java Edition and connect to the server shown above.</small></span></div>
-              <div><b>2</b><span><strong>Run the command</strong><small>Paste the command into Minecraft chat and send it. Never share your one-time code.</small></span></div>
-              <div><b>3</b><span><strong>Come back to Nortix</strong><small>We will verify the account automatically. This claim expires soon, so finish before the time shown above.</small></span></div>
+              <div>
+                <b>1</b>
+                <span>
+                  <strong>Join the verification server</strong>
+                  <small>Open Minecraft Java Edition and connect to the server shown above.</small>
+                </span>
+              </div>
+              <div>
+                <b>2</b>
+                <span>
+                  <strong>Run the command</strong>
+                  <small>
+                    Paste the command into Minecraft chat and send it. Never share your one-time
+                    code.
+                  </small>
+                </span>
+              </div>
+              <div>
+                <b>3</b>
+                <span>
+                  <strong>Come back to Nortix</strong>
+                  <small>
+                    We will verify the account automatically. This claim expires soon, so finish
+                    before the time shown above.
+                  </small>
+                </span>
+              </div>
             </div>
           </div>
           <div className="modal__footer">
-            <Button type="button" onClick={() => setClaimOpen(false)}>Done</Button>
+            <Button type="button" onClick={() => setClaimOpen(false)}>
+              Done
+            </Button>
           </div>
         </Modal>
       ) : null}

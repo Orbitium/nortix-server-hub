@@ -16,6 +16,7 @@ import {
   validateMilestoneTarget,
 } from "./policy.js";
 import { createNotification } from "../notifications/service.js";
+import { addVerifiedTesterExperience, VERIFIED_MILESTONE_XP } from "../cosmetics/progression.js";
 
 export class CampaignService {
   async create(ownerId: string, input: CampaignInput) {
@@ -559,6 +560,7 @@ export class CampaignService {
           milestone.verificationMethod === "SERVER_PLUGIN" &&
           !milestone.reviewRequired;
         if (!mayApprove) return completion;
+        if (completion.status === "VERIFIED") return completion;
 
         const sparks = await tx.sparksLedgerEntry.upsert({
           where: { idempotencyKey: `completion:${completion.id}:sparks` },
@@ -596,6 +598,21 @@ export class CampaignService {
           where: { id: participation.playerId },
           data: { sparksBalanceCache: sparksBalance },
         });
+        const progression = await addVerifiedTesterExperience(
+          tx,
+          participation.playerId,
+          completion.id,
+        );
+        if (progression.leveledUp) {
+          await createNotification(tx, {
+            recipientId: participation.playerId,
+            category: "QUEST",
+            title: `Tester level ${progression.testerLevel} reached`,
+            body: `Your verified activity added ${VERIFIED_MILESTONE_XP} XP. New level cosmetics are now available.`,
+            actionUrl: "/dashboard/profile",
+            dedupeKey: `tester-level:${participation.playerId}:${progression.testerLevel}`,
+          });
+        }
         await tx.auditLog.create({
           data: {
             action: "MILESTONE_AUTO_VERIFIED",
@@ -902,6 +919,21 @@ export class CampaignService {
         where: { id: completion.participation.playerId },
         data: { sparksBalanceCache: sparksBalance },
       });
+      const progression = await addVerifiedTesterExperience(
+        tx,
+        completion.participation.playerId,
+        completion.id,
+      );
+      if (progression.leveledUp) {
+        await createNotification(tx, {
+          recipientId: completion.participation.playerId,
+          category: "QUEST",
+          title: `Tester level ${progression.testerLevel} reached`,
+          body: `Your verified activity added ${VERIFIED_MILESTONE_XP} XP. New level cosmetics are now available.`,
+          actionUrl: "/dashboard/profile",
+          dedupeKey: `tester-level:${completion.participation.playerId}:${progression.testerLevel}`,
+        });
+      }
       return updated;
     });
   }

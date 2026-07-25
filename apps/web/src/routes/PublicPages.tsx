@@ -43,30 +43,88 @@ export function PublicProfilePage() {
   const { t } = useI18n();
   const { username } = useParams();
   const { data: profile, isLoading, isError } = usePublicProfile(username);
-  if (isLoading) return <div className="content-page narrow-page"><Card><p>Loading profile…</p></Card></div>;
-  if (isError || !profile) return <div className="content-page narrow-page"><Card><h1>{t("ui.profileUnavailable")}</h1><p>{t("ui.profileUnavailableDescription")}</p></Card></div>;
+  if (isLoading)
+    return (
+      <div className="content-page narrow-page">
+        <Card>
+          <p>Loading profile…</p>
+        </Card>
+      </div>
+    );
+  if (isError || !profile)
+    return (
+      <div className="content-page narrow-page">
+        <Card>
+          <h1>{t("ui.profileUnavailable")}</h1>
+          <p>{t("ui.profileUnavailableDescription")}</p>
+        </Card>
+      </div>
+    );
   const background = profileBackgrounds.has(profile.publicProfile.backgroundColor ?? "")
     ? profile.publicProfile.backgroundColor
     : "slate";
+  const banner = profile.cosmetics.find((item) => item.type === "BANNER");
+  const avatar = profile.cosmetics.find((item) => item.type === "AVATAR");
+  const equippedBadge = profile.cosmetics.find((item) => item.type === "BADGE");
+  const title = profile.cosmetics.find((item) => item.type === "TITLE");
   return (
     <div className="content-page narrow-page public-profile-page">
       <Card className="profile-card">
-        <div className={`profile-banner profile-banner--${background}`}>
-          <span className="profile-avatar">{profile.username.slice(0, 2).toUpperCase()}</span>
+        <div
+          className={`profile-banner profile-banner--${background}`}
+          style={
+            banner
+              ? {
+                  background: `radial-gradient(circle at 75% 20%, ${banner.preview.accent}55, transparent 30%), linear-gradient(140deg, ${banner.preview.primary}, #152238)`,
+                }
+              : undefined
+          }
+        >
+          <span
+            className="profile-avatar"
+            style={
+              avatar
+                ? {
+                    color: avatar.preview.accent,
+                    background: avatar.preview.primary,
+                    borderColor: avatar.preview.accent,
+                  }
+                : undefined
+            }
+          >
+            {profile.username.slice(0, 2).toUpperCase()}
+          </span>
         </div>
         <div className="profile-card__body">
           <div>
-            <h1>{profile.displayName} <ShieldCheck /></h1>
+            <h1>
+              {profile.displayName} <ShieldCheck />
+            </h1>
             <p>@{profile.username}</p>
-            {profile.publicProfile.bio ? <p className="public-profile-bio">{profile.publicProfile.bio}</p> : null}
+            <div className="chip-row">
+              {title ? <Badge tone="purple">{title.name}</Badge> : null}
+              {equippedBadge ? <Badge>{equippedBadge.name}</Badge> : null}
+            </div>
+            {profile.publicProfile.bio ? (
+              <p className="public-profile-bio">{profile.publicProfile.bio}</p>
+            ) : null}
           </div>
           <Badge tone="success">{t("ui.verified")} Nortix tester</Badge>
         </div>
         {profile.publicProfile.showReputation !== false ? (
           <div className="profile-stats">
-            <span><strong>{profile.reputationScore ?? 0}</strong><small>{t("ui.reputation")}</small></span>
-            <span><strong>{profile.testerLevel ?? 0}</strong><small>{t("ui.testerLevel")}</small></span>
-            <span><strong>{profile.reputationTier ?? t("ui.newTester")}</strong><small>{t("ui.tier")}</small></span>
+            <span>
+              <strong>{profile.reputationScore ?? 0}</strong>
+              <small>{t("ui.reputation")}</small>
+            </span>
+            <span>
+              <strong>{profile.testerLevel ?? 0}</strong>
+              <small>{t("ui.testerLevel")}</small>
+            </span>
+            <span>
+              <strong>{profile.reputationTier ?? t("ui.newTester")}</strong>
+              <small>{t("ui.tier")}</small>
+            </span>
           </div>
         ) : null}
       </Card>
@@ -254,9 +312,7 @@ export function HomePage() {
             <span className="step-number">04</span>
             <Zap />
             <h3>Receive verified rewards</h3>
-            <p>
-              Approved milestones add Sparks, which unlock cosmetic progression across Nortix.
-            </p>
+            <p>Approved milestones add Sparks, which unlock cosmetic progression across Nortix.</p>
           </Card>
         </div>
       </section>
@@ -365,7 +421,8 @@ export function BrowseServersPage() {
       servers.filter(
         (server) =>
           (edition === "ALL" || server.edition === edition) &&
-          (version === "ALL" || server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
+          (version === "ALL" ||
+            server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
           (serverType === "ALL" || server.categories.includes(serverType)) &&
           `${server.name} ${server.description} ${server.categories.join(" ")}`
             .toLowerCase()
@@ -400,13 +457,31 @@ export function BrowseServersPage() {
             </button>
           ))}
         </div>
-        <select className="filter-select" value={version} onChange={(event) => setVersion(event.target.value)} aria-label="Minecraft version">
+        <select
+          className="filter-select"
+          value={version}
+          onChange={(event) => setVersion(event.target.value)}
+          aria-label="Minecraft version"
+        >
           <option value="ALL">All versions</option>
-          {minecraftMajorVersions.map((item) => <option key={item} value={item}>{item}</option>)}
+          {minecraftMajorVersions.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
         </select>
-        <select className="filter-select" value={serverType} onChange={(event) => setServerType(event.target.value)} aria-label="Server type">
+        <select
+          className="filter-select"
+          value={serverType}
+          onChange={(event) => setServerType(event.target.value)}
+          aria-label="Server type"
+        >
           <option value="ALL">All server types</option>
-          {serverTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+          {serverTypes.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
         </select>
         <span>{t("listing.serverCount", { count: formatNumber(visible.length) })}</span>
       </div>
@@ -442,7 +517,13 @@ export function BrowseCampaignsPage() {
   const visible = campaigns.filter(
     (campaign) =>
       (category === "__all__" || campaign.category === category) &&
-      (version === "ALL" || campaign.versionRequirements.some((item) => item === version || item.startsWith(`${version}.`)) || campaign.server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
+      (version === "ALL" ||
+        campaign.versionRequirements.some(
+          (item) => item === version || item.startsWith(`${version}.`),
+        ) ||
+        campaign.server.versions.some(
+          (item) => item === version || item.startsWith(`${version}.`),
+        )) &&
       (serverType === "ALL" || campaign.server.categories.includes(serverType)) &&
       `${campaign.title} ${campaign.server.name} ${campaign.category}`
         .toLowerCase()
@@ -475,13 +556,31 @@ export function BrowseCampaignsPage() {
             </button>
           ))}
         </div>
-        <select className="filter-select" value={version} onChange={(event) => setVersion(event.target.value)} aria-label="Minecraft version">
+        <select
+          className="filter-select"
+          value={version}
+          onChange={(event) => setVersion(event.target.value)}
+          aria-label="Minecraft version"
+        >
           <option value="ALL">All versions</option>
-          {minecraftMajorVersions.map((item) => <option key={item} value={item}>{item}</option>)}
+          {minecraftMajorVersions.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
         </select>
-        <select className="filter-select" value={serverType} onChange={(event) => setServerType(event.target.value)} aria-label="Server type">
+        <select
+          className="filter-select"
+          value={serverType}
+          onChange={(event) => setServerType(event.target.value)}
+          aria-label="Server type"
+        >
           <option value="ALL">All server types</option>
-          {serverTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+          {serverTypes.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
         </select>
         <span>{t("listing.playtestCount", { count: formatNumber(visible.length) })}</span>
       </div>
@@ -565,7 +664,10 @@ export function ServerDetailPage() {
   const canonicalPath = `/servers/${server.slug}`;
   const vote = async () => {
     try {
-      const result = await api<{ voteCount: number }>(`/servers/${server.id}/vote`, { method: "POST", body: JSON.stringify({ vote: true }) });
+      const result = await api<{ voteCount: number }>(`/servers/${server.id}/vote`, {
+        method: "POST",
+        body: JSON.stringify({ vote: true }),
+      });
       setVoteCount(result.voteCount);
       setVoteMessage("Your vote is counted.");
     } catch (error) {
@@ -574,7 +676,10 @@ export function ServerDetailPage() {
   };
   const submitReview = async () => {
     try {
-      await api(`/servers/${server.id}/reviews`, { method: "POST", body: JSON.stringify({ rating: reviewRating, text: reviewText }) });
+      await api(`/servers/${server.id}/reviews`, {
+        method: "POST",
+        body: JSON.stringify({ rating: reviewRating, text: reviewText }),
+      });
       setReviewMessage("Review submitted.");
       setReviewText("");
       void refetch();
@@ -612,14 +717,29 @@ export function ServerDetailPage() {
         jsonLd={serverSchema}
       />
       <div className="server-detail-hero">
-        {server.logoUrl ? <img className="server-detail-hero__backdrop" src={server.logoUrl} alt="" aria-hidden="true" /> : null}
+        {server.logoUrl ? (
+          <img
+            className="server-detail-hero__backdrop"
+            src={server.logoUrl}
+            alt=""
+            aria-hidden="true"
+          />
+        ) : null}
         <div className="server-detail-hero__logo">
-          {server.logoUrl ? <img src={server.logoUrl} alt={`${server.name} icon`} /> : server.name.slice(0, 2).toUpperCase()}
+          {server.logoUrl ? (
+            <img src={server.logoUrl} alt={`${server.name} icon`} />
+          ) : (
+            server.name.slice(0, 2).toUpperCase()
+          )}
         </div>
         <div>
           <div className="detail-title-row">
             <h1>{server.name}</h1>
-            {isDiscovered ? <Badge tone="neutral">{t("ui.publicListing")}</Badge> : <VerifiedBadge />}
+            {isDiscovered ? (
+              <Badge tone="neutral">{t("ui.publicListing")}</Badge>
+            ) : (
+              <VerifiedBadge />
+            )}
           </div>
           <p>{server.description}</p>
           <div className="chip-row">
@@ -644,7 +764,11 @@ export function ServerDetailPage() {
           >
             {addressCopied ? t("ui.addressCopied") : t("ui.copyAddress")}
           </button>
-          {!isDiscovered ? <button className="button button--secondary" onClick={() => void vote()}>Vote on Nortix ({voteCount ?? server.voteCount ?? 0})</button> : null}
+          {!isDiscovered ? (
+            <button className="button button--secondary" onClick={() => void vote()}>
+              Vote on Nortix ({voteCount ?? server.voteCount ?? 0})
+            </button>
+          ) : null}
           {voteMessage ? <small>{voteMessage}</small> : null}
         </div>
       </div>
@@ -710,10 +834,30 @@ export function ServerDetailPage() {
               <div className="review-composer">
                 <strong>Rate this server after at least 15 minutes of gameplay</strong>
                 <div className="stars" role="radiogroup" aria-label="Rating">
-                  {[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} onClick={() => setReviewRating(rating)} aria-label={`${rating} stars`}>{rating <= reviewRating ? "★" : "☆"}</button>)}
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <button
+                      type="button"
+                      key={rating}
+                      onClick={() => setReviewRating(rating)}
+                      aria-label={`${rating} stars`}
+                    >
+                      {rating <= reviewRating ? "★" : "☆"}
+                    </button>
+                  ))}
                 </div>
-                <textarea value={reviewText} onChange={(event) => setReviewText(event.target.value)} placeholder="Share a useful, respectful review" maxLength={1000} />
-                <button className="button button--secondary" disabled={reviewText.trim().length < 3} onClick={() => void submitReview()}>Submit review</button>
+                <textarea
+                  value={reviewText}
+                  onChange={(event) => setReviewText(event.target.value)}
+                  placeholder="Share a useful, respectful review"
+                  maxLength={1000}
+                />
+                <button
+                  className="button button--secondary"
+                  disabled={reviewText.trim().length < 3}
+                  onClick={() => void submitReview()}
+                >
+                  Submit review
+                </button>
                 {reviewMessage ? <small>{reviewMessage}</small> : null}
               </div>
             ) : null}
