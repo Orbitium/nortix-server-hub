@@ -11397,6 +11397,85 @@ td > small {
   align-items: start;
 }
 
+.owner-setup-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.owner-setup-steps > button {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: default;
+}
+
+.owner-setup-steps > button > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.owner-setup-steps > button > small {
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.owner-setup-steps > button.active > span,
+.owner-setup-steps > button:enabled:hover > span {
+  border-color: #7ee64c;
+  color: #0b1822;
+  background: #7ee64c;
+}
+
+.owner-setup-steps > button:enabled {
+  cursor: pointer;
+}
+
+.owner-setup-steps > button:enabled:hover {
+  color: var(--text);
+}
+
+.owner-setup-section {
+  display: grid;
+  gap: 18px;
+}
+
+.owner-setup-section > header {
+  display: grid;
+  gap: 7px;
+}
+
+.owner-setup-section > header > span {
+  color: #8fe95b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.owner-setup-section > header h2 {
+  margin: 0;
+}
+
+.owner-setup-section > header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .owner-platform-choice {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

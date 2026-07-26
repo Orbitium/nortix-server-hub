@@ -464,6 +464,7 @@ export const useStreak = (enabled = true) =>
     queryKey: ["profile-streak"],
     queryFn: () => api<Streak>("/profile/activity/streak", { method: "POST" }),
     enabled,
+    retry: 2,
   });
 
 export const useSparksSummary = (enabled = true) =>

@@ -61,6 +61,7 @@ import { api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { readRolePreference, saveRolePreference } from "../lib/role-preference";
 import { filterServers, getServerFilterOptions } from "../lib/server-filtering";
+import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
 
 const PageHeading = ({
   eyebrow,
@@ -372,13 +373,22 @@ export function DashboardCampaignsPage() {
   const [tab, setTab] = useState("Newest");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("ALL");
+  const [version, setVersion] = useState("ALL");
   const [edition, setEdition] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
   const campaigns = data?.items ?? [];
   const categories = useMemo(
-    () => ["ALL", ...new Set(campaigns.map((campaign) => campaign.category).filter(Boolean))],
+    () => [
+      "ALL",
+      ...new Set([
+        ...serverTypes,
+        ...campaigns.map((campaign) => campaign.category).filter(Boolean),
+        ...campaigns.flatMap((campaign) => campaign.server.categories),
+      ]),
+    ],
     [campaigns],
   );
+  const versions = minecraftMajorVersions;
   const visibleCampaigns = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = campaigns.filter((campaign) => {
@@ -394,7 +404,12 @@ export function DashboardCampaignsPage() {
         .join(" ")
         .toLowerCase();
       return (
-        (category === "ALL" || campaign.category === category) &&
+        (category === "ALL" ||
+          campaign.category === category ||
+          campaign.server.categories.includes(category)) &&
+        (version === "ALL" ||
+          campaign.versionRequirements.some((item) => item === version || item.startsWith(`${version}.`)) ||
+          campaign.server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
         (edition === "ALL" || campaign.server.edition === edition) &&
         (!query || searchableText.includes(query))
       );
@@ -406,7 +421,7 @@ export function DashboardCampaignsPage() {
         return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
       return new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime();
     });
-  }, [campaigns, category, edition, search, tab]);
+  }, [campaigns, category, edition, search, tab, version]);
   return (
     <div className="dashboard-page">
       <PageHeading title={t("ui.campaigns")} description={t("ui.campaignDescription")} />
@@ -427,6 +442,18 @@ export function DashboardCampaignsPage() {
           {categories.map((item) => (
             <option value={item} key={item}>
               {item === "ALL" ? t("ui.allCategories") : item}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={t("ui.allVersions")}
+          value={version}
+          onChange={(event) => setVersion(event.target.value)}
+        >
+          <option value="ALL">{t("ui.allVersions")}</option>
+          {versions.map((item) => (
+            <option value={item} key={item}>
+              {item}
             </option>
           ))}
         </select>

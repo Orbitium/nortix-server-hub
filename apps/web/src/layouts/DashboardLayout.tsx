@@ -89,7 +89,7 @@ export function DashboardLayout() {
   const { data: sparksSummary } = useSparksSummary(isAuthenticated);
   const { data: leaderboardData } = useLeaderboard();
   const { data: dailyQuests = [] } = useDailyQuests(isAuthenticated);
-  const { data: streak } = useStreak(isAuthenticated);
+  const { data: streak, isLoading: streakLoading } = useStreak(isAuthenticated);
   const servers = serverData?.items ?? [];
   const campaigns = campaignData?.items ?? [];
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
@@ -484,7 +484,13 @@ export function DashboardLayout() {
                 <i className={day.active ? "done" : undefined} key={`${day.date}-${index}`}>{day.active ? "✓" : "·"}</i>
               ))}
             </div>
-            <span className="rail-action">{streak ? `Best: ${streak.longest} days` : "Loading streak…"}</span>
+            <span className="rail-action">
+              {streak
+                ? `Best: ${streak.longest} days`
+                : streakLoading
+                  ? "Loading streak…"
+                  : t("dashboard.streakUnavailable")}
+            </span>
           </div>}
 
           <div className="rail-card rail-leaderboard">

@@ -2340,6 +2340,44 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
   const [status, setStatus] = useState<"DETAILS" | "PENDING" | "CHECKING" | "VERIFIED">("DETAILS");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [step, setStep] = useState(1);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("nortix-register-server-draft");
+      if (saved) {
+        const draft = JSON.parse(saved) as Partial<{
+          name: string;
+          address: string;
+          platform: RegistrationPlatform;
+          versions: string[];
+          categories: string[];
+          verificationParentId: string;
+          step: number;
+        }>;
+        if (typeof draft.name === "string") setName(draft.name);
+        if (typeof draft.address === "string") setAddress(draft.address);
+        if (draft.platform) setPlatform(draft.platform);
+        if (Array.isArray(draft.versions)) setVersions(draft.versions);
+        if (Array.isArray(draft.categories)) setCategories(draft.categories);
+        if (typeof draft.verificationParentId === "string") setVerificationParentId(draft.verificationParentId);
+        if (typeof draft.step === "number") setStep(Math.min(3, Math.max(1, draft.step)));
+      }
+    } catch {
+      sessionStorage.removeItem("nortix-register-server-draft");
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    sessionStorage.setItem(
+      "nortix-register-server-draft",
+      JSON.stringify({ name, address, platform, versions, categories, verificationParentId, step }),
+    );
+  }, [address, categories, draftLoaded, name, platform, step, verificationParentId, versions]);
 
   useEffect(() => {
     void api<
@@ -2412,6 +2450,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
       if (platform === "DOWNSTREAM") {
         setInheritedComplete(true);
         setStatus("VERIFIED");
+        setStep(4);
         return;
       }
       const next = await api<Challenge>(`/servers/${created.id}/verification`, {
@@ -2420,6 +2459,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
       });
       setChallenge(next);
       setStatus("PENDING");
+      setStep(4);
     } catch (reason) {
       if (platform !== "DOWNSTREAM") setAddressValidation(null);
       setError(reason instanceof Error ? reason.message : "Registration could not be started.");
@@ -2495,13 +2535,32 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                 </div>
               </div>
             </div>
-          ) : !challenge ? (
+          ) : !challenge && step < 4 ? (
             <>
-              <header>
-                <span>STEP 1 OF 2</span>
-                <h2>Choose what players connect to</h2>
-                <p>Register a standalone Paper server or the public Velocity proxy for a network.</p>
-              </header>
+              <nav className="owner-setup-steps" aria-label="Server registration steps">
+                {["Server type", "Server details", "Profile", "Verify"].map((label, index) => {
+                  const itemStep = index + 1;
+                  return (
+                    <button
+                      type="button"
+                      key={label}
+                      className={step === itemStep ? "active" : ""}
+                      disabled={itemStep >= step}
+                      onClick={() => itemStep < step && setStep(itemStep)}
+                      aria-label={`Go back to ${label}`}
+                    >
+                      <span>{itemStep}</span>
+                      <small>{label}</small>
+                    </button>
+                  );
+                })}
+              </nav>
+              {step === 1 && <section className="owner-setup-section">
+                <header>
+                  <span>STEP 1 OF 4</span>
+                  <h2>Choose what players connect to</h2>
+                  <p>Register a standalone Paper server, a public Velocity proxy, or a backend behind an already verified proxy.</p>
+                </header>
               <div className="owner-platform-choice">
                 <button className={platform === "PAPER" ? "selected" : ""} onClick={() => setPlatform("PAPER")}>
                   <Server />
@@ -2528,6 +2587,14 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                   <CheckCircle2 />
                 </button>
               </div>
+              <button className="button button--primary" onClick={() => setStep(2)}>Continue <ArrowUpRight /></button>
+              </section>}
+              {step === 2 && <section className="owner-setup-section">
+                <header>
+                  <span>STEP 2 OF 4</span>
+                  <h2>Add your server details</h2>
+                  <p>Save the name and address Nortix will use for the ownership check.</p>
+                </header>
               <div className="form-grid form-grid--two owner-register-fields">
                 <label>
                   Display name
@@ -2549,20 +2616,6 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                     </select>
                   </label>
                 )}
-                <label>
-                  Supported Minecraft versions
-                  <select multiple size={5} value={versions} onChange={(event) => setVersions(Array.from(event.target.selectedOptions, (option) => option.value))}>
-                    {minecraftMajorVersions.map((version) => <option key={version} value={version}>{version}</option>)}
-                  </select>
-                  <small>Choose every major version supported, from 1.8 through 1.21.</small>
-                </label>
-                <label>
-                  Server types
-                  <select multiple size={5} value={categories} onChange={(event) => setCategories(Array.from(event.target.selectedOptions, (option) => option.value))}>
-                    {serverTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-                  </select>
-                  <small>Select up to six types that best describe this server.</small>
-                </label>
               </div>
               {error && <p className="owner-verification-error">{error}</p>}
               {platform !== "DOWNSTREAM" && addressValidation && (
@@ -2575,20 +2628,68 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                   </div>
                 </div>
               )}
-              {(platform === "DOWNSTREAM" || !addressValidation) && <button className="button button--primary" disabled={name.trim().length < 3 || address.trim().length < 3 || (platform === "DOWNSTREAM" && !verificationParentId)} onClick={() => void (platform === "DOWNSTREAM" ? beginVerification() : validateAddress())}>
+              {(platform === "DOWNSTREAM" || !addressValidation) && <button className="button button--primary" disabled={name.trim().length < 3 || address.trim().length < 3 || (platform === "DOWNSTREAM" && !verificationParentId)} onClick={() => void (platform === "DOWNSTREAM" ? setStep(3) : validateAddress())}>
                 <Link2 />
-                {platform === "DOWNSTREAM" ? "Link backend server" : "Check public address"}
+                {platform === "DOWNSTREAM" ? "Continue" : "Check public address"}
               </button>}
               {platform !== "DOWNSTREAM" && addressValidation && (
-                <button className="button button--secondary" onClick={() => void beginVerification()}>
-                  Generate verification code
+                <button className="button button--secondary" onClick={() => setStep(3)}>
+                  Continue
                 </button>
               )}
+              </section>}
+              {step === 3 && <section className="owner-setup-section">
+                <header>
+                  <span>STEP 3 OF 4</span>
+                  <h2>Describe your server</h2>
+                  <p>Choose the Minecraft versions and server types that players can expect.</p>
+                </header>
+                <div className="form-grid form-grid--two owner-register-fields">
+                  <label>
+                    Supported Minecraft versions
+                    <select multiple size={7} value={versions} onChange={(event) => setVersions(Array.from(event.target.selectedOptions, (option) => option.value))}>
+                      {minecraftMajorVersions.map((version) => <option key={version} value={version}>{version}</option>)}
+                    </select>
+                    <small>Choose every major version supported, from 1.8 through 1.21.</small>
+                  </label>
+                  <label>
+                    Server types
+                    <select multiple size={7} value={categories} onChange={(event) => setCategories(Array.from(event.target.selectedOptions, (option) => option.value))}>
+                      {serverTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                    <small>Select up to six types that best describe this server.</small>
+                  </label>
+                </div>
+                {error && <p className="owner-verification-error">{error}</p>}
+                <button className="button button--primary" disabled={versions.length === 0 || categories.length === 0 || categories.length > 6} onClick={() => void beginVerification()}>
+                  <Link2 />
+                  {platform === "DOWNSTREAM" ? "Link backend server" : "Generate verification code"}
+                </button>
+              </section>}
             </>
-          ) : (
+          ) : challenge ? (
+            <>
+            <nav className="owner-setup-steps" aria-label="Server registration steps">
+              {["Server type", "Server details", "Profile", "Verify"].map((label, index) => {
+                const itemStep = index + 1;
+                return (
+                  <button
+                    type="button"
+                    key={label}
+                    className={step === itemStep ? "active" : ""}
+                    disabled={itemStep >= step || itemStep === 4}
+                    onClick={() => itemStep < step && setStep(itemStep)}
+                    aria-label={`Go back to ${label}`}
+                  >
+                    <span>{itemStep}</span>
+                    <small>{label}</small>
+                  </button>
+                );
+              })}
+            </nav>
             <div className="owner-verification">
               <header>
-                <span>STEP 2 OF 2</span>
+                <span>STEP 4 OF 4</span>
                 <h2>{status === "VERIFIED" ? "Server verified" : "Publish the code in your MOTD"}</h2>
                 <p>{status === "VERIFIED" ? "Ownership is confirmed. The code may now be removed automatically or manually." : "This code expires after 15 minutes. Keep the server reachable from the public internet while Nortix checks it."}</p>
               </header>
@@ -2650,6 +2751,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                       onClick={() => {
                         setChallenge(null);
                         setStatus("DETAILS");
+                        setStep(1);
                         setError("");
                       }}
                     >
@@ -2664,7 +2766,8 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                 </>
               )}
             </div>
-          )}
+            </>
+          ) : null}
         </section>
         <aside className="card owner-registration-checklist">
           <h2>How ownership proof works</h2>

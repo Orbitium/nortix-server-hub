@@ -513,10 +513,19 @@ export function BrowseCampaignsPage() {
   const [serverType, setServerType] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
   const campaigns = data?.items ?? [];
-  const categories = ["__all__", ...new Set(campaigns.map((campaign) => campaign.category))];
+  const categories = [
+    "__all__",
+    ...new Set([
+      ...serverTypes,
+      ...campaigns.map((campaign) => campaign.category),
+      ...campaigns.flatMap((campaign) => campaign.server.categories),
+    ]),
+  ];
   const visible = campaigns.filter(
     (campaign) =>
-      (category === "__all__" || campaign.category === category) &&
+      (category === "__all__" ||
+        campaign.category === category ||
+        campaign.server.categories.includes(category)) &&
       (version === "ALL" ||
         campaign.versionRequirements.some(
           (item) => item === version || item.startsWith(`${version}.`),
