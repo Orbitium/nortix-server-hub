@@ -2,6 +2,9 @@ import { CompletionStatus, prisma, Prisma, type CosmeticType } from "@nortix/dat
 import { isCosmeticUnlocked, normalizeCosmeticPreview } from "./policy.js";
 import { createNotification } from "../notifications/service.js";
 import { testerExperienceForLevel } from "./progression.js";
+import { GameplayService } from "../gameplay/service.js";
+
+const gameplayService = new GameplayService();
 
 const cosmeticSelect = {
   id: true,
@@ -100,6 +103,7 @@ export class CosmeticService {
       verifiedPlaytests,
       feedbackCount,
       identities,
+      gameplay,
     ] = await Promise.all([
       prisma.campaignParticipation.findMany({
         where: { playerId: userId },
@@ -147,6 +151,7 @@ export class CosmeticService {
           },
         },
       }),
+      gameplayService.summary(userId),
     ]);
 
     const activities = [
@@ -202,6 +207,7 @@ export class CosmeticService {
         serverScopedIdentities: identities?._count.crackedAccountLinks ?? 0,
         feedbackGiven: feedbackCount,
       },
+      gameplay,
       activities,
     };
   }

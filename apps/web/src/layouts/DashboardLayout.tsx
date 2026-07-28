@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   Sparkles,
   Trophy,
+  ThumbsUp,
+  UserPlus,
   UserRound,
   Zap,
 } from "lucide-react";
@@ -56,6 +58,8 @@ const playerNav = [
   ["/campaigns", "nav.campaigns", Gamepad2],
   ["/dashboard/progress", "nav.progress", LayoutDashboard],
   ["/dashboard/quests", "nav.quests", Zap],
+  ["/dashboard/vote", "nav.voting", ThumbsUp],
+  ["/dashboard/referrals", "nav.inviteFriend", UserPlus],
   ["/dashboard/sparks-shop", "nav.sparksShop", Sparkles],
   ["/dashboard/leaderboards", "nav.leaderboards", Trophy],
 ] as const satisfies ReadonlyArray<readonly [string, TranslationKey, typeof Home]>;
@@ -76,6 +80,8 @@ export function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const searchRef = useRef<HTMLInputElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -113,6 +119,22 @@ export function DashboardLayout() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!messagesOpen && !notificationsOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (notificationsOpen && !notificationsRef.current?.contains(target)) {
+        setNotificationsOpen(false);
+      }
+      if (messagesOpen && !messagesRef.current?.contains(target)) {
+        setMessagesOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [messagesOpen, notificationsOpen]);
 
   useEffect(() => {
     const updatePreference = (event: Event) => {
@@ -292,122 +314,126 @@ export function DashboardLayout() {
         </div>
         <div className="topbar__actions">
           <LanguageSwitcher compact />
-          {isAuthenticated && <div className="message-center">
-            <button
-              className="icon-button"
-              aria-label={`${inboxSummary?.unreadNotifications ?? 0} unread notifications`}
-              aria-expanded={notificationsOpen}
-              onClick={() => {
-                setNotificationsOpen((value) => !value);
-                setMessagesOpen(false);
-              }}
-            >
-              <Bell />
-              {(inboxSummary?.unreadNotifications ?? 0) > 0 ? (
-                <span className="notification-dot" />
-              ) : null}
-            </button>
-            {notificationsOpen && (
-              <div className="admin-message-popover inbox-popover">
-                <header>
-                  <span>
-                    <Bell /> {t("dashboard.notifications")}
-                  </span>
-                  <small>
-                    {t("dashboard.unread", { count: inboxSummary?.unreadNotifications ?? 0 })}
-                  </small>
-                </header>
-                {notificationItems.slice(0, 4).map((item) => (
-                  <button
-                    className="inbox-popover__item"
-                    key={item.id}
-                    onClick={() => openNotification(item.id, item.actionUrl)}
-                  >
-                    <strong>{item.title}</strong>
-                    <p>{item.body}</p>
-                  </button>
-                ))}
-                {notificationItems.length === 0 ? (
-                  <article>
-                    <strong>{t("dashboard.caughtUp")}</strong>
-                    <p>{t("dashboard.noNotifications")}</p>
-                  </article>
+          {isAuthenticated && (
+            <div className="message-center" ref={notificationsRef}>
+              <button
+                className="icon-button"
+                aria-label={`${inboxSummary?.unreadNotifications ?? 0} unread notifications`}
+                aria-expanded={notificationsOpen}
+                onClick={() => {
+                  setNotificationsOpen((value) => !value);
+                  setMessagesOpen(false);
+                }}
+              >
+                <Bell />
+                {(inboxSummary?.unreadNotifications ?? 0) > 0 ? (
+                  <span className="notification-dot" />
                 ) : null}
-                <NavLink to="/dashboard/inbox" onClick={() => setNotificationsOpen(false)}>
-                  {t("dashboard.openNotifications")}
-                </NavLink>
-              </div>
-            )}
-          </div>}
-          {isAuthenticated && <div className="message-center">
+              </button>
+              {notificationsOpen && (
+                <div className="admin-message-popover inbox-popover">
+                  <header>
+                    <span>
+                      <Bell /> {t("dashboard.notifications")}
+                    </span>
+                    <small>
+                      {t("dashboard.unread", { count: inboxSummary?.unreadNotifications ?? 0 })}
+                    </small>
+                  </header>
+                  {notificationItems.slice(0, 4).map((item) => (
+                    <button
+                      className="inbox-popover__item"
+                      key={item.id}
+                      onClick={() => openNotification(item.id, item.actionUrl)}
+                    >
+                      <strong>{item.title}</strong>
+                      <p>{item.body}</p>
+                    </button>
+                  ))}
+                  {notificationItems.length === 0 ? (
+                    <article>
+                      <strong>{t("dashboard.caughtUp")}</strong>
+                      <p>{t("dashboard.noNotifications")}</p>
+                    </article>
+                  ) : null}
+                  <NavLink to="/dashboard/inbox" onClick={() => setNotificationsOpen(false)}>
+                    {t("dashboard.openNotifications")}
+                  </NavLink>
+                </div>
+              )}
+            </div>
+          )}
+          {isAuthenticated && (
+            <div className="message-center" ref={messagesRef}>
+              <button
+                className="icon-button desktop-only"
+                aria-label={`${inboxSummary?.unreadMessages ?? 0} unread messages from Nortix`}
+                aria-expanded={messagesOpen}
+                onClick={() => {
+                  setMessagesOpen((value) => !value);
+                  setNotificationsOpen(false);
+                }}
+              >
+                <MessageSquare />
+                {(inboxSummary?.unreadMessages ?? 0) > 0 ? (
+                  <span className="notification-dot" />
+                ) : null}
+              </button>
+              {messagesOpen && (
+                <div className="admin-message-popover inbox-popover">
+                  <header>
+                    <span>
+                      <ShieldCheck /> {t("dashboard.messages")}
+                    </span>
+                    <small>
+                      {t("dashboard.unread", { count: inboxSummary?.unreadMessages ?? 0 })}
+                    </small>
+                  </header>
+                  {messageItems.slice(0, 4).map((delivery) => (
+                    <button
+                      className="inbox-popover__item"
+                      key={delivery.id}
+                      onClick={() => openMessage(delivery.id, delivery.message.actionUrl)}
+                    >
+                      <strong>{delivery.message.title}</strong>
+                      <p>{delivery.message.body}</p>
+                    </button>
+                  ))}
+                  {messageItems.length === 0 ? (
+                    <article>
+                      <strong>{t("dashboard.caughtUp")}</strong>
+                      <p>{t("dashboard.noMessages")}</p>
+                    </article>
+                  ) : null}
+                  <NavLink to="/dashboard/inbox" onClick={() => setMessagesOpen(false)}>
+                    {t("dashboard.openMessages")}
+                  </NavLink>
+                </div>
+              )}
+            </div>
+          )}
+          {isAuthenticated && (
             <button
               className="icon-button desktop-only"
-              aria-label={`${inboxSummary?.unreadMessages ?? 0} unread messages from Nortix`}
-              aria-expanded={messagesOpen}
-              onClick={() => {
-                setMessagesOpen((value) => !value);
-                setNotificationsOpen(false);
-              }}
+              aria-label={t("dashboard.openInbox")}
+              onClick={() => navigate("/dashboard/inbox")}
             >
-              <MessageSquare />
-              {(inboxSummary?.unreadMessages ?? 0) > 0 ? (
-                <span className="notification-dot" />
-              ) : null}
+              <Inbox />
             </button>
-            {messagesOpen && (
-              <div className="admin-message-popover inbox-popover">
-                <header>
-                  <span>
-                    <ShieldCheck /> {t("dashboard.messages")}
-                  </span>
-                  <small>
-                    {t("dashboard.unread", { count: inboxSummary?.unreadMessages ?? 0 })}
-                  </small>
-                </header>
-                {messageItems.slice(0, 4).map((delivery) => (
-                  <button
-                    className="inbox-popover__item"
-                    key={delivery.id}
-                    onClick={() => openMessage(delivery.id, delivery.message.actionUrl)}
-                  >
-                    <strong>{delivery.message.title}</strong>
-                    <p>{delivery.message.body}</p>
-                  </button>
-                ))}
-                {messageItems.length === 0 ? (
-                  <article>
-                    <strong>{t("dashboard.caughtUp")}</strong>
-                    <p>{t("dashboard.noMessages")}</p>
-                  </article>
-                ) : null}
-                <NavLink to="/dashboard/inbox" onClick={() => setMessagesOpen(false)}>
-                  {t("dashboard.openMessages")}
-                </NavLink>
-              </div>
-            )}
-          </div>}
-          {isAuthenticated && <button
-            className="icon-button desktop-only"
-            aria-label={t("dashboard.openInbox")}
-            onClick={() => navigate("/dashboard/inbox")}
-          >
-            <Inbox />
-          </button>}
+          )}
           <NavLink
             to={isAuthenticated ? "/dashboard/profile" : "/sign-in?next=%2Fdashboard"}
             className="profile-trigger"
           >
             <span className="avatar avatar--pixel">
-              {isAuthenticated
-                ? (currentUser?.username ?? "NX").slice(0, 2).toUpperCase()
-                : "G"}
+              {isAuthenticated ? (currentUser?.username ?? "NX").slice(0, 2).toUpperCase() : "G"}
             </span>
             <span>
               <strong>
                 {isInitializing
                   ? t("dashboard.loadingAccount")
                   : isAuthenticated
-                    ? currentUser?.displayName ?? currentUser?.username ?? t("dashboard.account")
+                    ? (currentUser?.displayName ?? currentUser?.username ?? t("dashboard.account"))
                     : t("dashboard.guest")}
               </strong>
               <small>
@@ -427,15 +453,17 @@ export function DashboardLayout() {
 
       {showRightRail && (
         <aside className="right-rail">
-          {isAuthenticated ? <div className="rail-balances rail-balances--sparks-only">
-            <div className="rail-balance rail-balance--sparks">
-              <span>
-                <Sparkles size={15} /> Sparks
-              </span>
-              <strong>{sparksSummary ? formatNumber(sparksSummary.balance) : "—"}</strong>
-              <NavLink to="/dashboard/sparks-shop">{t("dashboard.exploreShop")}</NavLink>
+          {isAuthenticated ? (
+            <div className="rail-balances rail-balances--sparks-only">
+              <div className="rail-balance rail-balance--sparks">
+                <span>
+                  <Sparkles size={15} /> Sparks
+                </span>
+                <strong>{sparksSummary ? formatNumber(sparksSummary.balance) : "—"}</strong>
+                <NavLink to="/dashboard/sparks-shop">{t("dashboard.exploreShop")}</NavLink>
+              </div>
             </div>
-          </div> : (
+          ) : (
             <div className="rail-card">
               <strong>{t("dashboard.guest")}</strong>
               <p>{t("dashboard.guestDescription")}</p>
@@ -445,53 +473,67 @@ export function DashboardLayout() {
             </div>
           )}
 
-          {isAuthenticated && <div className="rail-card rail-card--quest">
-            <div className="rail-card__heading">
-              <span>
-                <Zap size={17} /> {t("dashboard.dailyQuest")}
-              </span>
-              <small>11h 32m</small>
+          {isAuthenticated && (
+            <div className="rail-card rail-card--quest">
+              <div className="rail-card__heading">
+                <span>
+                  <Zap size={17} /> {t("dashboard.dailyQuest")}
+                </span>
+                <small>11h 32m</small>
+              </div>
+              <div className="quest-row">
+                <strong className="rail-title">
+                  {dailyQuest?.title ?? t("dashboard.noQuest")}
+                </strong>
+                <span>
+                  {dailyQuest?.progress ?? 0} / {dailyQuest?.target ?? 0}
+                </span>
+              </div>
+              <div className="progress-track">
+                <span
+                  style={{
+                    width: `${dailyQuest ? Math.min(dailyQuest.progress / dailyQuest.target, 1) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              <p>{t("dashboard.potential", { count: dailyQuest?.sparksReward ?? 0 })}</p>
+              <NavLink className="rail-action" to="/dashboard/quests">
+                {t("dashboard.questDetails")}
+              </NavLink>
             </div>
-            <div className="quest-row">
-              <strong className="rail-title">{dailyQuest?.title ?? t("dashboard.noQuest")}</strong>
-              <span>
-                {dailyQuest?.progress ?? 0} / {dailyQuest?.target ?? 0}
-              </span>
-            </div>
-            <div className="progress-track">
-              <span
-                style={{
-                  width: `${dailyQuest ? Math.min(dailyQuest.progress / dailyQuest.target, 1) * 100 : 0}%`,
-                }}
-              />
-            </div>
-            <p>{t("dashboard.potential", { count: dailyQuest?.sparksReward ?? 0 })}</p>
-            <NavLink className="rail-action" to="/dashboard/quests">
-              {t("dashboard.questDetails")}
-            </NavLink>
-          </div>}
+          )}
 
-          {isAuthenticated && <div className="rail-card streak-card">
-            <div className="rail-card__heading">
-              <span>
-                <Crown size={18} /> {t("dashboard.streak")}
+          {isAuthenticated && (
+            <div className="rail-card streak-card">
+              <div className="rail-card__heading">
+                <span>
+                  <Crown size={18} /> {t("dashboard.streak")}
+                </span>
+                <b>{streak ? `${streak.current} days` : "—"}</b>
+              </div>
+              <p>
+                {streak?.today.active
+                  ? "Active today. Keep it going."
+                  : "Open Nortix or play an active campaign server today."}
+              </p>
+              <div className="streak-days">
+                {(
+                  streak?.days ?? Array.from({ length: 7 }, () => ({ date: "", active: false }))
+                ).map((day, index) => (
+                  <i className={day.active ? "done" : undefined} key={`${day.date}-${index}`}>
+                    {day.active ? "✓" : "·"}
+                  </i>
+                ))}
+              </div>
+              <span className="rail-action">
+                {streak
+                  ? `Best: ${streak.longest} days`
+                  : streakLoading
+                    ? "Loading streak…"
+                    : t("dashboard.streakUnavailable")}
               </span>
-              <b>{streak ? `${streak.current} days` : "—"}</b>
             </div>
-            <p>{streak?.today.active ? "Active today. Keep it going." : "Open Nortix or play an active campaign server today."}</p>
-            <div className="streak-days">
-              {(streak?.days ?? Array.from({ length: 7 }, () => ({ date: "", active: false }))).map((day, index) => (
-                <i className={day.active ? "done" : undefined} key={`${day.date}-${index}`}>{day.active ? "✓" : "·"}</i>
-              ))}
-            </div>
-            <span className="rail-action">
-              {streak
-                ? `Best: ${streak.longest} days`
-                : streakLoading
-                  ? "Loading streak…"
-                  : t("dashboard.streakUnavailable")}
-            </span>
-          </div>}
+          )}
 
           <div className="rail-card rail-leaderboard">
             <div className="rail-card__heading">

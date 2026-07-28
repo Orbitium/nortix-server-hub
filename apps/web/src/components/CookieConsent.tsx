@@ -1,4 +1,4 @@
-import { Cookie, ShieldCheck, X } from "lucide-react";
+import { ShieldCheck, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -30,12 +30,7 @@ export function CookieConsent() {
   };
 
   if (!open) {
-    return (
-      <button className="cookie-settings-button" onClick={() => setOpen(true)}>
-        <Cookie size={15} />
-        Cookie settings
-      </button>
-    );
+    return null;
   }
 
   return (

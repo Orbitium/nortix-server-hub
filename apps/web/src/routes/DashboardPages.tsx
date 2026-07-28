@@ -43,10 +43,8 @@ import { ServerCard } from "../components/ServerCard";
 import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
 import { SeededProgressPage } from "../components/SeededProgressPage";
 import {
-  type CosmeticItem,
   type ProfileCosmeticItem,
   type ProfileCosmeticType,
-  useCosmetics,
   useCurrentUser,
   useDailyQuests,
   useLeaderboard,
@@ -55,9 +53,12 @@ import {
   useProfileCosmetics,
   usePublicCampaigns,
   usePublicServers,
+  useReferrals,
   useSparksSummary,
+  useVotingServers,
 } from "../features/api-data";
 import { api } from "../lib/api";
+import { TurnstileWidget } from "../components/TurnstileWidget";
 import { useI18n } from "../lib/i18n";
 import { readRolePreference, saveRolePreference } from "../lib/role-preference";
 import { filterServers, getServerFilterOptions } from "../lib/server-filtering";
@@ -92,7 +93,39 @@ const cosmeticTypes: Array<{ type: ProfileCosmeticType; label: string }> = [
   { type: "THEME", label: "Themes" },
 ];
 
-const CosmeticGlyph = ({ item }: { item: ProfileCosmeticItem }) => {
+const CosmeticGlyph = ({ item }: { item: Pick<ProfileCosmeticItem, "preview"> }) => {
+  const pixelIcons = new Set([
+    "block",
+    "meadow",
+    "pickaxe",
+    "pixel-heart",
+    "portal",
+    "redstone",
+    "river",
+    "slime",
+    "sprout",
+    "sunrise",
+  ]);
+  if (pixelIcons.has(item.preview.icon)) {
+    return (
+      <svg viewBox="0 0 64 64" aria-hidden="true" className="cosmetic-pixel-svg">
+        <rect x="10" y="10" width="44" height="44" rx="8" fill="var(--cosmetic-primary)" />
+        {item.preview.icon === "pixel-heart" ? (
+          <path d="M16 24h8v-6h8v6h8v-6h8v6h6v10L32 52 10 34V24h6Z" fill="var(--cosmetic-accent)" />
+        ) : item.preview.icon === "pickaxe" ? (
+          <path d="m15 18 7-7 27 27-7 7-9-9-13 17-6-5 13-18-12-12Zm18-7h17v8H33Z" fill="var(--cosmetic-accent)" />
+        ) : item.preview.icon === "slime" ? (
+          <path d="M16 20h32v28H16Zm7 9h7v7h-7Zm18 0h7v7h-7ZM27 40h14v5H27Z" fill="var(--cosmetic-accent)" />
+        ) : item.preview.icon === "portal" ? (
+          <path fill="var(--cosmetic-accent)" fillRule="evenodd" d="M17 10h30v44H17Zm8 9v26h14V19Z" />
+        ) : item.preview.icon === "sunrise" ? (
+          <path d="M10 42h44v8H10Zm10-5a12 12 0 0 1 24 0Zm-3-13-6-5 5-5 6 6Zm30 0-5-4 6-6 5 5Z" fill="var(--cosmetic-accent)" />
+        ) : (
+          <path d="M14 45h36v7H14Zm6-8h24v6H20Zm7-9h10v9H27Zm3-17h5v17h-5Z" fill="var(--cosmetic-accent)" />
+        )}
+      </svg>
+    );
+  }
   const icons = {
     award: Award,
     bot: Bot,
@@ -408,8 +441,12 @@ export function DashboardCampaignsPage() {
           campaign.category === category ||
           campaign.server.categories.includes(category)) &&
         (version === "ALL" ||
-          campaign.versionRequirements.some((item) => item === version || item.startsWith(`${version}.`)) ||
-          campaign.server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
+          campaign.versionRequirements.some(
+            (item) => item === version || item.startsWith(`${version}.`),
+          ) ||
+          campaign.server.versions.some(
+            (item) => item === version || item.startsWith(`${version}.`),
+          )) &&
         (edition === "ALL" || campaign.server.edition === edition) &&
         (!query || searchableText.includes(query))
       );
@@ -771,6 +808,8 @@ export function EarningsPage() {
 export function QuestsPage() {
   const { data, isLoading, isError, refetch } = useDailyQuests();
   const quests = data ?? [];
+  const recurringQuests = quests.filter((quest) => quest.cadence === "DAILY");
+  const accountQuests = quests.filter((quest) => quest.cadence !== "DAILY");
   const questIcons = {
     ACCOUNT_CREATED: UserPlus,
     MINECRAFT_ACCOUNT_LINKED: Link2,
@@ -783,8 +822,11 @@ export function QuestsPage() {
     FRIEND_REFERRAL: Users,
     SERVER_REVIEW_WRITTEN: MessageSquareText,
   } as const;
-  const totalPotentialSparks = quests.reduce((total, quest) => total + quest.sparksReward, 0);
-  const completedQuests = quests.filter((quest) => quest.completedAt).length;
+  const totalPotentialSparks = recurringQuests.reduce(
+    (total, quest) => total + quest.sparksReward,
+    0,
+  );
+  const completedQuests = recurringQuests.filter((quest) => quest.completedAt).length;
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -795,11 +837,11 @@ export function QuestsPage() {
         <div>
           <Badge tone="purple">DAILY SET</Badge>
           <h2>
-            {quests.length} quests · up to {totalPotentialSparks} Sparks may be available
+            {recurringQuests.length} daily quests · up to {totalPotentialSparks} Sparks may be available
           </h2>
           <p>
-            These account quests are available to everyone. Sign in to earn Sparks when the backend
-            verifies your progress.
+            Daily progress resets at 00:00 UTC. Sign in to receive Sparks only after the backend
+            verifies the activity.
           </p>
         </div>
         <div className="streak-large">
@@ -820,7 +862,7 @@ export function QuestsPage() {
             <Button onClick={() => refetch()}>Retry</Button>
           </Card>
         ) : null}
-        {quests.map((quest) => {
+        {recurringQuests.map((quest) => {
           const Icon = questIcons[quest.type as keyof typeof questIcons] ?? Target;
           return (
             <Card key={quest.id}>
@@ -842,16 +884,48 @@ export function QuestsPage() {
           );
         })}
       </div>
+      {accountQuests.length ? (
+        <>
+          <PageHeading
+            eyebrow="ACCOUNT PROGRESS"
+            title="One-time quests"
+            description="These verified account milestones do not reset each day."
+          />
+          <div className="quest-grid">
+            {accountQuests.map((quest) => {
+              const Icon = questIcons[quest.type as keyof typeof questIcons] ?? Target;
+              return (
+                <Card key={quest.id}>
+                  <span className="quest-icon"><Icon /></span>
+                  <Badge tone={quest.verificationPending ? "warning" : "neutral"}>
+                    {quest.verificationPending ? "Verification pending" : `${quest.sparksReward} Sparks`}
+                  </Badge>
+                  <h3>{quest.title}</h3>
+                  <p>{quest.description}</p>
+                  <ProgressBar value={(quest.progress / quest.target) * 100} label={`${quest.progress} of ${quest.target}`} />
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
 
 export function SparksShopPage() {
-  const { data: cosmeticItems, isLoading, isError, refetch } = useCosmetics();
+  const {
+    data: cosmeticCollection,
+    isLoading,
+    isError,
+    refetch,
+  } = useProfileCosmetics();
   const { data: sparksSummary, refetch: refetchSparks } = useSparksSummary();
-  const cosmetics = cosmeticItems ?? [];
+  const cosmetics =
+    cosmeticCollection?.items.filter((item) => item.unlockMethod === "SPARKS") ?? [];
   const balance = sparksSummary?.balance ?? 0;
-  const [selected, setSelected] = useState<CosmeticItem | null>(null);
+  const [selected, setSelected] = useState<ProfileCosmeticItem | null>(null);
+  const [category, setCategory] = useState("ALL");
   const [purchaseMessage, setPurchaseMessage] = useState("");
   return (
     <div className="dashboard-page">
@@ -875,11 +949,22 @@ export function SparksShopPage() {
         </div>
       </Card>
       <div className="shop-tabs">
-        <button className="active">Featured</button>
-        <button>Frames</button>
-        <button>Backgrounds</button>
-        <button>Name effects</button>
-        <button>Seasonal</button>
+        {([
+          ["ALL", "All"],
+          ["AVATAR", "Avatars"],
+          ["BANNER", "Banners"],
+          ["BADGE", "Badges"],
+          ["TITLE", "Titles"],
+          ["THEME", "Themes"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            className={category === value ? "active" : ""}
+            onClick={() => setCategory(value)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <div className="cosmetic-grid">
         {isLoading ? (
@@ -894,21 +979,37 @@ export function SparksShopPage() {
           </Card>
         ) : null}
         {cosmetics
-          .filter((item) => item.type !== "BADGE")
+          .filter((item) => category === "ALL" || item.type === category)
           .map((item) => (
             <Card key={item.id} className="cosmetic-card">
               <div
                 className="cosmetic-preview"
-                style={{ backgroundColor: String(item.preview.color ?? "") || undefined }}
+                style={{
+                  backgroundColor: String(item.preview.primary ?? item.preview.color ?? "") || undefined,
+                  "--cosmetic-primary": String(item.preview.primary ?? "#17382e"),
+                  "--cosmetic-accent": String(item.preview.accent ?? "#98e66e"),
+                } as React.CSSProperties}
               >
-                <Palette />
+                <CosmeticGlyph
+                  item={{
+                    preview: {
+                      primary: String(item.preview.primary ?? "#17382e"),
+                      accent: String(item.preview.accent ?? "#98e66e"),
+                      icon: String(item.preview.icon ?? "sparkles"),
+                      pattern: "plain",
+                    },
+                  }}
+                />
                 <Badge tone={item.rarity === "EPIC" ? "purple" : "neutral"}>{item.rarity}</Badge>
               </div>
               <div>
                 <small>{item.type.replaceAll("_", " ")}</small>
                 <h3>{item.name}</h3>
-                <button disabled={balance < item.sparksPrice} onClick={() => setSelected(item)}>
-                  <Sparks value={item.sparksPrice.toLocaleString()} />
+                <button
+                  disabled={item.purchased || balance < item.sparksPrice}
+                  onClick={() => setSelected(item)}
+                >
+                  {item.purchased ? "Owned" : <Sparks value={item.sparksPrice.toLocaleString()} />}
                 </button>
               </div>
             </Card>
@@ -919,13 +1020,26 @@ export function SparksShopPage() {
           <div className="modal__body">
             <div
               className="cosmetic-preview cosmetic-preview--modal"
-              style={{ backgroundColor: String(selected.preview.color ?? "") || undefined }}
+              style={{
+                backgroundColor: String(selected.preview.primary ?? selected.preview.color ?? "") || undefined,
+                "--cosmetic-primary": String(selected.preview.primary ?? "#17382e"),
+                "--cosmetic-accent": String(selected.preview.accent ?? "#98e66e"),
+              } as React.CSSProperties}
             >
-              <Palette />
+              <CosmeticGlyph
+                item={{
+                  preview: {
+                    primary: String(selected.preview.primary ?? "#17382e"),
+                    accent: String(selected.preview.accent ?? "#98e66e"),
+                    icon: String(selected.preview.icon ?? "sparkles"),
+                    pattern: "plain",
+                  },
+                }}
+              />
             </div>
             <p>
               This cosmetic costs <strong>{selected.sparksPrice.toLocaleString()} Sparks</strong>.
-              Your Your remaining Sparks balance will update after confirmation.
+              Your remaining Sparks balance will update after confirmation.
             </p>
             <div className="withdraw-summary">
               <span>
@@ -950,6 +1064,7 @@ export function SparksShopPage() {
                     body: JSON.stringify({ itemId: selected.id }),
                   });
                   await refetchSparks();
+                  await refetch();
                   setSelected(null);
                 } catch (error) {
                   setPurchaseMessage(
@@ -963,6 +1078,99 @@ export function SparksShopPage() {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+export function VotingPage() {
+  const { data, isLoading, isError, refetch } = useVotingServers();
+  const [selectedId, setSelectedId] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [resetKey, setResetKey] = useState(0);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const selected = data?.servers.find((server) => server.id === selectedId);
+  const limitReached = (data?.votesUsed ?? 0) >= (data?.dailyLimit ?? 5);
+
+  const submitVote = async () => {
+    if (!selectedId || !turnstileToken || busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await api(`/servers/${selectedId}/vote`, {
+        method: "POST",
+        body: JSON.stringify({ vote: true, turnstileToken }),
+      });
+      setMessage(`Your vote for ${selected?.name ?? "this server"} is counted.`);
+      setSelectedId("");
+      await refetch();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Your vote could not be counted.");
+    } finally {
+      setBusy(false);
+      setTurnstileToken("");
+      setResetKey((value) => value + 1);
+    }
+  };
+
+  return (
+    <div className="dashboard-page voting-page">
+      <PageHeading
+        eyebrow="DAILY VOTING"
+        title="Vote for a verified server"
+        description="Support servers with a recently connected Nortix plugin. Each account may vote for up to five different servers per UTC day."
+        action={
+          <div className="balance-pill">
+            <ThumbsUp /> <strong>{data?.votesUsed ?? 0} / {data?.dailyLimit ?? 5}</strong> used
+          </div>
+        }
+      />
+      <Card className="voting-explainer">
+        <ShieldCheck />
+        <div>
+          <h3>Only live, Nortix-verified integrations appear here.</h3>
+          <p>One vote per server each day. Your first eligible vote today may complete the 5 Sparks daily quest after backend verification.</p>
+        </div>
+      </Card>
+      {isLoading ? <Card><p>Loading eligible servers…</p></Card> : null}
+      {isError ? <Card><p>Eligible servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+      <div className="voting-server-grid">
+        {data?.servers.map((server) => (
+          <button
+            type="button"
+            key={server.id}
+            className={`voting-server-card ${selectedId === server.id ? "is-selected" : ""}`}
+            disabled={server.votedToday || limitReached}
+            onClick={() => {
+              setSelectedId(server.id);
+              setMessage("");
+            }}
+          >
+            <span className="voting-server-logo">{server.logoUrl ? <img src={server.logoUrl} alt="" /> : <ServerCog />}</span>
+            <span>
+              <strong>{server.name}</strong>
+              <small>{server.playerCount ?? 0} online · {server.voteCount.toLocaleString()} votes</small>
+            </span>
+            <Badge tone={server.votedToday ? "neutral" : "purple"}>
+              {server.votedToday ? "Voted today" : "Select"}
+            </Badge>
+          </button>
+        ))}
+      </div>
+      {!isLoading && data?.servers.length === 0 ? (
+        <Card><p>No verified servers have a recent plugin heartbeat right now. Check back soon.</p></Card>
+      ) : null}
+      <Card className="vote-submit-card">
+        <div>
+          <small>SELECTED SERVER</small>
+          <h3>{selected?.name ?? "Choose a server above"}</h3>
+        </div>
+        <TurnstileWidget resetKey={resetKey} onToken={setTurnstileToken} />
+        <Button disabled={!selected || !turnstileToken || busy || limitReached} onClick={() => void submitVote()}>
+          <ThumbsUp /> {busy ? "Voting…" : "Vote"}
+        </Button>
+        {message ? <p role="status">{message}</p> : null}
+      </Card>
     </div>
   );
 }
@@ -1143,26 +1351,76 @@ export function CommunityPage() {
 }
 
 export function ReferralsPage() {
+  const { data: invites = [], isLoading, isError, refetch } = useReferrals();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(() => {
+    const value = sessionStorage.getItem("nortix-referral-message") ?? "";
+    sessionStorage.removeItem("nortix-referral-message");
+    return value;
+  });
+  const openInvite = invites.find((invite) => invite.status === "OPEN");
+  const registered = invites.filter((invite) =>
+    ["REGISTERED", "QUALIFIED"].includes(invite.status),
+  ).length;
+  const qualified = invites.filter((invite) => invite.status === "QUALIFIED").length;
+
+  const createInvite = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      await api("/referrals", { method: "POST", body: "{}" });
+      await refetch();
+      setMessage("A new single-use invite is ready to share.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The invite could not be created.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!openInvite) return;
+    const url = `${window.location.origin}/register?invite=${encodeURIComponent(openInvite.code)}&next=${encodeURIComponent("/dashboard/referrals")}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage("Invite link copied.");
+    } catch {
+      setMessage(`Copy this invite link: ${url}`);
+    }
+  };
+
   return (
     <div className="dashboard-page">
       <PageHeading
-        title="Referrals"
-        description="Invite thoughtful players to discover Nortix and earn cosmetic progression."
+        title="Invite a friend"
+        description="Create a single-use invite and track its qualification without exposing private account details."
       />
       <Card className="referral-hero">
         <div>
-          <Badge tone="purple">COMMUNITY INVITES</Badge>
-          <h2>Bring better testers into the loop.</h2>
+          <Badge tone="purple">FRIEND INVITES</Badge>
+          <h2>Invite a friend to Nortix.</h2>
           <p>
-            When a referred friend verifies their profile and completes a first honest playtest, you
-            each account may receive up to 50 Sparks after eligibility checks.
+            Your invite qualifies after your friend registers through the link and earns at least
+            200 Sparks. Your Invite a friend quest may then receive 50 Sparks after backend
+            verification.
           </p>
-          <div className="referral-code">
-            <code>NORTIX-QUARTZ-7H2K</code>
-            <button className="button button--primary">
-              <Copy /> Copy invite
-            </button>
-          </div>
+          {openInvite ? (
+            <div className="referral-code">
+              <code>{openInvite.code}</code>
+              <Button onClick={copyInvite}>
+                <Copy /> Copy invite link
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={createInvite} disabled={busy}>
+              <UserPlus /> {busy ? "Creating…" : "Create invite"}
+            </Button>
+          )}
+          {message ? (
+            <p className="referral-message" role="status">
+              {message}
+            </p>
+          ) : null}
         </div>
         <UserPlus />
       </Card>
@@ -1173,8 +1431,8 @@ export function ReferralsPage() {
           </span>
           <div>
             <small>Friends invited</small>
-            <strong>7</strong>
-            <span>4 completed onboarding</span>
+            <strong>{invites.length}</strong>
+            <span>{registered} registered</span>
           </div>
         </Card>
         <Card>
@@ -1182,9 +1440,9 @@ export function ReferralsPage() {
             <Sparkles />
           </span>
           <div>
-            <small>Sparks earned</small>
-            <strong>2,000</strong>
-            <span>Referral progression</span>
+            <small>Qualified invites</small>
+            <strong>{qualified}</strong>
+            <span>Reached 200 earned Sparks</span>
           </div>
         </Card>
         <Card>
@@ -1192,9 +1450,9 @@ export function ReferralsPage() {
             <Gift />
           </span>
           <div>
-            <small>Next reward</small>
-            <strong>1 invite</strong>
-            <span>+500 Sparks</span>
+            <small>Quest eligibility</small>
+            <strong>{qualified ? "Verified" : "Pending"}</strong>
+            <span>May receive 50 Sparks once</span>
           </div>
         </Card>
       </div>
@@ -1209,24 +1467,45 @@ export function ReferralsPage() {
           <table>
             <thead>
               <tr>
-                <th>Friend</th>
-                <th>Joined</th>
+                <th>Invite</th>
+                <th>Created</th>
                 <th>Status</th>
-                <th>Reward</th>
+                <th>Qualification progress</th>
               </tr>
             </thead>
             <tbody>
-              {[
-                ["CraftingCedar", "Jul 15", "COMPLETED", "+500 Sparks"],
-                ["BlueQuartz", "Jul 13", "ACTIVE", "Pending"],
-                ["NetherNova", "Jul 2", "COMPLETED", "+500 Sparks"],
-              ].map((row) => (
-                <tr key={row[0]}>
-                  {row.map((cell, index) => (
-                    <td key={cell}>{index === 2 ? <StatusChip status={cell} /> : cell}</td>
-                  ))}
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4}>Loading invites…</td>
                 </tr>
-              ))}
+              ) : isError ? (
+                <tr>
+                  <td colSpan={4}>Invite history could not be loaded.</td>
+                </tr>
+              ) : invites.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>No invites yet. Create one when you are ready to share it.</td>
+                </tr>
+              ) : (
+                invites.map((invite) => (
+                  <tr key={invite.id}>
+                    <td>
+                      <strong>{invite.label}</strong>
+                    </td>
+                    <td>{new Date(invite.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      <StatusChip status={invite.status} />
+                    </td>
+                    <td>
+                      {invite.status === "OPEN"
+                        ? "Waiting for registration"
+                        : invite.status === "EXPIRED"
+                          ? "Invite expired"
+                          : `${Math.min(invite.creditedSparks, invite.requiredSparks)} of ${invite.requiredSparks} Sparks`}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1309,6 +1588,17 @@ export function ProfilePage() {
       .filter((item) => item.unlockMethod === "LEVEL" && item.requiredLevel !== null)
       .sort((left, right) => left.requiredLevel! - right.requiredLevel!)
       .slice(0, 5) ?? [];
+  const gameplay = profileActivity?.gameplay;
+  const maxDailyPlayMinutes = Math.max(
+    1,
+    ...(gameplay?.daily.map((day) => day.playMinutes) ?? [0]),
+  );
+  const actionMix = [
+    { label: "Blocks broken", value: gameplay?.totals.blocksBroken ?? 0, icon: Mountain },
+    { label: "Mobs defeated", value: gameplay?.totals.mobsDefeated ?? 0, icon: Target },
+    { label: "Player wins", value: gameplay?.totals.playerWins ?? 0, icon: Zap },
+  ];
+  const maxActionValue = Math.max(1, ...actionMix.map((item) => item.value));
 
   const refreshIdentities = async () => {
     const result = await api<IdentityData>("/minecraft-identities");
@@ -1765,6 +2055,60 @@ export function ProfilePage() {
           </p>
         </Card>
       </div>
+
+      <Card className="profile-gameplay-stats">
+        <div className="profile-panel-heading">
+          <span>
+            <small>YOUR LAST 30 DAYS</small>
+            <h2>Your Minecraft story</h2>
+          </span>
+          <Gamepad2 />
+        </div>
+        <p className="profile-gameplay-stats__intro">
+          A lighthearted look at your adventures on connected Nortix-verified servers.
+        </p>
+        <div className="profile-fun-stat-grid">
+          <span><Clock3 /><strong>{Math.round((gameplay?.totals.playMinutes ?? 0) / 60)}h</strong><small>Time adventuring</small></span>
+          <span><ServerCog /><strong>{gameplay?.totals.serverVisits ?? 0}</strong><small>Server visits</small></span>
+          <span><Globe2 /><strong>{gameplay?.totals.serversExplored ?? 0}</strong><small>Worlds explored</small></span>
+          <span><Mountain /><strong>{(gameplay?.totals.blocksBroken ?? 0).toLocaleString()}</strong><small>Blocks broken</small></span>
+          <span><Target /><strong>{gameplay?.totals.mobsDefeated ?? 0}</strong><small>Mobs defeated</small></span>
+          <span><Zap /><strong>{gameplay?.totals.playerWins ?? 0}</strong><small>Player wins</small></span>
+        </div>
+        <div className="profile-gameplay-charts">
+          <section>
+            <header>
+              <div><small>PLAY RHYTHM</small><h3>This week</h3></div>
+              <span>{gameplay?.favoriteServer ? `Favorite lately: ${gameplay.favoriteServer}` : "Your next favorite is waiting"}</span>
+            </header>
+            <div className="profile-play-chart" aria-label="Minutes played during the last seven days">
+              {gameplay?.daily.map((day) => (
+                <span key={day.date}>
+                  <i style={{ height: `${Math.max(day.playMinutes > 0 ? 8 : 2, (day.playMinutes / maxDailyPlayMinutes) * 100)}%` }} title={`${day.playMinutes} minutes`} />
+                  <b>{day.playMinutes ? `${day.playMinutes}m` : "—"}</b>
+                  <small>{day.label}</small>
+                </span>
+              ))}
+            </div>
+          </section>
+          <section>
+            <header><div><small>ADVENTURE MIX</small><h3>What kept you busy</h3></div></header>
+            <div className="profile-action-chart">
+              {actionMix.map(({ label, value, icon: Icon }) => (
+                <span key={label}>
+                  <i><Icon /></i>
+                  <strong>{label}</strong>
+                  <em><b style={{ width: `${(value / maxActionValue) * 100}%` }} /></em>
+                  <small>{value.toLocaleString()}</small>
+                </span>
+              ))}
+            </div>
+          </section>
+        </div>
+        <p className="profile-gameplay-note">
+          These private stats update as you play with a linked Minecraft identity on eligible servers.
+        </p>
+      </Card>
 
       {profileEditOpen ? (
         <Modal

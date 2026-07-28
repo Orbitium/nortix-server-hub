@@ -16,6 +16,7 @@ export const buildApp = async (env: Env) => {
         "req.headers.x-nortix-signature",
         "body.token",
         "body.code",
+        "body.turnstileToken",
       ],
     },
     genReqId: () => crypto.randomUUID(),
@@ -103,6 +104,9 @@ export const buildApp = async (env: Env) => {
       "ongoing campaign",
       "campaign termination",
       "budget reservation",
+      "CAPTCHA",
+      "server votes",
+      "voted",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),

@@ -95,6 +95,19 @@ export type LeaderboardEntry = {
   testerLevel: number;
 };
 
+export type ReferralInvite = {
+  id: string;
+  code: string;
+  label: string;
+  status: "OPEN" | "REGISTERED" | "QUALIFIED" | "EXPIRED";
+  creditedSparks: number;
+  requiredSparks: number;
+  createdAt: string;
+  expiresAt: string;
+  claimedAt?: string | null;
+  qualifiedAt?: string | null;
+};
+
 export type CosmeticItem = {
   id: string;
   slug: string;
@@ -144,6 +157,24 @@ export type ProfileActivity = {
     premiumIdentities: number;
     serverScopedIdentities: number;
     feedbackGiven: number;
+  };
+  gameplay: {
+    windowDays: number;
+    totals: {
+      playMinutes: number;
+      serverVisits: number;
+      serversExplored: number;
+      blocksBroken: number;
+      playerWins: number;
+      mobsDefeated: number;
+    };
+    favoriteServer: string | null;
+    daily: Array<{
+      date: string;
+      label: string;
+      playMinutes: number;
+      adventures: number;
+    }>;
   };
   activities: Array<{
     id: string;
@@ -257,9 +288,31 @@ export type DailyQuest = {
   type: string;
   target: number;
   sparksReward: number;
+  cadence: "ONCE" | "DAILY";
   progress: number;
   completedAt?: string | null;
   verificationPending?: boolean;
+};
+
+export type VotingServer = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  logoUrl?: string | null;
+  playerCount?: number | null;
+  maxPlayers?: number | null;
+  pluginLastSeenAt: string;
+  voteCount: number;
+  votedToday: boolean;
+  votedAt?: string | null;
+};
+
+export type VotingServers = {
+  dailyLimit: number;
+  votesUsed: number;
+  resetsAt: string;
+  servers: VotingServer[];
 };
 
 export type AdminOverview = {
@@ -474,6 +527,12 @@ export const useSparksSummary = (enabled = true) =>
     enabled,
   });
 
+export const useReferrals = () =>
+  useQuery({
+    queryKey: ["referrals"],
+    queryFn: () => api<ReferralInvite[]>("/referrals"),
+  });
+
 export const useCurrentUser = (enabled = true) =>
   useQuery({
     queryKey: ["current-user"],
@@ -525,6 +584,13 @@ export const useDailyQuests = (enabled = true) =>
   useQuery({
     queryKey: ["daily-quests"],
     queryFn: () => api<DailyQuest[]>("/quests"),
+    enabled,
+  });
+
+export const useVotingServers = (enabled = true) =>
+  useQuery({
+    queryKey: ["voting-servers"],
+    queryFn: () => api<VotingServers>("/voting/servers"),
     enabled,
   });
 

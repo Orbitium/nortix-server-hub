@@ -105,6 +105,18 @@ export const UnequipCosmeticInputSchema = z
   })
   .strict();
 
+export const ClaimReferralInviteInputSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^NFX-[A-Z0-9]{4}-[A-Z0-9]{4}$/),
+  })
+  .strict();
+
+export type ClaimReferralInviteInput = z.infer<typeof ClaimReferralInviteInputSchema>;
+
 export const milestoneTypes = [
   "JOIN_SERVER",
   "JOIN_DAILY",
@@ -241,7 +253,12 @@ export const CampaignMilestoneInputSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
 });
 
-export const ServerVoteInputSchema = z.object({ vote: z.literal(true).default(true) });
+export const ServerVoteInputSchema = z
+  .object({
+    vote: z.literal(true).default(true),
+    turnstileToken: z.string().trim().min(1).max(2_048),
+  })
+  .strict();
 export const ServerReviewInputSchema = z.object({
   rating: z.number().int().min(1).max(5),
   text: z.string().trim().min(3).max(1_000),

@@ -18,6 +18,7 @@ import {
   ServerVoteInputSchema,
   EquipCosmeticInputSchema,
   UnequipCosmeticInputSchema,
+  ClaimReferralInviteInputSchema,
 } from "@nortix/shared";
 import {
   CreateServerVerificationSchema,
@@ -58,6 +59,10 @@ import { QuestService } from "./quests/service.js";
 import { ActivityService } from "./activity/service.js";
 import { CosmeticService } from "./cosmetics/service.js";
 import { normalizeCosmeticPreview } from "./cosmetics/policy.js";
+import { ReferralService } from "./referrals/service.js";
+import { VotingService } from "./voting/service.js";
+import { verifyVoteTurnstile } from "./voting/turnstile.js";
+import { GameplayService } from "./gameplay/service.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
@@ -66,6 +71,9 @@ const notificationService = new NotificationService();
 const questService = new QuestService();
 const activityService = new ActivityService();
 const cosmeticService = new CosmeticService();
+const referralService = new ReferralService();
+const votingService = new VotingService();
+const gameplayService = new GameplayService();
 
 const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
 const normalizeServerHostname = (hostname: string) =>
@@ -334,6 +342,20 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) =>
     prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }),
   );
+  app.get("/v1/referrals", { preHandler: app.authenticate }, async (request) => {
+    const invites = await referralService.list(request.user!.id);
+    await questService.evaluateAndAward(request.user!.id);
+    return invites;
+  });
+  app.post("/v1/referrals", { preHandler: app.authenticate }, async (request, reply) =>
+    reply.code(201).send(await referralService.create(request.user!.id, request.id)),
+  );
+  app.post("/v1/referrals/claim", { preHandler: app.authenticate }, async (request, reply) => {
+    const input = ClaimReferralInviteInputSchema.parse(request.body);
+    const result = await referralService.claim(request.user!.id, input.code, request.id);
+    await questService.evaluateAndAward(request.user!.id);
+    return reply.code(201).send(result);
+  });
   app.patch("/v1/users/me/profile", { preHandler: app.authenticate }, async (request) => {
     const input = profileInputSchema.parse(request.body);
     const current = await prisma.user.findUnique({
@@ -735,23 +757,25 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       voteCount: server._count.votes,
     };
   });
-  app.post("/v1/servers/:id/vote", { preHandler: app.authenticate }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    ServerVoteInputSchema.parse(request.body ?? {});
-    const server = await prisma.server.findFirst({
-      where: { id, publicListing: true, moderationStatus: "APPROVED" },
-      select: { id: true },
-    });
-    if (!server) return reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
-    await prisma.serverVote.upsert({
-      where: { serverId_playerId: { serverId: id, playerId: request.user!.id } },
-      create: { serverId: id, playerId: request.user!.id },
-      update: {},
-    });
-    await questService.evaluateAndAward(request.user!.id);
-    const voteCount = await prisma.serverVote.count({ where: { serverId: id } });
-    return reply.code(201).send({ voted: true, voteCount });
-  });
+  app.get("/v1/voting/config", async () => ({ turnstileSiteKey: env.TURNSTILE_SITE_KEY }));
+  app.get("/v1/voting/servers", { preHandler: app.authenticate }, async (request) =>
+    votingService.list(request.user!.id),
+  );
+  app.post(
+    "/v1/servers/:id/vote",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 10, timeWindow: "1 day" } },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const input = ServerVoteInputSchema.parse(request.body ?? {});
+      await verifyVoteTurnstile(env.TURNSTILE_SECRET_KEY, input.turnstileToken, request.ip);
+      const result = await votingService.vote(request.user!.id, id);
+      await questService.evaluateAndAward(request.user!.id);
+      return reply.code(201).send(result);
+    },
+  );
   app.post("/v1/servers/:id/reviews", { preHandler: app.authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const input = ServerReviewInputSchema.parse(request.body);
@@ -1313,28 +1337,28 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         where: { id: input.id },
         select: { id: true, serverId: true },
       });
-      if (existing) {
-        if (existing.serverId !== input.serverId)
-          throw new Error("Plugin event identifier is already in use.");
-        return reply.code(202).send({ accepted: true, eventId: existing.id, duplicate: true });
-      }
+      if (existing?.serverId !== undefined && existing.serverId !== input.serverId)
+        throw new Error("Plugin event identifier is already in use.");
       const server = credential.server;
-      const stored = await prisma.analyticsEvent.create({
-        data: {
-          id: input.id,
-          serverId: input.serverId,
-          source: "SERVER_PLUGIN",
-          type: input.type,
-          occurredAt: validated.occurredAt,
-          metadata: {
-            ...validated.metadata,
-            minecraftUuid: input.minecraftUuid,
-            minecraftUsername: input.minecraftUsername,
-            instanceId: input.instanceId,
-            attestation: "UNTRUSTED_SERVER_PLUGIN",
+      const stored =
+        existing ??
+        (await prisma.analyticsEvent.create({
+          data: {
+            id: input.id,
+            serverId: input.serverId,
+            source: "SERVER_PLUGIN",
+            type: input.type,
+            occurredAt: validated.occurredAt,
+            metadata: {
+              ...validated.metadata,
+              minecraftUuid: input.minecraftUuid,
+              minecraftUsername: input.minecraftUsername,
+              instanceId: input.instanceId,
+              attestation: "UNTRUSTED_SERVER_PLUGIN",
+            },
           },
-        },
-      });
+          select: { id: true, serverId: true },
+        }));
 
       const activatedLink =
         input.type === "PLAYER_JOIN"
@@ -1355,6 +1379,28 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         }),
       ]);
       const crackedLink = activatedLink ?? existingCrackedLink;
+      const matchedUserIds = [
+        ...new Set([identity?.userId, crackedLink?.userId].filter((id): id is string => Boolean(id))),
+      ];
+      if (matchedUserIds.length === 1) {
+        await gameplayService.recordPluginEvent({
+          eventId: stored.id,
+          userId: matchedUserIds[0]!,
+          serverId: input.serverId,
+          type: input.type,
+          occurredAt: validated.occurredAt,
+          metadata: validated.metadata,
+        });
+      }
+      if (input.type === "PLAYER_JOIN") {
+        for (const joinedUserId of matchedUserIds) {
+          await activityService.record(joinedUserId, "VERIFIED_SERVER_JOIN", validated.occurredAt);
+          await questService.evaluateAndAward(joinedUserId);
+        }
+      }
+      if (existing) {
+        return reply.code(202).send({ accepted: true, eventId: existing.id, duplicate: true });
+      }
       if (!identity && !crackedLink) {
         return reply
           .code(202)
@@ -1661,6 +1707,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   );
 
   app.get("/v1/sparks/summary", { preHandler: app.authenticate }, async (request) => {
+    await questService.evaluateAndAward(request.user!.id);
     const entries = await prisma.sparksLedgerEntry.findMany({
       where: { userId: request.user!.id },
     });
@@ -1677,7 +1724,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       take: 100,
     }),
   );
-  app.get("/v1/quests", async (request) => {
+  app.get("/v1/quests", async (request, reply) => {
+    if (request.headers.authorization || request.headers["x-mock-user"]) {
+      await app.authenticate(request, reply);
+      if (reply.sent) return;
+    }
     if (request.user) return questService.evaluateAndAward(request.user.id);
     const quests = await prisma.dailyQuest.findMany({
       where: { active: true },
@@ -1687,7 +1738,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       ...quest,
       progress: 0,
       completedAt: null,
-      verificationPending: ["DISCORD_JOIN", "FRIEND_REFERRAL"].includes(quest.type),
+      verificationPending: quest.type === "DISCORD_JOIN",
     }));
   });
   app.get("/v1/sparks/shop", async () =>

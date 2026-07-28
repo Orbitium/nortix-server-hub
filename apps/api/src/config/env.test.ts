@@ -12,6 +12,8 @@ const production = {
   PAYMENT_WEBHOOK_SECRET: "a-secure-payment-secret",
   IDENTITY_VERIFICATION_SECRET: "a-separate-secure-identity-verification-secret",
   SERVER_VALIDATION_SECRET: "a-separate-secure-server-validation-secret",
+  TURNSTILE_SITE_KEY: "production-turnstile-site-key",
+  TURNSTILE_SECRET_KEY: "production-turnstile-secret-key",
 };
 
 describe("production environment policy", () => {
@@ -55,6 +57,16 @@ describe("production environment policy", () => {
     expect(() =>
       parseEnv({ ...production, INTEGRATION_SIGNING_SECRET: "local-integration-secret" }),
     ).toThrow(/explicitly configured/i);
+  });
+
+  it("rejects Cloudflare Turnstile test credentials in production", () => {
+    expect(() =>
+      parseEnv({
+        ...production,
+        TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
+        TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
+      }),
+    ).toThrow(/TURNSTILE/i);
   });
 
   it("enforces a gentle discovery scan rate", () => {

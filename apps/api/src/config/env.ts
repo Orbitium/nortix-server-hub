@@ -15,6 +15,12 @@ const EnvSchema = z.object({
   SERVER_VALIDATION_SECRET: z.string().min(32).default("local-server-validation-secret-please-change"),
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default("local-payment-secret"),
   IDENTITY_VERIFICATION_SECRET: z.string().min(32).default("local-identity-verification-secret"),
+  TURNSTILE_SITE_KEY: z.string().trim().min(1).default("1x00000000000000000000AA"),
+  TURNSTILE_SECRET_KEY: z
+    .string()
+    .trim()
+    .min(1)
+    .default("1x0000000000000000000000000000000AA"),
   DISCOVERY_SCAN_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -70,6 +76,12 @@ export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
         : null,
       result.data.SERVER_VALIDATION_SECRET === "local-server-validation-secret-please-change"
         ? "SERVER_VALIDATION_SECRET"
+        : null,
+      result.data.TURNSTILE_SITE_KEY === "1x00000000000000000000AA"
+        ? "TURNSTILE_SITE_KEY"
+        : null,
+      result.data.TURNSTILE_SECRET_KEY === "1x0000000000000000000000000000000AA"
+        ? "TURNSTILE_SECRET_KEY"
         : null,
     ].filter((name): name is string => name !== null);
     if (placeholderSecrets.length > 0) {

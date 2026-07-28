@@ -3131,6 +3131,111 @@ td > small {
   grid-template-columns: repeat(3, 1fr);
   gap: 13px;
 }
+
+.cosmetic-pixel-svg {
+  width: 58px;
+  height: 58px;
+  image-rendering: pixelated;
+}
+
+.voting-explainer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.voting-explainer > svg {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  color: var(--nortix-green);
+}
+
+.voting-server-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.voting-server-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.voting-server-card:hover:not(:disabled),
+.voting-server-card.is-selected {
+  border-color: var(--nortix-green);
+  box-shadow: 0 0 0 2px var(--nortix-green-soft);
+}
+
+.voting-server-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.voting-server-card > span:nth-child(2) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voting-server-card small {
+  color: var(--text-muted);
+}
+
+.voting-server-logo {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9px;
+  color: var(--nortix-green);
+  background: var(--surface-2);
+}
+
+.voting-server-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vote-submit-card {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+.turnstile-wrap {
+  min-height: 65px;
+}
+
+.turnstile-wrap small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .voting-server-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .voting-server-card {
+    padding: 13px;
+  }
+}
 .cosmetic-card {
   overflow: hidden;
 }
@@ -3346,7 +3451,9 @@ td > small {
 }
 .referral-code {
   display: flex;
+  flex-wrap: wrap;
   width: fit-content;
+  max-width: 100%;
   padding: 5px;
   border: 1px dashed rgba(139, 92, 246, 0.35);
   border-radius: 9px;
@@ -3355,6 +3462,10 @@ td > small {
 .referral-code code {
   padding: 10px 15px;
   color: #c6b4ff;
+  overflow-wrap: anywhere;
+}
+.referral-message {
+  margin-top: 10px;
 }
 .profile-card {
   overflow: hidden;
@@ -12334,6 +12445,172 @@ td > small {
   font-size: 8px;
 }
 
+.profile-gameplay-stats {
+  margin-top: 16px;
+  padding: 24px;
+  border-color: color-mix(in srgb, var(--profile-theme-accent) 18%, var(--border));
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--profile-theme-accent) 8%, transparent), transparent 30%),
+    color-mix(in srgb, var(--profile-theme-primary) 10%, var(--surface-1));
+}
+
+.profile-gameplay-stats__intro,
+.profile-gameplay-note {
+  color: var(--text-muted);
+}
+
+.profile-fun-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.profile-fun-stat-grid > span {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 75%, transparent);
+}
+
+.profile-fun-stat-grid svg {
+  width: 18px;
+  color: var(--profile-theme-accent);
+}
+
+.profile-fun-stat-grid strong {
+  margin-top: 5px;
+  font-size: 21px;
+}
+
+.profile-fun-stat-grid small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-gameplay-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.profile-gameplay-charts > section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+
+.profile-gameplay-charts header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-gameplay-charts header h3 {
+  margin: 2px 0 0;
+}
+
+.profile-gameplay-charts header small,
+.profile-gameplay-charts header > span {
+  color: var(--text-muted);
+  font-size: 8px;
+}
+
+.profile-play-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  height: 180px;
+  margin-top: 18px;
+}
+
+.profile-play-chart > span {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 5px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.profile-play-chart i {
+  width: min(28px, 70%);
+  align-self: end;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, var(--profile-theme-accent), color-mix(in srgb, var(--profile-theme-accent) 35%, transparent));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--profile-theme-accent) 15%, transparent);
+}
+
+.profile-play-chart b,
+.profile-play-chart small {
+  font-size: 8px;
+}
+
+.profile-play-chart small {
+  color: var(--text-muted);
+}
+
+.profile-action-chart {
+  display: grid;
+  gap: 17px;
+  margin-top: 25px;
+}
+
+.profile-action-chart > span {
+  display: grid;
+  grid-template-columns: auto minmax(90px, auto) minmax(70px, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+}
+
+.profile-action-chart i {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--profile-theme-accent);
+  background: color-mix(in srgb, var(--profile-theme-accent) 10%, transparent);
+}
+
+.profile-action-chart i svg {
+  width: 15px;
+}
+
+.profile-action-chart strong,
+.profile-action-chart small {
+  font-size: 9px;
+}
+
+.profile-action-chart em {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--surface-3);
+}
+
+.profile-action-chart em b {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--profile-theme-accent);
+}
+
+.profile-gameplay-note {
+  margin: 14px 0 0;
+  font-size: 9px;
+}
+
 .profile-cosmetic-tabs {
   display: flex;
   gap: 5px;
@@ -12473,6 +12750,14 @@ td > small {
   .profile-cosmetic-grid {
     grid-template-columns: repeat(6, minmax(74px, 1fr));
   }
+
+  .profile-fun-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .profile-gameplay-charts {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -12502,8 +12787,21 @@ td > small {
 
   .profile-level-card,
   .profile-activity-panel,
-  .profile-cosmetics-panel {
+  .profile-cosmetics-panel,
+  .profile-gameplay-stats {
     padding: 17px;
+  }
+
+  .profile-fun-stat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-gameplay-charts header {
+    flex-direction: column;
+  }
+
+  .profile-action-chart > span {
+    grid-template-columns: auto minmax(80px, auto) minmax(40px, 1fr) auto;
   }
 
   .profile-level-track {

@@ -293,9 +293,28 @@ model User {
   targetedAdminMessages     AdminMessage[]              @relation("AdminMessageTarget")
   adminMessageDeliveries    AdminMessageDelivery[]
   dailyActivities           UserDailyActivity[]
+  gameplayDailyStats        PlayerGameplayDailyStat[]
+  referralInvites           ReferralInvite[]            @relation("ReferralInviter")
+  referredByInvite          ReferralInvite?             @relation("ReferralInvitee")
 
   @@index([status])
   @@index([reputationScore])
+}
+
+model ReferralInvite {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  inviterId   String
+  inviter     User      @relation("ReferralInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviteeId   String?   @unique
+  invitee     User?     @relation("ReferralInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  claimedAt   DateTime?
+  qualifiedAt DateTime?
+
+  @@index([inviterId, createdAt])
+  @@index([inviteeId, qualifiedAt])
 }
 
 model NotificationPreference {
@@ -459,6 +478,7 @@ model Server {
   playerPresences           ServerPlayerPresence[]
   activitySamples           ServerActivitySample[]
   minecraftIdentityActivity MinecraftIdentityActivity[]
+  gameplayDailyStats        PlayerGameplayDailyStat[]
 
   @@index([ownerId])
   @@index([verificationParentId])
@@ -793,9 +813,11 @@ model ServerVote {
   server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
   playerId  String
   player    User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  voteDate  DateTime
   createdAt DateTime @default(now())
 
-  @@unique([serverId, playerId])
+  @@unique([serverId, playerId, voteDate])
+  @@index([playerId, voteDate])
   @@index([serverId, createdAt])
 }
 
@@ -934,23 +956,44 @@ model EquippedCosmetic {
 }
 
 model AnalyticsEvent {
-  id              String                 @id
-  userId          String?
-  user            User?                  @relation(fields: [userId], references: [id])
-  serverId        String?
-  server          Server?                @relation(fields: [serverId], references: [id])
-  campaignId      String?
-  campaign        Campaign?              @relation(fields: [campaignId], references: [id])
-  participationId String?
-  participation   CampaignParticipation? @relation(fields: [participationId], references: [id])
-  source          AnalyticsSource
-  type            String
-  occurredAt      DateTime
-  metadata        Json
-  createdAt       DateTime               @default(now())
+  id                  String                 @id
+  userId              String?
+  user                User?                  @relation(fields: [userId], references: [id])
+  serverId            String?
+  server              Server?                @relation(fields: [serverId], references: [id])
+  campaignId          String?
+  campaign            Campaign?              @relation(fields: [campaignId], references: [id])
+  participationId     String?
+  participation       CampaignParticipation? @relation(fields: [participationId], references: [id])
+  source              AnalyticsSource
+  type                String
+  occurredAt          DateTime
+  metadata            Json
+  profileAggregatedAt DateTime?
+  createdAt           DateTime               @default(now())
 
   @@index([campaignId, type, occurredAt])
   @@index([serverId, occurredAt])
+}
+
+model PlayerGameplayDailyStat {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverId        String
+  server          Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  activityDate    DateTime
+  joins           Int      @default(0)
+  playtimeSeconds Int      @default(0)
+  playerKills     Int      @default(0)
+  mobKills        Int      @default(0)
+  blocksBroken    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, serverId, activityDate])
+  @@index([userId, activityDate])
+  @@index([serverId, activityDate])
 }
 
 model IntegrationApiKey {
@@ -1057,6 +1100,7 @@ model DailyQuest {
   type         String
   target       Int
   sparksReward Int
+  cadence      String      @default("ONCE")
   active       Boolean     @default(true)
   userQuests   UserQuest[]
 }
@@ -1075,14 +1119,15 @@ model UserQuest {
 }
 
 model UserDailyActivity {
-  id             String   @id @default(cuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activityDate   DateTime
-  webOpened      Boolean  @default(false)
-  campaignPlayed Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityDate         DateTime
+  webOpened            Boolean  @default(false)
+  campaignPlayed       Boolean  @default(false)
+  verifiedServerJoined Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([userId, activityDate])
   @@index([userId, activityDate])

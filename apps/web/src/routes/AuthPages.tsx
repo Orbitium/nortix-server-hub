@@ -5,6 +5,7 @@ import { Badge, Button } from "@nortix/ui";
 import { Brand } from "../components/Brand";
 import { firebaseActions, firebaseConfigured } from "../lib/firebase";
 import { useI18n } from "../lib/i18n";
+import { api } from "../lib/api";
 
 export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
   const navigate = useNavigate();
@@ -18,7 +19,30 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
   const next = searchParams.get("next");
   const safeNext = next?.startsWith("/") ? next : "/dashboard";
   const reason = searchParams.get("reason");
-  const continuation = `next=${encodeURIComponent(safeNext)}${reason ? `&reason=${encodeURIComponent(reason)}` : ""}`;
+  const invite = searchParams.get("invite");
+  const continuation = `next=${encodeURIComponent(safeNext)}${reason ? `&reason=${encodeURIComponent(reason)}` : ""}${invite ? `&invite=${encodeURIComponent(invite)}` : ""}`;
+  const finishAuthentication = async () => {
+    if (mode === "register" && invite) {
+      try {
+        await api("/referrals/claim", {
+          method: "POST",
+          body: JSON.stringify({ code: invite }),
+        });
+        sessionStorage.setItem(
+          "nortix-referral-message",
+          "Invite accepted. Your progress toward 200 earned Sparks is now tracked.",
+        );
+      } catch (error) {
+        sessionStorage.setItem(
+          "nortix-referral-message",
+          error instanceof Error
+            ? `Your account was created, but the invite was not applied: ${error.message}`
+            : "Your account was created, but the invite was not applied.",
+        );
+      }
+    }
+    navigate(safeNext);
+  };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -26,7 +50,7 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
     try {
       if (mode === "register") await firebaseActions.register(email, password);
       else await firebaseActions.signIn(email, password);
-      navigate(safeNext);
+      await finishAuthentication();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("auth.failed"));
     } finally {
@@ -83,7 +107,7 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             onClick={async () => {
               try {
                 await firebaseActions.google();
-                navigate(safeNext);
+                await finishAuthentication();
               } catch (error) {
                 setMessage(error instanceof Error ? error.message : t("auth.failed"));
               }

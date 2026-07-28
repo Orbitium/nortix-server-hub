@@ -628,8 +628,6 @@ export function ServerDetailPage() {
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
-  const [voteCount, setVoteCount] = useState<number | null>(null);
-  const [voteMessage, setVoteMessage] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
@@ -671,18 +669,6 @@ export function ServerDetailPage() {
     }
   };
   const canonicalPath = `/servers/${server.slug}`;
-  const vote = async () => {
-    try {
-      const result = await api<{ voteCount: number }>(`/servers/${server.id}/vote`, {
-        method: "POST",
-        body: JSON.stringify({ vote: true }),
-      });
-      setVoteCount(result.voteCount);
-      setVoteMessage("Your vote is counted.");
-    } catch (error) {
-      setVoteMessage(error instanceof Error ? error.message : "Sign in to vote for this server.");
-    }
-  };
   const submitReview = async () => {
     try {
       await api(`/servers/${server.id}/reviews`, {
@@ -774,11 +760,10 @@ export function ServerDetailPage() {
             {addressCopied ? t("ui.addressCopied") : t("ui.copyAddress")}
           </button>
           {!isDiscovered ? (
-            <button className="button button--secondary" onClick={() => void vote()}>
-              Vote on Nortix ({voteCount ?? server.voteCount ?? 0})
-            </button>
+            <Link className="button button--secondary" to="/dashboard/vote">
+              Vote on Nortix ({server.voteCount ?? 0})
+            </Link>
           ) : null}
-          {voteMessage ? <small>{voteMessage}</small> : null}
         </div>
       </div>
       <div className="detail-columns">
