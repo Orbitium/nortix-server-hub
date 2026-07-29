@@ -45,6 +45,8 @@ import { SeededProgressPage } from "../components/SeededProgressPage";
 import {
   type ProfileCosmeticItem,
   type ProfileCosmeticType,
+  type SponsoredItem,
+  type SponsoredStore,
   useCurrentUser,
   useDailyQuests,
   useLeaderboard,
@@ -55,9 +57,12 @@ import {
   usePublicServers,
   useReferrals,
   useSparksSummary,
+  useSponsoredPurchases,
+  useSponsoredStores,
   useVotingServers,
 } from "../features/api-data";
 import { api } from "../lib/api";
+import { showGoogleRewardedAd } from "../lib/google-rewarded-ad";
 import { TurnstileWidget } from "../components/TurnstileWidget";
 import { useI18n } from "../lib/i18n";
 import { readRolePreference, saveRolePreference } from "../lib/role-preference";
@@ -921,12 +926,32 @@ export function SparksShopPage() {
     refetch,
   } = useProfileCosmetics();
   const { data: sparksSummary, refetch: refetchSparks } = useSparksSummary();
+  const { data: sponsoredStores = [], refetch: refetchSponsoredStores } = useSponsoredStores();
+  const { data: sponsoredPurchases = [], refetch: refetchSponsoredPurchases } =
+    useSponsoredPurchases();
   const cosmetics =
     cosmeticCollection?.items.filter((item) => item.unlockMethod === "SPARKS") ?? [];
   const balance = sparksSummary?.balance ?? 0;
   const [selected, setSelected] = useState<ProfileCosmeticItem | null>(null);
   const [category, setCategory] = useState("ALL");
   const [purchaseMessage, setPurchaseMessage] = useState("");
+  const [selectedSponsored, setSelectedSponsored] = useState<{
+    store: SponsoredStore;
+    item: SponsoredItem;
+  } | null>(null);
+  const [sponsoredDetails, setSponsoredDetails] = useState<Record<string, string>>({});
+  const [sponsoredAttemptKey, setSponsoredAttemptKey] = useState("");
+  const [sponsoredMessage, setSponsoredMessage] = useState("");
+  const [sponsoredBusy, setSponsoredBusy] = useState(false);
+  const fulfillmentField = {
+    MINECRAFT_USERNAME: {
+      key: "minecraftUsername",
+      label: "Minecraft username",
+      type: "text",
+    },
+    DISCORD_USERNAME: { key: "discordUsername", label: "Discord username", type: "text" },
+    EMAIL: { key: "email", label: "Delivery email", type: "email" },
+  } as const;
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -1015,6 +1040,103 @@ export function SparksShopPage() {
             </Card>
           ))}
       </div>
+      <PageHeading
+        eyebrow="NORTIX SPONSORED"
+        title="Gifts from Nortix Labs"
+        description="Use Sparks to request selected third-party digital gifts supplied by Nortix Labs."
+      />
+      <Card className="sparks-disclaimer">
+        <Gift />
+        <div>
+          <h3>These are gifts from Nortix Labs.</h3>
+          <p>
+            Nortix Labs independently purchases and delivers eligible gifts. Nortix is not
+            affiliated with, endorsed by, or partnered with the stores or brands shown here.
+            Product names and trademarks belong to their respective owners.
+          </p>
+        </div>
+      </Card>
+      <div className="sponsored-store-list">
+        {sponsoredStores.map((store) => (
+          <section className="sponsored-store" key={store.id}>
+            <div className="sponsored-store__heading">
+              {store.logoUrl ? <img src={store.logoUrl} alt="" /> : <Gift />}
+              <div>
+                <h3>{store.name}</h3>
+                <p>{store.description}</p>
+                <small>Gifts supplied by Nortix Labs · no affiliation with {store.name}</small>
+              </div>
+            </div>
+            <div className="cosmetic-grid">
+              {store.items.map((item) => (
+                <Card className="sponsored-item-card" key={item.id}>
+                  {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Gift />}
+                  <div>
+                    <small>{store.name}</small>
+                    <h3>{item.name}</h3>
+                    <p>{item.description}</p>
+                    <span>{item.fulfillmentSummary}</span>
+                    <Button
+                      disabled={balance < item.sparksPrice}
+                      onClick={() => {
+                        setSelectedSponsored({ store, item });
+                        setSponsoredDetails({});
+                        setSponsoredAttemptKey(crypto.randomUUID());
+                        setSponsoredMessage("");
+                      }}
+                    >
+                      Request gift · <Sparks value={item.sparksPrice.toLocaleString()} />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+      {sponsoredStores.length === 0 ? (
+        <Card>
+          <p>No Nortix-sponsored gifts are available right now.</p>
+        </Card>
+      ) : null}
+      {sponsoredPurchases.length ? (
+        <>
+          <PageHeading
+            eyebrow="PRIVATE TO YOUR ACCOUNT"
+            title="Your sponsored gift requests"
+            description="Only you and authorized Nortix administrators can view delivery details."
+          />
+          <div className="sponsored-purchase-list">
+            {sponsoredPurchases.map((purchase) => (
+              <Card key={purchase.id}>
+                <div>
+                  <small>{purchase.item.store.name}</small>
+                  <h3>{purchase.item.name}</h3>
+                  <p>Requested {new Date(purchase.createdAt).toLocaleString()}</p>
+                </div>
+                <Badge
+                  tone={
+                    purchase.status === "DELIVERED"
+                      ? "success"
+                      : purchase.status === "REFUNDED" || purchase.status === "CANCELLED"
+                        ? "neutral"
+                        : "warning"
+                  }
+                >
+                  {purchase.status.replaceAll("_", " ")}
+                </Badge>
+                {purchase.deliveryReference ? (
+                  <div className="sponsored-delivery">
+                    <strong>Private delivery</strong>
+                    <code>{purchase.deliveryReference}</code>
+                  </div>
+                ) : null}
+                {purchase.statusReason ? <small>{purchase.statusReason}</small> : null}
+              </Card>
+            ))}
+          </div>
+        </>
+      ) : null}
       {selected && (
         <Modal title={`Unlock ${selected.name}`} onClose={() => setSelected(null)}>
           <div className="modal__body">
@@ -1078,6 +1200,95 @@ export function SparksShopPage() {
           </div>
         </Modal>
       )}
+      {selectedSponsored ? (
+        <Modal
+          title={`Request ${selectedSponsored.item.name}`}
+          onClose={() => setSelectedSponsored(null)}
+        >
+          <form
+            className="modal__body form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setSponsoredBusy(true);
+              setSponsoredMessage("");
+              try {
+                await api("/sparks/sponsored-purchases", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    itemId: selectedSponsored.item.id,
+                    idempotencyKey: sponsoredAttemptKey,
+                    fulfillmentDetails: sponsoredDetails,
+                  }),
+                });
+                await Promise.all([
+                  refetchSparks(),
+                  refetchSponsoredStores(),
+                  refetchSponsoredPurchases(),
+                ]);
+                setSelectedSponsored(null);
+              } catch (error) {
+                setSponsoredMessage(
+                  error instanceof Error ? error.message : "The gift request could not be created.",
+                );
+              } finally {
+                setSponsoredBusy(false);
+              }
+            }}
+          >
+            <p>{selectedSponsored.item.description}</p>
+            <div className="sparks-disclaimer">
+              <Gift />
+              <p>
+                Nortix Labs supplies this as an independent gift. Nortix is not affiliated with or
+                endorsed by {selectedSponsored.store.name}.
+              </p>
+            </div>
+            {selectedSponsored.item.fulfillmentFields.map((field) => {
+              const config = fulfillmentField[field];
+              return (
+                <label key={field}>
+                  {config.label}
+                  <input
+                    required
+                    type={config.type}
+                    value={sponsoredDetails[config.key] ?? ""}
+                    onChange={(event) =>
+                      setSponsoredDetails((current) => ({
+                        ...current,
+                        [config.key]: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              );
+            })}
+            <div className="withdraw-summary">
+              <span>
+                Gift request <b>{selectedSponsored.item.sparksPrice.toLocaleString()} Sparks</b>
+              </span>
+              <span>
+                Remaining Sparks
+                <strong>
+                  {(balance - selectedSponsored.item.sparksPrice).toLocaleString()}
+                </strong>
+              </span>
+            </div>
+            <small>
+              Delivery is reviewed manually and is not guaranteed until marked delivered. If
+              Nortix refunds the request, the Sparks return to your account.
+            </small>
+            {sponsoredMessage ? <p role="status">{sponsoredMessage}</p> : null}
+            <div className="modal__footer">
+              <Button variant="ghost" type="button" onClick={() => setSelectedSponsored(null)}>
+                Cancel
+              </Button>
+              <Button disabled={sponsoredBusy} type="submit">
+                {sponsoredBusy ? "Requesting…" : "Confirm gift request"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -1088,13 +1299,16 @@ export function VotingPage() {
   const [turnstileToken, setTurnstileToken] = useState("");
   const [resetKey, setResetKey] = useState(0);
   const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "standard" | "rewarded">("");
   const selected = data?.servers.find((server) => server.id === selectedId);
+  const rewardedVoteAvailable = Boolean(
+    data?.rewardedAdsAvailable && selected?.rewardedVotingEnabled,
+  );
   const limitReached = (data?.votesUsed ?? 0) >= (data?.dailyLimit ?? 5);
 
   const submitVote = async () => {
     if (!selectedId || !turnstileToken || busy) return;
-    setBusy(true);
+    setBusy("standard");
     setMessage("");
     try {
       await api(`/servers/${selectedId}/vote`, {
@@ -1107,7 +1321,47 @@ export function VotingPage() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Your vote could not be counted.");
     } finally {
-      setBusy(false);
+      setBusy("");
+      setTurnstileToken("");
+      setResetKey((value) => value + 1);
+    }
+  };
+
+  const submitRewardedVote = async () => {
+    if (!selectedId || !selected || !rewardedVoteAvailable || !turnstileToken || busy) return;
+    setBusy("rewarded");
+    setMessage("Preparing a rewarded ad…");
+    try {
+      const session = await api<{
+        sessionId: string;
+        token: string;
+        adUnitPath: string;
+      }>(`/servers/${selectedId}/rewarded-vote-sessions`, {
+        method: "POST",
+        body: JSON.stringify({ turnstileToken }),
+      });
+      const adResult = await showGoogleRewardedAd(session.adUnitPath);
+      if (adResult !== "granted") {
+        setMessage(
+          adResult === "closed"
+            ? "The ad was closed before completion, so no vote was cast."
+            : "No rewarded ad is available right now. You can still cast a standard vote.",
+        );
+        return;
+      }
+      await api(`/servers/${selectedId}/rewarded-vote-sessions/${session.sessionId}/grant`, {
+        method: "POST",
+        body: JSON.stringify({ token: session.token }),
+      });
+      setMessage(`Your vote for ${selected.name} was counted as 2 votes.`);
+      setSelectedId("");
+      await refetch();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Your rewarded vote could not be counted.",
+      );
+    } finally {
+      setBusy("");
       setTurnstileToken("");
       setResetKey((value) => value + 1);
     }
@@ -1149,7 +1403,10 @@ export function VotingPage() {
             <span className="voting-server-logo">{server.logoUrl ? <img src={server.logoUrl} alt="" /> : <ServerCog />}</span>
             <span>
               <strong>{server.name}</strong>
-              <small>{server.playerCount ?? 0} online · {server.voteCount.toLocaleString()} votes</small>
+              <small>
+                {server.playerCount ?? 0} online · {server.voteCount.toLocaleString()} votes
+                {data.rewardedAdsAvailable && server.rewardedVotingEnabled ? " · 2× option" : ""}
+              </small>
             </span>
             <Badge tone={server.votedToday ? "neutral" : "purple"}>
               {server.votedToday ? "Voted today" : "Select"}
@@ -1166,9 +1423,26 @@ export function VotingPage() {
           <h3>{selected?.name ?? "Choose a server above"}</h3>
         </div>
         <TurnstileWidget resetKey={resetKey} onToken={setTurnstileToken} />
-        <Button disabled={!selected || !turnstileToken || busy || limitReached} onClick={() => void submitVote()}>
-          <ThumbsUp /> {busy ? "Voting…" : "Vote"}
-        </Button>
+        <div className="vote-submit-actions">
+          <Button disabled={!selected || !turnstileToken || Boolean(busy) || limitReached} onClick={() => void submitVote()}>
+            <ThumbsUp /> {busy === "standard" ? "Voting…" : "Cast 1 vote"}
+          </Button>
+          {rewardedVoteAvailable ? (
+            <Button
+              variant="secondary"
+              disabled={!turnstileToken || Boolean(busy) || limitReached}
+              onClick={() => void submitRewardedVote()}
+            >
+              <Gift /> {busy === "rewarded" ? "Preparing ad…" : "Watch an ad for a 2× vote"}
+            </Button>
+          ) : null}
+        </div>
+        {rewardedVoteAvailable ? (
+          <small>
+            Optional: complete one Google-served rewarded ad to cast one vote worth 2 votes. You
+            can cast a standard vote without watching an ad.
+          </small>
+        ) : null}
         {message ? <p role="status">{message}</p> : null}
       </Card>
     </div>

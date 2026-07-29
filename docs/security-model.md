@@ -76,3 +76,14 @@ that user, an owned resource, or a permission-checked team membership.
   append-only administrative audit log.
 - Security and account messages cannot be disabled. Optional event notifications honor persisted
   per-account preferences when the backend creates them.
+
+## Sponsored gift boundaries
+
+- Public/player catalog responses expose only available stores and items; they never expose
+  purchasers, fulfillment details, delivery references, internal notes, or ledger identifiers.
+- A player can read only their own sponsored purchases. Private fulfillment fields are allowlisted
+  by the selected backend item and extra browser fields are discarded.
+- Catalog management and purchase fulfillment use distinct admin-only permissions.
+- Prices, Sparks balances, statuses, and refunds are calculated and applied server-side in
+  serializable transactions.
+- Delivery details and internal notes are excluded from audit snapshots and notifications.

@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Pause,
   Plus,
+  RotateCcw,
   Radio,
   Save,
   Search,
@@ -20,6 +21,8 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Store,
+  Truck,
   Trash2,
   Users,
   X,
@@ -35,9 +38,13 @@ import {
   type AdminCampaignServer,
   type AdminOngoingCampaign,
   type AdminReviewCampaign,
+  type AdminSponsoredPurchase,
+  type AdminSponsoredStore,
   useAdminCampaignServers,
   useAdminOngoingCampaigns,
   useAdminOverview,
+  useAdminSponsoredPurchases,
+  useAdminSponsoredStores,
   useAdminMessages,
   useAdminReviewCampaigns,
   useAuditLogs,
@@ -52,6 +59,8 @@ const sections = [
   ["Campaign moderation", "/admin/campaigns", ClipboardCheck],
   ["Reports & cases", "/admin/reports", ShieldAlert],
   ["Admin messages", "/admin/messages", MessageSquare],
+  ["Sponsored Sparks catalog", "/admin/sponsored-shop", Store],
+  ["Sponsored purchases", "/admin/sponsored-purchases", Truck],
   ["Nortix staff access", "/admin/access", KeyRound],
   ["Live activity monitor", "/admin/monitor", Radio],
   ["Product analytics", "/admin/analytics", BarChart3],
@@ -67,7 +76,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const visibleSections = sections.filter(
     ([label, href]) =>
       label.toLowerCase().includes(sectionSearch.toLowerCase()) &&
-      (href !== "/admin/messages" || currentUser?.roles.includes("ADMIN")),
+      (!["/admin/messages", "/admin/sponsored-shop", "/admin/sponsored-purchases"].includes(href) ||
+        currentUser?.roles.includes("ADMIN")),
   );
   const hasAdminAccess = currentUser?.roles.some(
     (role) => role === "ADMIN" || role === "MODERATOR",
@@ -1025,6 +1035,350 @@ type ManagedRecord = {
   access: string;
   updated: string;
 };
+
+const optionalFormString = (form: FormData, key: string) => {
+  const value = String(form.get(key) ?? "").trim();
+  return value || undefined;
+};
+
+export function AdminSponsoredShopPage() {
+  const { data: stores = [], isLoading, refetch } = useAdminSponsoredStores();
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [itemStore, setItemStore] = useState<AdminSponsoredStore | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState("");
+
+  const toggleStore = async (store: AdminSponsoredStore) => {
+    setBusy(store.id);
+    setMessage("");
+    try {
+      await api(`/admin/sponsored-stores/${store.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ available: !store.available }),
+      });
+      await refetch();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The store could not be updated.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const toggleItem = async (item: AdminSponsoredStore["items"][number]) => {
+    setBusy(item.id);
+    setMessage("");
+    try {
+      await api(`/admin/sponsored-items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ available: !item.available }),
+      });
+      await refetch();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The item could not be updated.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <>
+      <AdminHeading
+        title="Nortix-sponsored Sparks catalog"
+        description="Create independent gift storefronts and control which items players may request with Sparks."
+        action={
+          <Button onClick={() => setStoreOpen(true)}>
+            <Plus /> Create store
+          </Button>
+        }
+      />
+      <Card className="admin-policy-note">
+        <ShieldCheck />
+        <div>
+          <h3>Independent gifts, not partnerships</h3>
+          <p>
+            Player pages automatically state that Nortix Labs supplies the gifts and is not
+            affiliated with, endorsed by, or partnered with the named store or brand.
+          </p>
+        </div>
+      </Card>
+      {message ? <p role="status">{message}</p> : null}
+      {isLoading ? <Card><p>Loading sponsored catalog…</p></Card> : null}
+      <div className="admin-sponsored-store-list">
+        {stores.map((store) => (
+          <Card key={store.id}>
+            <div className="admin-sponsored-store-heading">
+              <div>
+                <small>{store.slug}</small>
+                <h3>{store.name}</h3>
+                <p>{store.description}</p>
+              </div>
+              <span className={store.available ? "status-good" : "status-muted"}>
+                {store.available ? "PLAYER VISIBLE" : "HIDDEN"}
+              </span>
+              <Button
+                variant="secondary"
+                disabled={busy === store.id}
+                onClick={() => void toggleStore(store)}
+              >
+                {store.available ? "Hide store" : "Publish store"}
+              </Button>
+              <Button onClick={() => setItemStore(store)}>
+                <Plus /> Add item
+              </Button>
+            </div>
+            <div className="admin-sponsored-item-list">
+              {store.items.map((item) => (
+                <div key={item.id}>
+                  <span>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {item.sparksPrice.toLocaleString()} Sparks · {item._count.purchases} purchases
+                    </small>
+                  </span>
+                  <span>{item.fulfillmentSummary}</span>
+                  <span>{item.fulfillmentFields.join(", ") || "No player details required"}</span>
+                  <button
+                    disabled={busy === item.id}
+                    onClick={() => void toggleItem(item)}
+                  >
+                    {item.available ? "Available" : "Hidden"}
+                  </button>
+                </div>
+              ))}
+              {store.items.length === 0 ? <p>No items have been created for this store.</p> : null}
+            </div>
+          </Card>
+        ))}
+      </div>
+      {storeOpen ? (
+        <Modal title="Create sponsored store" onClose={() => setStoreOpen(false)}>
+          <form
+            className="modal__body form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy("create-store");
+              setMessage("");
+              const form = new FormData(event.currentTarget);
+              try {
+                await api("/admin/sponsored-stores", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    slug: String(form.get("slug") ?? ""),
+                    name: String(form.get("name") ?? ""),
+                    description: String(form.get("description") ?? ""),
+                    websiteUrl: optionalFormString(form, "websiteUrl"),
+                    logoUrl: optionalFormString(form, "logoUrl"),
+                    available: true,
+                    sortOrder: Number(form.get("sortOrder") ?? 0),
+                  }),
+                });
+                setStoreOpen(false);
+                await refetch();
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : "The store could not be created.");
+              } finally {
+                setBusy("");
+              }
+            }}
+          >
+            <label>Store slug<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="discord" /></label>
+            <label>Display name<input name="name" required minLength={2} maxLength={80} /></label>
+            <label>Description<textarea name="description" required minLength={10} maxLength={500} /></label>
+            <label>Official website URL<input name="websiteUrl" type="url" /></label>
+            <label>Logo URL<input name="logoUrl" type="url" /></label>
+            <label>Sort order<input name="sortOrder" type="number" defaultValue="0" /></label>
+            <div className="modal__footer">
+              <Button type="button" variant="ghost" onClick={() => setStoreOpen(false)}>Cancel</Button>
+              <Button disabled={busy === "create-store"} type="submit">Create store</Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+      {itemStore ? (
+        <Modal title={`Add item to ${itemStore.name}`} onClose={() => setItemStore(null)}>
+          <form
+            className="modal__body form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy("create-item");
+              setMessage("");
+              const form = new FormData(event.currentTarget);
+              try {
+                await api(`/admin/sponsored-stores/${itemStore.id}/items`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    slug: String(form.get("slug") ?? ""),
+                    name: String(form.get("name") ?? ""),
+                    description: String(form.get("description") ?? ""),
+                    sparksPrice: Number(form.get("sparksPrice")),
+                    imageUrl: optionalFormString(form, "imageUrl"),
+                    fulfillmentSummary: String(form.get("fulfillmentSummary") ?? ""),
+                    fulfillmentFields: form.getAll("fulfillmentFields"),
+                    available: true,
+                    sortOrder: Number(form.get("sortOrder") ?? 0),
+                  }),
+                });
+                setItemStore(null);
+                await refetch();
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : "The item could not be created.");
+              } finally {
+                setBusy("");
+              }
+            }}
+          >
+            <label>Item slug<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" /></label>
+            <label>Item name<input name="name" required minLength={2} maxLength={100} /></label>
+            <label>Description<textarea name="description" required minLength={10} maxLength={1000} /></label>
+            <label>Sparks price<input name="sparksPrice" type="number" required min="1" /></label>
+            <label>Image URL<input name="imageUrl" type="url" /></label>
+            <label>Delivery summary<input name="fulfillmentSummary" required minLength={5} maxLength={300} placeholder="Delivered as a private gift link" /></label>
+            <fieldset>
+              <legend>Required player details</legend>
+              <label><input type="checkbox" name="fulfillmentFields" value="MINECRAFT_USERNAME" /> Minecraft username</label>
+              <label><input type="checkbox" name="fulfillmentFields" value="DISCORD_USERNAME" /> Discord username</label>
+              <label><input type="checkbox" name="fulfillmentFields" value="EMAIL" /> Email</label>
+            </fieldset>
+            <label>Sort order<input name="sortOrder" type="number" defaultValue="0" /></label>
+            <div className="modal__footer">
+              <Button type="button" variant="ghost" onClick={() => setItemStore(null)}>Cancel</Button>
+              <Button disabled={busy === "create-item"} type="submit">Create item</Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+export function AdminSponsoredPurchasesPage() {
+  const [status, setStatus] = useState("");
+  const { data: purchases = [], isLoading, refetch } = useAdminSponsoredPurchases(status);
+  const [selected, setSelected] = useState<AdminSponsoredPurchase | null>(null);
+  const [action, setAction] = useState<
+    "START_PROCESSING" | "MARK_DELIVERED" | "CANCEL" | "REFUND" | "CANCEL_AND_REFUND"
+  >("START_PROCESSING");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <>
+      <AdminHeading
+        title="Sponsored purchase operations"
+        description="Review private delivery details, deliver gifts, update status, cancel requests, and return Sparks."
+        action={
+          <label className="admin-filter">
+            Status
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">All statuses</option>
+              {["REQUESTED", "PROCESSING", "DELIVERED", "CANCELLED", "REFUNDED"].map((value) => (
+                <option value={value} key={value}>{value.replaceAll("_", " ")}</option>
+              ))}
+            </select>
+          </label>
+        }
+      />
+      <Card className="admin-policy-note">
+        <LockKeyhole />
+        <div>
+          <h3>Private fulfillment workspace</h3>
+          <p>Delivery identifiers are visible only to the purchaser and authorized Nortix admins. Every action requires confirmation and creates an audit record.</p>
+        </div>
+      </Card>
+      {message ? <p role="status">{message}</p> : null}
+      {isLoading ? <Card><p>Loading sponsored purchases…</p></Card> : null}
+      <div className="admin-sponsored-purchase-list">
+        {purchases.map((purchase) => (
+          <button key={purchase.id} onClick={() => setSelected(purchase)}>
+            <span>
+              <strong>{purchase.item.name}</strong>
+              <small>{purchase.item.store.name} · @{purchase.user.username}</small>
+            </span>
+            <span>{purchase.priceSparks.toLocaleString()} Sparks</span>
+            <span>{new Date(purchase.createdAt).toLocaleString()}</span>
+            <i className={`purchase-status purchase-status--${purchase.status.toLowerCase()}`}>
+              {purchase.status.replaceAll("_", " ")}
+            </i>
+            <ChevronRight />
+          </button>
+        ))}
+      </div>
+      {!isLoading && purchases.length === 0 ? <Card><p>No purchases match this status.</p></Card> : null}
+      {selected ? (
+        <Modal title={`${selected.item.name} · @${selected.user.username}`} onClose={() => setSelected(null)}>
+          <form
+            className="modal__body form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              setMessage("");
+              const form = new FormData(event.currentTarget);
+              try {
+                await api(`/admin/sponsored-purchases/${selected.id}/actions`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    action,
+                    reason: optionalFormString(form, "reason"),
+                    deliveryReference: optionalFormString(form, "deliveryReference"),
+                    adminNote: optionalFormString(form, "adminNote"),
+                    confirmation: "CONFIRM",
+                  }),
+                });
+                setSelected(null);
+                setMessage("Sponsored purchase updated and audited.");
+                await refetch();
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : "The purchase could not be updated.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <div className="admin-purchase-details">
+              <span><strong>Status</strong>{selected.status.replaceAll("_", " ")}</span>
+              <span><strong>Player</strong>{selected.user.displayName} (@{selected.user.username})</span>
+              <span><strong>Sparks charged</strong>{selected.priceSparks.toLocaleString()}</span>
+              {Object.entries(selected.fulfillmentDetails).map(([key, value]) => (
+                <span key={key}><strong>{key.replaceAll(/([A-Z])/g, " $1")}</strong><code>{value}</code></span>
+              ))}
+              {selected.deliveryReference ? <span><strong>Delivery reference</strong><code>{selected.deliveryReference}</code></span> : null}
+            </div>
+            <label>
+              Action
+              <select value={action} onChange={(event) => setAction(event.target.value as typeof action)}>
+                <option value="START_PROCESSING">Start processing</option>
+                <option value="MARK_DELIVERED">Mark delivered</option>
+                <option value="CANCEL">Cancel without Sparks refund</option>
+                <option value="REFUND">Refund Sparks</option>
+                <option value="CANCEL_AND_REFUND">Cancel and refund Sparks</option>
+              </select>
+            </label>
+            <label>Private delivery reference<textarea name="deliveryReference" defaultValue={selected.deliveryReference ?? ""} placeholder="Gift URL, redemption code, or delivery confirmation" /></label>
+            <label>Player-visible reason<textarea name="reason" defaultValue={selected.statusReason ?? ""} placeholder="Required for cancellation and refunds" /></label>
+            <label>Internal admin note<textarea name="adminNote" defaultValue={selected.adminNote ?? ""} /></label>
+            <div className="admin-confirmation-note">
+              {action === "REFUND" || action === "CANCEL_AND_REFUND" ? <RotateCcw /> : action === "MARK_DELIVERED" ? <Truck /> : <ShieldAlert />}
+              <span>
+                <strong>Confirm this action</strong>
+                <small>It will update private purchase state, notify the player, and append an immutable audit record.</small>
+              </span>
+            </div>
+            <div className="modal__footer">
+              <Button type="button" variant="ghost" onClick={() => setSelected(null)}>Close</Button>
+              <Button
+                type="submit"
+                variant={["CANCEL", "REFUND", "CANCEL_AND_REFUND"].includes(action) ? "danger" : "primary"}
+                disabled={busy}
+              >
+                {busy ? "Updating…" : "Confirm action"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
 
 export function AdminGenericPage({
   title,

@@ -118,7 +118,23 @@ enum SparksTransactionType {
   REFERRAL
   COMMUNITY_ACTIVITY
   COSMETIC_PURCHASE
+  SPONSORED_PURCHASE
+  SPONSORED_PURCHASE_REFUND
   MANUAL_ADJUSTMENT
+}
+
+enum SponsoredPurchaseStatus {
+  REQUESTED
+  PROCESSING
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum SponsoredFulfillmentField {
+  MINECRAFT_USERNAME
+  DISCORD_USERNAME
+  EMAIL
 }
 
 enum CosmeticType {
@@ -263,6 +279,7 @@ model User {
   participations            CampaignParticipation[]
   reviews                   Review[]
   serverVotes               ServerVote[]
+  rewardedVoteSessions      RewardedVoteSession[]
   withdrawals               WithdrawalRequest[]         @relation("WithdrawalPlayer")
   reviewedWithdrawals       WithdrawalRequest[]         @relation("WithdrawalReviewer")
   earningsLedger            EarningsLedgerEntry[]       @relation("EarningsUser")
@@ -275,6 +292,9 @@ model User {
   campaignTerminations      CampaignTermination[]       @relation("CampaignTerminationActor")
   reviewedCompletions       MilestoneCompletion[]       @relation("CompletionReviewer")
   cosmeticPurchases         CosmeticPurchase[]
+  sponsoredPurchases        SponsoredPurchase[]          @relation("SponsoredPurchaseUser")
+  handledSponsoredPurchases SponsoredPurchase[]          @relation("SponsoredPurchaseHandler")
+  createdSponsoredStores    SponsoredStore[]             @relation("SponsoredStoreCreator")
   equippedCosmetics         EquippedCosmetic[]
   analyticsEvents           AnalyticsEvent[]
   fraudFlags                FraudFlag[]                 @relation("FraudSubjectUser")
@@ -458,6 +478,7 @@ model Server {
   claimed                   Boolean                     @default(false)
   online                    Boolean                     @default(false)
   publicListing             Boolean                     @default(false)
+  rewardedVotingEnabled     Boolean                     @default(true)
   playerCount               Int?
   maxPlayers                Int?
   pluginCapabilities        Json                        @default("[]")
@@ -470,6 +491,7 @@ model Server {
   campaigns                 Campaign[]
   reviews                   Review[]
   votes                     ServerVote[]
+  rewardedVoteSessions      RewardedVoteSession[]
   analyticsEvents           AnalyticsEvent[]
   integrationKeys           IntegrationApiKey[]
   teamMembers               ServerTeamMember[]
@@ -808,17 +830,37 @@ model Review {
 }
 
 model ServerVote {
-  id        String   @id @default(cuid())
-  serverId  String
-  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  playerId  String
-  player    User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  voteDate  DateTime
-  createdAt DateTime @default(now())
+  id                       String                 @id @default(cuid())
+  serverId                 String
+  server                   Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId                 String
+  player                   User                   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  voteDate                 DateTime
+  weight                   Int                    @default(1)
+  rewardedVoteSessionId    String?                @unique
+  rewardedVoteSession      RewardedVoteSession?   @relation(fields: [rewardedVoteSessionId], references: [id], onDelete: SetNull)
+  createdAt                DateTime               @default(now())
 
   @@unique([serverId, playerId, voteDate])
   @@index([playerId, voteDate])
   @@index([serverId, createdAt])
+}
+
+model RewardedVoteSession {
+  id          String      @id @default(cuid())
+  serverId    String
+  server      Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId    String
+  player      User        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tokenHash   String      @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  vote        ServerVote?
+
+  @@index([playerId, createdAt])
+  @@index([serverId, createdAt])
+  @@index([expiresAt])
 }
 
 model WithdrawalRequest {
@@ -882,6 +924,8 @@ model SparksLedgerEntry {
   internalNote    String?
   createdAt       DateTime              @default(now())
   completion      MilestoneCompletion?  @relation("CompletionSparks")
+  sponsoredPurchaseDebit  SponsoredPurchase? @relation("SponsoredPurchaseDebit")
+  sponsoredPurchaseRefund SponsoredPurchase? @relation("SponsoredPurchaseRefund")
 
   @@index([userId, createdAt])
 }
@@ -941,6 +985,76 @@ model CosmeticPurchase {
   createdAt           DateTime     @default(now())
 
   @@unique([userId, itemId])
+}
+
+model SponsoredStore {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  name        String
+  description String
+  websiteUrl  String?
+  logoUrl     String?
+  available   Boolean         @default(true)
+  sortOrder   Int             @default(0)
+  createdById String
+  createdBy   User            @relation("SponsoredStoreCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items       SponsoredItem[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([available, sortOrder])
+}
+
+model SponsoredItem {
+  id                    String                       @id @default(cuid())
+  storeId               String
+  store                 SponsoredStore               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  slug                  String
+  name                  String
+  description           String
+  sparksPrice           Int
+  imageUrl              String?
+  fulfillmentSummary    String
+  fulfillmentFields     SponsoredFulfillmentField[]
+  available             Boolean                      @default(true)
+  sortOrder             Int                          @default(0)
+  purchases             SponsoredPurchase[]
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  @@unique([storeId, slug])
+  @@index([storeId, available, sortOrder])
+}
+
+model SponsoredPurchase {
+  id                         String                  @id @default(cuid())
+  userId                     String
+  user                       User                    @relation("SponsoredPurchaseUser", fields: [userId], references: [id], onDelete: Restrict)
+  itemId                     String
+  item                       SponsoredItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  status                     SponsoredPurchaseStatus @default(REQUESTED)
+  priceSparks                Int
+  fulfillmentDetails         Json                    @default("{}")
+  deliveryReference          String?
+  statusReason               String?
+  adminNote                  String?
+  idempotencyKey             String                  @unique
+  sparksDebitLedgerEntryId   String                  @unique
+  sparksDebitLedgerEntry     SparksLedgerEntry       @relation("SponsoredPurchaseDebit", fields: [sparksDebitLedgerEntryId], references: [id], onDelete: Restrict)
+  sparksRefundLedgerEntryId  String?                 @unique
+  sparksRefundLedgerEntry    SparksLedgerEntry?      @relation("SponsoredPurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
+  handledById                String?
+  handledBy                  User?                   @relation("SponsoredPurchaseHandler", fields: [handledById], references: [id], onDelete: Restrict)
+  processingAt               DateTime?
+  deliveredAt                DateTime?
+  cancelledAt                DateTime?
+  refundedAt                 DateTime?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([itemId, status])
 }
 
 model EquippedCosmetic {

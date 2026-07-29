@@ -25,6 +25,8 @@ import {
   AdminGenericPage,
   AdminLayout,
   AdminOverviewPage,
+  AdminSponsoredPurchasesPage,
+  AdminSponsoredShopPage,
   CampaignReviewPage,
   SparksAdjustmentReviewPage,
 } from "../routes/AdminPages";
@@ -109,6 +111,8 @@ function AdminRoutes() {
         <Route index element={<AdminOverviewPage />} />
         <Route path="campaigns" element={<CampaignReviewPage />} />
         <Route path="sparks-adjustments" element={<SparksAdjustmentReviewPage />} />
+        <Route path="sponsored-shop" element={<AdminSponsoredShopPage />} />
+        <Route path="sponsored-purchases" element={<AdminSponsoredPurchasesPage />} />
         <Route
           path="messages"
           element={

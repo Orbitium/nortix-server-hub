@@ -33,6 +33,7 @@ export type PublicServer = {
   rating?: number | null;
   reviewCount?: number;
   voteCount?: number;
+  rewardedVotingEnabled?: boolean;
   hostname?: string;
   port?: number;
   activeCampaignCount?: number;
@@ -148,6 +149,87 @@ export type ProfileCosmetics = {
   nextLevelUnlock: { level: number; name: string; itemId: string } | null;
   equipped: Partial<Record<ProfileCosmeticType, string>>;
   items: ProfileCosmeticItem[];
+};
+
+export type SponsoredFulfillmentField =
+  | "MINECRAFT_USERNAME"
+  | "DISCORD_USERNAME"
+  | "EMAIL";
+
+export type SponsoredItem = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  sparksPrice: number;
+  imageUrl?: string | null;
+  fulfillmentSummary: string;
+  fulfillmentFields: SponsoredFulfillmentField[];
+};
+
+export type SponsoredStore = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  websiteUrl?: string | null;
+  logoUrl?: string | null;
+  items: SponsoredItem[];
+};
+
+export type SponsoredPurchaseStatus =
+  | "REQUESTED"
+  | "PROCESSING"
+  | "DELIVERED"
+  | "CANCELLED"
+  | "REFUNDED";
+
+export type SponsoredPurchase = {
+  id: string;
+  status: SponsoredPurchaseStatus;
+  priceSparks: number;
+  fulfillmentDetails: Record<string, string>;
+  deliveryReference?: string | null;
+  statusReason?: string | null;
+  processingAt?: string | null;
+  deliveredAt?: string | null;
+  cancelledAt?: string | null;
+  refundedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  item: {
+    id: string;
+    name: string;
+    description: string;
+    imageUrl?: string | null;
+    fulfillmentSummary: string;
+    store: Pick<SponsoredStore, "id" | "slug" | "name" | "websiteUrl">;
+  };
+};
+
+export type AdminSponsoredStore = Omit<SponsoredStore, "items"> & {
+  available: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: { username: string; displayName: string };
+  items: Array<
+    SponsoredItem & {
+      available: boolean;
+      sortOrder: number;
+      createdAt: string;
+      updatedAt: string;
+      _count: { purchases: number };
+    }
+  >;
+};
+
+export type AdminSponsoredPurchase = SponsoredPurchase & {
+  adminNote?: string | null;
+  user: { id: string; username: string; displayName: string };
+  handledBy?: { id: string; username: string; displayName: string } | null;
+  sparksDebitLedgerEntryId: string;
+  sparksRefundLedgerEntryId?: string | null;
 };
 
 export type ProfileActivity = {
@@ -304,6 +386,7 @@ export type VotingServer = {
   maxPlayers?: number | null;
   pluginLastSeenAt: string;
   voteCount: number;
+  rewardedVotingEnabled: boolean;
   votedToday: boolean;
   votedAt?: string | null;
 };
@@ -312,6 +395,7 @@ export type VotingServers = {
   dailyLimit: number;
   votesUsed: number;
   resetsAt: string;
+  rewardedAdsAvailable: boolean;
   servers: VotingServer[];
 };
 
@@ -504,6 +588,33 @@ export const useProfileCosmetics = () =>
   useQuery({
     queryKey: ["profile-cosmetics"],
     queryFn: () => api<ProfileCosmetics>("/profile/cosmetics"),
+  });
+
+export const useSponsoredStores = () =>
+  useQuery({
+    queryKey: ["sponsored-stores"],
+    queryFn: () => api<SponsoredStore[]>("/sparks/sponsored-stores"),
+  });
+
+export const useSponsoredPurchases = () =>
+  useQuery({
+    queryKey: ["sponsored-purchases"],
+    queryFn: () => api<SponsoredPurchase[]>("/sparks/sponsored-purchases"),
+  });
+
+export const useAdminSponsoredStores = () =>
+  useQuery({
+    queryKey: ["admin-sponsored-stores"],
+    queryFn: () => api<AdminSponsoredStore[]>("/admin/sponsored-stores"),
+  });
+
+export const useAdminSponsoredPurchases = (status = "") =>
+  useQuery({
+    queryKey: ["admin-sponsored-purchases", status],
+    queryFn: () =>
+      api<AdminSponsoredPurchase[]>(
+        `/admin/sponsored-purchases${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+      ),
   });
 
 export const useProfileActivity = () =>

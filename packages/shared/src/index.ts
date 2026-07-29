@@ -15,6 +15,8 @@ export const permissions = [
   "user:suspend",
   "message:send",
   "ledger:view_internal",
+  "sponsored_shop:manage",
+  "sponsored_purchase:fulfill",
 ] as const;
 export type Permission = (typeof permissions)[number];
 
@@ -116,6 +118,91 @@ export const ClaimReferralInviteInputSchema = z
   .strict();
 
 export type ClaimReferralInviteInput = z.infer<typeof ClaimReferralInviteInputSchema>;
+
+export const SponsoredFulfillmentFieldSchema = z.enum([
+  "MINECRAFT_USERNAME",
+  "DISCORD_USERNAME",
+  "EMAIL",
+]);
+const SponsoredSlugSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+
+export const AdminSponsoredStoreInputSchema = z
+  .object({
+    slug: SponsoredSlugSchema,
+    name: z.string().trim().min(2).max(80),
+    description: z.string().trim().min(10).max(500),
+    websiteUrl: z.string().url().max(2_000).optional(),
+    logoUrl: z.string().url().max(2_000).optional(),
+    available: z.boolean().default(true),
+    sortOrder: z.number().int().min(-10_000).max(10_000).default(0),
+  })
+  .strict();
+
+export const AdminSponsoredStoreUpdateSchema = AdminSponsoredStoreInputSchema.partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "At least one store field is required.");
+
+export const AdminSponsoredItemInputSchema = z
+  .object({
+    slug: SponsoredSlugSchema,
+    name: z.string().trim().min(2).max(100),
+    description: z.string().trim().min(10).max(1_000),
+    sparksPrice: z.number().int().min(1).max(1_000_000),
+    imageUrl: z.string().url().max(2_000).optional(),
+    fulfillmentSummary: z.string().trim().min(5).max(300),
+    fulfillmentFields: z
+      .array(SponsoredFulfillmentFieldSchema)
+      .max(3)
+      .refine((fields) => new Set(fields).size === fields.length, "Delivery fields must be unique.")
+      .default([]),
+    available: z.boolean().default(true),
+    sortOrder: z.number().int().min(-10_000).max(10_000).default(0),
+  })
+  .strict();
+
+export const AdminSponsoredItemUpdateSchema = AdminSponsoredItemInputSchema.partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "At least one item field is required.");
+
+export const SponsoredPurchaseInputSchema = z
+  .object({
+    itemId: z.string().min(1).max(120),
+    idempotencyKey: z.string().uuid(),
+    fulfillmentDetails: z
+      .object({
+        minecraftUsername: z.string().trim().regex(/^[A-Za-z0-9_]{3,16}$/).optional(),
+        discordUsername: z.string().trim().min(2).max(64).optional(),
+        email: z.string().trim().email().max(320).optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict();
+
+export const AdminSponsoredPurchaseActionSchema = z
+  .object({
+    action: z.enum(["START_PROCESSING", "MARK_DELIVERED", "CANCEL", "REFUND", "CANCEL_AND_REFUND"]),
+    reason: z.string().trim().min(5).max(1_000).optional(),
+    deliveryReference: z.string().trim().min(1).max(2_000).optional(),
+    adminNote: z.string().trim().max(2_000).optional(),
+    confirmation: z.literal("CONFIRM"),
+  })
+  .strict()
+  .refine(
+    (value) => value.action !== "MARK_DELIVERED" || Boolean(value.deliveryReference),
+    { message: "A private delivery reference is required.", path: ["deliveryReference"] },
+  )
+  .refine(
+    (value) =>
+      !["CANCEL", "REFUND", "CANCEL_AND_REFUND"].includes(value.action) ||
+      Boolean(value.reason),
+    { message: "A reason is required for cancellation or refund.", path: ["reason"] },
+  );
 
 export const milestoneTypes = [
   "JOIN_SERVER",
@@ -259,6 +346,17 @@ export const ServerVoteInputSchema = z
     turnstileToken: z.string().trim().min(1).max(2_048),
   })
   .strict();
+export const RewardedVoteSessionInputSchema = z
+  .object({
+    turnstileToken: z.string().trim().min(1).max(2_048),
+  })
+  .strict();
+export const RewardedVoteSessionGrantSchema = z.object({
+  token: z.string().min(32).max(200),
+}).strict();
+export const ServerRewardedVotingSettingSchema = z.object({
+  rewardedVotingEnabled: z.boolean(),
+}).strict();
 export const ServerReviewInputSchema = z.object({
   rating: z.number().int().min(1).max(5),
   text: z.string().trim().min(3).max(1_000),
@@ -373,6 +471,12 @@ export type CosmeticType = z.infer<typeof CosmeticTypeSchema>;
 export type CosmeticUnlockMethod = z.infer<typeof CosmeticUnlockMethodSchema>;
 export type EquipCosmeticInput = z.infer<typeof EquipCosmeticInputSchema>;
 export type UnequipCosmeticInput = z.infer<typeof UnequipCosmeticInputSchema>;
+export type AdminSponsoredStoreInput = z.infer<typeof AdminSponsoredStoreInputSchema>;
+export type AdminSponsoredStoreUpdate = z.infer<typeof AdminSponsoredStoreUpdateSchema>;
+export type AdminSponsoredItemInput = z.infer<typeof AdminSponsoredItemInputSchema>;
+export type AdminSponsoredItemUpdate = z.infer<typeof AdminSponsoredItemUpdateSchema>;
+export type SponsoredPurchaseInput = z.infer<typeof SponsoredPurchaseInputSchema>;
+export type AdminSponsoredPurchaseAction = z.infer<typeof AdminSponsoredPurchaseActionSchema>;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
 export type ApiError = {
   code: string;

@@ -15,5 +15,7 @@ crypto, easy money, or licensing. Players never see owner bids, owner payment al
 margin, subsidy, fraud scores, or private accounting calculations.
 
 Sparks are non-withdrawable, non-transferable, have no cash value, and cannot be exchanged for
-money. They fund cosmetics and non-financial progression only. Reputation is separate again: it
-cannot be purchased and reflects useful, honest participation.
+money. They fund cosmetics, non-financial progression, and eligible Nortix-sponsored gift requests.
+Sponsored gift copy must make clear that Nortix Labs independently supplies the gift and is not
+affiliated with, endorsed by, or partnered with the named third party. Reputation is separate
+again: it cannot be purchased and reflects useful, honest participation.

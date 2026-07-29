@@ -3,6 +3,11 @@ import { prisma, type Prisma } from "@nortix/database";
 import {
   AdminCampaignTerminationInputSchema,
   AdminMessageInputSchema,
+  AdminSponsoredItemInputSchema,
+  AdminSponsoredItemUpdateSchema,
+  AdminSponsoredPurchaseActionSchema,
+  AdminSponsoredStoreInputSchema,
+  AdminSponsoredStoreUpdateSchema,
   AdminSponsoredCampaignInputSchema,
   CampaignInputSchema,
   JoinCampaignSchema,
@@ -14,8 +19,12 @@ import {
   TeamInviteResponseSchema,
   TeamMemberRoleInputSchema,
   CrackedAccountClaimSchema,
+  RewardedVoteSessionGrantSchema,
+  RewardedVoteSessionInputSchema,
   ServerReviewInputSchema,
+  ServerRewardedVotingSettingSchema,
   ServerVoteInputSchema,
+  SponsoredPurchaseInputSchema,
   EquipCosmeticInputSchema,
   UnequipCosmeticInputSchema,
   ClaimReferralInviteInputSchema,
@@ -63,6 +72,7 @@ import { ReferralService } from "./referrals/service.js";
 import { VotingService } from "./voting/service.js";
 import { verifyVoteTurnstile } from "./voting/turnstile.js";
 import { GameplayService } from "./gameplay/service.js";
+import { SponsoredShopService } from "./sponsored-shop/service.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
@@ -74,6 +84,17 @@ const cosmeticService = new CosmeticService();
 const referralService = new ReferralService();
 const votingService = new VotingService();
 const gameplayService = new GameplayService();
+const sponsoredShopService = new SponsoredShopService();
+const REWARDED_VOTE_SESSION_TTL_MS = 10 * 60_000;
+const hashRewardedVoteToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+const getWeightedVoteCount = async (serverId: string) => {
+  const result = await prisma.serverVote.aggregate({
+    where: { serverId },
+    _sum: { weight: true },
+  });
+  return result._sum.weight ?? 0;
+};
 
 const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
 const normalizeServerHostname = (hostname: string) =>
@@ -196,6 +217,7 @@ const publicServerSelect = {
   maxPlayers: true,
   hostname: true,
   port: true,
+  rewardedVotingEnabled: true,
 } as const;
 
 const publicMilestoneSelect = {
@@ -661,6 +683,16 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       prisma.server.count({ where }),
       serverDiscoveryService.list(search),
     ]);
+    const voteWeights = items.length === 0
+      ? []
+      : await prisma.serverVote.groupBy({
+          by: ["serverId"],
+          where: { serverId: { in: items.map((server) => server.id) } },
+          _sum: { weight: true },
+        });
+    const voteWeightsByServer = new Map(
+      voteWeights.map((vote) => [vote.serverId, vote._sum.weight ?? 0]),
+    );
     const ownedItems = items.map(({ playerHistorySyncedAt, reviews, _count, ...server }) => ({
       ...server,
       source: "NORTIX" as const,
@@ -671,7 +703,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             )
           : null,
       reviewCount: _count.reviews,
-      voteCount: _count.votes,
+      voteCount: voteWeightsByServer.get(server.id) ?? 0,
       activeCampaignCount: _count.campaigns,
       crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
     }));
@@ -741,8 +773,9 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." })
       );
     }
+    const { _count, ...publicServer } = server;
     return {
-      ...server,
+      ...publicServer,
       source: "NORTIX",
       rating:
         server.reviews.length > 0
@@ -754,13 +787,14 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             )
           : null,
       reviewCount: server.reviews.length,
-      voteCount: server._count.votes,
+      voteCount: await getWeightedVoteCount(server.id),
     };
   });
   app.get("/v1/voting/config", async () => ({ turnstileSiteKey: env.TURNSTILE_SITE_KEY }));
-  app.get("/v1/voting/servers", { preHandler: app.authenticate }, async (request) =>
-    votingService.list(request.user!.id),
-  );
+  app.get("/v1/voting/servers", { preHandler: app.authenticate }, async (request) => ({
+    ...(await votingService.list(request.user!.id)),
+    rewardedAdsAvailable: Boolean(env.GOOGLE_AD_MANAGER_REWARDED_AD_UNIT_PATH),
+  }));
   app.post(
     "/v1/servers/:id/vote",
     {
@@ -772,6 +806,58 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       const input = ServerVoteInputSchema.parse(request.body ?? {});
       await verifyVoteTurnstile(env.TURNSTILE_SECRET_KEY, input.turnstileToken, request.ip);
       const result = await votingService.vote(request.user!.id, id);
+      await questService.evaluateAndAward(request.user!.id);
+      return reply.code(201).send(result);
+    },
+  );
+  app.post(
+    "/v1/servers/:id/rewarded-vote-sessions",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const input = RewardedVoteSessionInputSchema.parse(request.body);
+      if (!env.GOOGLE_AD_MANAGER_REWARDED_AD_UNIT_PATH) {
+        return reply.code(503).send({
+          code: "REWARDED_ADS_UNAVAILABLE",
+          message: "Rewarded voting is not currently available.",
+        });
+      }
+      await verifyVoteTurnstile(env.TURNSTILE_SECRET_KEY, input.turnstileToken, request.ip);
+      const token = randomBytes(32).toString("base64url");
+      const session = await votingService.startRewardedSession(
+        request.user!.id,
+        id,
+        hashRewardedVoteToken(token),
+        new Date(Date.now() + REWARDED_VOTE_SESSION_TTL_MS),
+      );
+      return reply.code(201).send({
+        sessionId: session.id,
+        token,
+        expiresAt: session.expiresAt,
+        adUnitPath: env.GOOGLE_AD_MANAGER_REWARDED_AD_UNIT_PATH,
+        provider: "GOOGLE_AD_MANAGER",
+      });
+    },
+  );
+  app.post(
+    "/v1/servers/:id/rewarded-vote-sessions/:sessionId/grant",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 8, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const { id, sessionId } = request.params as { id: string; sessionId: string };
+      const input = RewardedVoteSessionGrantSchema.parse(request.body);
+      const result = await votingService.redeemRewardedSession(
+        request.user!.id,
+        id,
+        sessionId,
+        hashRewardedVoteToken(input.token),
+        request.id,
+      );
       await questService.evaluateAndAward(request.user!.id);
       return reply.code(201).send(result);
     },
@@ -1838,6 +1924,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         claimed: true,
         online: true,
         publicListing: true,
+        rewardedVotingEnabled: true,
         playerCount: true,
         maxPlayers: true,
         pluginLastSeenAt: true,
@@ -1867,6 +1954,53 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       };
     });
   });
+  app.put(
+    "/v1/owner/servers/:serverId/rewarded-voting",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { serverId } = request.params as { serverId: string };
+      const input = ServerRewardedVotingSettingSchema.parse(request.body);
+      const server = await requireServerPermission(serverId, request.user!.id, "settings");
+      return prisma.$transaction(async (tx) => {
+        const updated = await tx.server.update({
+          where: { id: serverId },
+          data: { rewardedVotingEnabled: input.rewardedVotingEnabled },
+          select: { id: true, rewardedVotingEnabled: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: request.user!.id,
+            action: "server.settings.rewarded_voting_updated",
+            entityType: "Server",
+            entityId: serverId,
+            requestId: request.id,
+            beforeSnapshot: { rewardedVotingEnabled: server.rewardedVotingEnabled },
+            afterSnapshot: { rewardedVotingEnabled: updated.rewardedVotingEnabled },
+          },
+        });
+        return updated;
+      });
+    },
+  );
+  app.get("/v1/sparks/sponsored-stores", { preHandler: app.authenticate }, () =>
+    sponsoredShopService.catalog(),
+  );
+  app.get("/v1/sparks/sponsored-purchases", { preHandler: app.authenticate }, (request) =>
+    sponsoredShopService.listMine(request.user!.id),
+  );
+  app.post(
+    "/v1/sparks/sponsored-purchases",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 10, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const input = SponsoredPurchaseInputSchema.parse(request.body);
+      const purchase = await sponsoredShopService.purchase(request.user!.id, input, request.id);
+      await questService.evaluateAndAward(request.user!.id);
+      return reply.code(201).send(purchase);
+    },
+  );
   app.get("/v1/team/invites", { preHandler: app.authenticate }, async (request) => {
     const now = new Date();
     await prisma.serverTeamInvite.updateMany({
@@ -2310,6 +2444,87 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         prisma.moderationCase.count({ where: { status: "OPEN" } }),
       ]);
       return { users, servers, campaigns, openCases: cases };
+    },
+  );
+  app.get(
+    "/v1/admin/sponsored-stores",
+    { preHandler: app.requirePermission("sponsored_shop:manage") },
+    () => sponsoredShopService.adminCatalog(),
+  );
+  app.post(
+    "/v1/admin/sponsored-stores",
+    {
+      preHandler: app.requirePermission("sponsored_shop:manage"),
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const input = AdminSponsoredStoreInputSchema.parse(request.body);
+      return reply
+        .code(201)
+        .send(await sponsoredShopService.createStore(request.user!.id, input, request.id));
+    },
+  );
+  app.patch(
+    "/v1/admin/sponsored-stores/:storeId",
+    { preHandler: app.requirePermission("sponsored_shop:manage") },
+    async (request) => {
+      const { storeId } = request.params as { storeId: string };
+      const input = AdminSponsoredStoreUpdateSchema.parse(request.body);
+      return sponsoredShopService.updateStore(request.user!.id, storeId, input, request.id);
+    },
+  );
+  app.post(
+    "/v1/admin/sponsored-stores/:storeId/items",
+    {
+      preHandler: app.requirePermission("sponsored_shop:manage"),
+      config: { rateLimit: { max: 60, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const { storeId } = request.params as { storeId: string };
+      const input = AdminSponsoredItemInputSchema.parse(request.body);
+      return reply
+        .code(201)
+        .send(await sponsoredShopService.createItem(request.user!.id, storeId, input, request.id));
+    },
+  );
+  app.patch(
+    "/v1/admin/sponsored-items/:itemId",
+    { preHandler: app.requirePermission("sponsored_shop:manage") },
+    async (request) => {
+      const { itemId } = request.params as { itemId: string };
+      const input = AdminSponsoredItemUpdateSchema.parse(request.body);
+      return sponsoredShopService.updateItem(request.user!.id, itemId, input, request.id);
+    },
+  );
+  app.get(
+    "/v1/admin/sponsored-purchases",
+    { preHandler: app.requirePermission("sponsored_purchase:fulfill") },
+    async (request) => {
+      const query = z
+        .object({
+          status: z
+            .enum(["REQUESTED", "PROCESSING", "DELIVERED", "CANCELLED", "REFUNDED"])
+            .optional(),
+        })
+        .parse(request.query);
+      return sponsoredShopService.adminPurchases(query.status);
+    },
+  );
+  app.post(
+    "/v1/admin/sponsored-purchases/:purchaseId/actions",
+    {
+      preHandler: app.requirePermission("sponsored_purchase:fulfill"),
+      config: { rateLimit: { max: 60, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { purchaseId } = request.params as { purchaseId: string };
+      const input = AdminSponsoredPurchaseActionSchema.parse(request.body);
+      return sponsoredShopService.actOnPurchase(
+        request.user!.id,
+        purchaseId,
+        input,
+        request.id,
+      );
     },
   );
   app.get(

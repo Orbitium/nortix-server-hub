@@ -61,6 +61,9 @@ promise.
 - `GET /sparks/transactions`
 - `GET /sparks/shop`
 - `POST /sparks/purchases`
+- `GET /sparks/sponsored-stores`
+- `GET /sparks/sponsored-purchases`
+- `POST /sparks/sponsored-purchases`
 - `GET /profile/cosmetics`
 - `PUT /profile/cosmetics/equipped`
 - `DELETE /profile/cosmetics/equipped`
@@ -72,6 +75,9 @@ Cosmetic prices and level requirements come from the server catalog. Clients can
 unlock or choose an arbitrary slot. Sparks purchases debit the append-only ledger and create
 durable ownership in one serializable transaction; level rewards derive from the server-owned
 tester level. Equipped selections are constrained to one item per typed slot.
+Sponsored gift requests use a separate catalog and fulfillment domain. Prices, required delivery
+fields, availability, status, debits, and refunds are backend-controlled. Player purchase queries
+are always scoped to the authenticated account.
 
 ## Owner operations
 
@@ -93,6 +99,12 @@ HMAC signature, stores a unique provider event, and creates one idempotent purch
 - `POST /admin/campaigns/sponsored` — admin-only Nortix-funded campaign creation
 - `POST /admin/campaigns/:id/terminate` — admin-only termination and Campaign Credits refund policy
 - `POST /admin/campaigns/:id/review`
+- `GET|POST /admin/sponsored-stores`
+- `PATCH /admin/sponsored-stores/:storeId`
+- `POST /admin/sponsored-stores/:storeId/items`
+- `PATCH /admin/sponsored-items/:itemId`
+- `GET /admin/sponsored-purchases`
+- `POST /admin/sponsored-purchases/:purchaseId/actions`
 - `POST /admin/completions/:id/review`
 - `GET /admin/payment-events`
 - `GET /admin/ledger`

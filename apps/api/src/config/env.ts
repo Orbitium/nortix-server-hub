@@ -32,6 +32,7 @@ const EnvSchema = z.object({
     .trim()
     .min(10)
     .default("NortixServerHub/1.0 (+https://hub.nortixlabs.com/contact)"),
+  GOOGLE_AD_MANAGER_REWARDED_AD_UNIT_PATH: z.string().trim().min(3).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

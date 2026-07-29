@@ -1,4 +1,4 @@
-import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, Link2, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Pause, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, TrendingUp, UserPlus, Users, X, Zap } from "lucide-react";
+import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, Link2, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Pause, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
@@ -16,6 +16,7 @@ type ServerRecord = {
   heartbeat: string;
   events: string;
   discovery: boolean;
+  rewardedVotingEnabled: boolean;
   accessType?: "OWNER" | "TEAM";
   teamRole?: "OWNER" | "ADMIN" | "MANAGER" | "OPERATOR" | "ANALYST";
   permissions?: string[];
@@ -30,6 +31,7 @@ type AccessibleServer = {
   playerCount: number | null;
   versions: string[];
   publicListing: boolean;
+  rewardedVotingEnabled: boolean;
   access: { type: "OWNER" | "TEAM"; role: ServerRecord["teamRole"]; permissions: string[] };
 };
 
@@ -150,6 +152,7 @@ const mapAccessibleServer = (server: AccessibleServer): ServerRecord => ({
   heartbeat: server.online ? "Live" : "Awaiting signal",
   events: "—",
   discovery: server.publicListing,
+  rewardedVotingEnabled: server.rewardedVotingEnabled,
   accessType: server.access.type,
   teamRole: server.access.role,
   permissions: server.access.permissions,
@@ -1160,6 +1163,7 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
   const [campaignAlerts, setCampaignAlerts] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(true);
   const [incidentAlerts, setIncidentAlerts] = useState(true);
+  const [rewardedVotingEnabled, setRewardedVotingEnabled] = useState(server.rewardedVotingEnabled);
   const [saved, setSaved] = useState(false);
   const [section, setSection] = useState("Discovery");
   const [teamInvites, setTeamInvites] = useState<TeamInvite[]>([]);
@@ -1179,21 +1183,33 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
     setIncidentAlerts(notificationPreferences.serverOperations);
   }, [notificationPreferences]);
 
+  useEffect(() => {
+    setDiscovery(server.discovery);
+    setRewardedVotingEnabled(server.rewardedVotingEnabled);
+  }, [server.id, server.discovery, server.rewardedVotingEnabled]);
+
   const saveSettings = async () => {
     setSaved(false);
     try {
-      await api("/notification-preferences", {
-        method: "PUT",
-        body: JSON.stringify({
-          campaignActivity: campaignAlerts,
-          questsAndStreaks: notificationPreferences?.questsAndStreaks ?? true,
-          sparksActivity: sparksAlerts,
-          serverOperations: incidentAlerts,
-          teamActivity: notificationPreferences?.teamActivity ?? true,
-          productUpdates: weeklyDigest,
-          emailProductUpdates: false,
+      await Promise.all([
+        api("/notification-preferences", {
+          method: "PUT",
+          body: JSON.stringify({
+            campaignActivity: campaignAlerts,
+            questsAndStreaks: notificationPreferences?.questsAndStreaks ?? true,
+            sparksActivity: sparksAlerts,
+            serverOperations: incidentAlerts,
+            teamActivity: notificationPreferences?.teamActivity ?? true,
+            productUpdates: weeklyDigest,
+            emailProductUpdates: false,
+          }),
         }),
-      });
+        api(`/owner/servers/${server.id}/rewarded-voting`, {
+          method: "PUT",
+          body: JSON.stringify({ rewardedVotingEnabled }),
+        }),
+      ]);
+      setServer({ ...server, rewardedVotingEnabled });
       setSaved(true);
     } catch (error) {
       setTeamMessage(error instanceof Error ? error.message : "Notification preferences could not be saved.");
@@ -1287,7 +1303,7 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
     }
   };
 
-  const groups = ["Discovery", "Sparks", "Notifications", "Data & privacy", "Team access", "Security"];
+  const groups = ["Discovery", "Voting", "Sparks", "Notifications", "Data & privacy", "Team access", "Security"];
   return (
     <div className="dashboard-page owner-platform">
       <OwnerHeader
@@ -1307,7 +1323,7 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
         <nav>
           {groups.map((item) => (
             <button className={section === item ? "active" : ""} onClick={() => setSection(item)} key={item}>
-              {item === "Discovery" ? <Globe2 /> : item === "Sparks" ? <Sparkles /> : item === "Notifications" ? <Bell /> : item === "Data & privacy" ? <Database /> : item === "Team access" ? <Users /> : <KeyRound />}
+              {item === "Discovery" ? <Globe2 /> : item === "Voting" ? <Vote /> : item === "Sparks" ? <Sparkles /> : item === "Notifications" ? <Bell /> : item === "Data & privacy" ? <Database /> : item === "Team access" ? <Users /> : <KeyRound />}
               {item}
             </button>
           ))}
@@ -1324,6 +1340,24 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
                 <span>
                   <strong>Current visibility preview</strong>
                   <p>{discovery ? `${server.name} may appear in discovery, search, and eligible recommendation modules.` : `${server.name} is hidden from discovery. Direct server links and owner analytics remain available.`}</p>
+                </span>
+              </div>
+            </>
+          )}
+          {section === "Voting" && (
+            <>
+              <SettingsHeading icon={Vote} title="Voting rewards" description={`Control optional rewarded voting for ${server.name}.`} />
+              <SettingRow
+                title="Allow rewarded 2× votes"
+                description="Let a signed-in player voluntarily view a Google-served rewarded ad before casting one vote worth two votes. This is enabled by default."
+                checked={rewardedVotingEnabled}
+                onChange={setRewardedVotingEnabled}
+              />
+              <div className="owner-setting-note">
+                <ShieldCheck />
+                <span>
+                  <strong>Standard voting remains available</strong>
+                  <p>Players can always cast their normal vote without viewing an ad. Disabling this setting prevents new rewarded-ad sessions and does not change votes already cast.</p>
                 </span>
               </div>
             </>

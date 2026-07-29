@@ -3217,6 +3217,141 @@ td > small {
   justify-items: start;
 }
 
+.vote-submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.vote-submit-card > small {
+  max-width: 680px;
+  color: var(--text-muted);
+}
+
+.sponsored-store-list,
+.admin-sponsored-store-list,
+.sponsored-purchase-list {
+  display: grid;
+  gap: 18px;
+}
+
+.sponsored-store__heading,
+.admin-sponsored-store-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.sponsored-store__heading > div,
+.admin-sponsored-store-heading > div {
+  flex: 1;
+}
+
+.sponsored-store__heading > img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.sponsored-item-card {
+  display: grid;
+  gap: 12px;
+}
+
+.sponsored-item-card > img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.sponsored-item-card > svg {
+  width: 42px;
+  height: 42px;
+  color: var(--nortix-green);
+}
+
+.sponsored-item-card span,
+.sponsored-delivery {
+  display: block;
+  margin: 8px 0;
+  color: var(--text-muted);
+}
+
+.sponsored-purchase-list {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.sponsored-delivery code,
+.admin-purchase-details code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+  padding: 9px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.admin-sponsored-item-list,
+.admin-sponsored-purchase-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-sponsored-item-list > div,
+.admin-sponsored-purchase-list > button {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(180px, 1fr) minmax(160px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  text-align: left;
+  background: var(--surface-2);
+}
+
+.admin-sponsored-item-list span,
+.admin-sponsored-purchase-list span {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-purchase-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-purchase-details > span {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.admin-purchase-details strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+@media (max-width: 800px) {
+  .admin-sponsored-item-list > div,
+  .admin-sponsored-purchase-list > button,
+  .admin-purchase-details {
+    grid-template-columns: 1fr;
+  }
+
+  .sponsored-store__heading,
+  .admin-sponsored-store-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 .turnstile-wrap {
   min-height: 65px;
 }
