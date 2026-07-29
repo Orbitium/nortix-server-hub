@@ -2665,6 +2665,49 @@ function SettingRow({ title, description, checked, onChange, disabled = false }:
   );
 }
 
+function MinecraftVersionPicker({
+  value,
+  onChange,
+  description,
+  className = "",
+}: {
+  value: string[];
+  onChange: (versions: string[]) => void;
+  description: string;
+  className?: string;
+}) {
+  const toggleVersion = (version: string) => {
+    const next = value.includes(version)
+      ? value.filter((item) => item !== version)
+      : [...value, version];
+    onChange(minecraftMajorVersions.filter((item) => next.includes(item)));
+  };
+
+  return (
+    <div
+      className={`owner-profile-field minecraft-version-picker ${className}`.trim()}
+      role="group"
+      aria-label="Supported Minecraft versions"
+    >
+      <b>Supported Minecraft versions</b>
+      <small>{description}</small>
+      <div className="owner-choice-chips">
+        {minecraftMajorVersions.map((version) => (
+          <button
+            type="button"
+            className={value.includes(version) ? "selected" : ""}
+            aria-pressed={value.includes(version)}
+            key={version}
+            onClick={() => toggleVersion(version)}
+          >
+            {version}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
   const [balance, setBalance] = useState<CampaignCreditBalance>({ availableCredits: 0, purchasedCredits: 0, promotionalCredits: 0, promotionalTerms: "Promotional Campaign Credits may expire.", entries: [] });
   const [ownerCampaigns, setOwnerCampaigns] = useState<Array<{
@@ -2921,9 +2964,20 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
     (suggestion) => suggestion.available && !selectedMetrics.has(suggestion.metric),
   );
   const [minimumSparks, maximumSparks] = rewardRange.split("-").map(Number) as [number, number];
-  const addSuggestion = (suggestion: CampaignSuggestion) => {
-    if (!suggestion.available || selectedMetrics.has(suggestion.metric)) return;
-    setMilestones((items) => [...items, toConfiguredMilestone(suggestion)].slice(0, 8));
+  const toggleSuggestion = (suggestion: CampaignSuggestion) => {
+    if (selectedMetrics.has(suggestion.metric)) {
+      setMilestones((items) =>
+        items.filter((milestone) => milestone.metric !== suggestion.metric),
+      );
+      return;
+    }
+    if (!suggestion.available) return;
+    if (milestones.length >= 8) {
+      setBuilderMessage("A campaign can contain up to eight milestones.");
+      return;
+    }
+    setBuilderMessage("");
+    setMilestones((items) => [...items, toConfiguredMilestone(suggestion)]);
   };
   const openMilestoneComposer = () => {
     const firstSuggestion = creatableSuggestions[0];
@@ -3095,13 +3149,12 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
               What should players help you learn? <small>{objective.length}/320</small>
               <textarea maxLength={320} rows={3} value={objective} onChange={(event) => setObjective(event.target.value)} />
             </label>
-            <label>
-              Supported Minecraft versions
-              <select multiple size={4} value={campaignVersions} onChange={(event) => setCampaignVersions(Array.from(event.target.selectedOptions, (option) => option.value))}>
-                {minecraftMajorVersions.map((version) => <option key={version} value={version}>{version}</option>)}
-              </select>
-              <small>Choose the major versions this campaign targets.</small>
-            </label>
+            <MinecraftVersionPicker
+              className="span-two"
+              value={campaignVersions}
+              onChange={setCampaignVersions}
+              description="Select every major Java version eligible players can use for this campaign."
+            />
           </div>
 
           <div className="owner-simple-heading">
@@ -3156,12 +3209,27 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
             {suggestions.map((suggestion) => {
               const selected = selectedMetrics.has(suggestion.metric);
               return (
-                <button type="button" disabled={!suggestion.available || selected} className={selected ? "selected" : ""} onClick={() => addSuggestion(suggestion)} key={suggestion.metric}>
+                <button
+                  type="button"
+                  disabled={!suggestion.available && !selected}
+                  className={selected ? "selected" : ""}
+                  aria-pressed={selected}
+                  onClick={() => toggleSuggestion(suggestion)}
+                  key={suggestion.metric}
+                >
                   <span>{selected ? <CheckCircle2 /> : suggestion.available ? <Plus /> : <LockKeyhole />}</span>
                   <div>
                     <strong>{suggestion.title}</strong>
                     <small>{suggestion.description}</small>
-                    <i>{suggestion.recommended ? "Suggested" : suggestion.available ? "Available" : "Plugin capability required"}</i>
+                    <i>
+                      {selected
+                        ? "Selected · click to remove"
+                        : suggestion.recommended
+                          ? "Suggested"
+                          : suggestion.available
+                            ? "Available"
+                            : "Plugin capability required"}
+                    </i>
                   </div>
                 </button>
               );
@@ -3790,22 +3858,12 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                     />
                     <small>{description.trim().length}/3000 characters · minimum 30</small>
                   </label>
-                  <div className="owner-profile-field span-two">
-                    <b>Supported Minecraft versions</b>
-                    <small>Select every major Java version players can join with.</small>
-                    <div className="owner-choice-chips">
-                      {minecraftMajorVersions.map((version) => (
-                        <button
-                          type="button"
-                          className={versions.includes(version) ? "selected" : ""}
-                          key={version}
-                          onClick={() => setVersions((current) => current.includes(version) ? current.filter((item) => item !== version) : [...current, version])}
-                        >
-                          {version}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <MinecraftVersionPicker
+                    className="span-two"
+                    value={versions}
+                    onChange={setVersions}
+                    description="Select every major Java version players can join with."
+                  />
                   <div className="owner-profile-field span-two">
                     <b>Server type</b>
                     <small>Choose up to six game modes that accurately describe the server.</small>
