@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeMinecraftVersions } from "@nortix/shared";
 
 const StatusResponseSchema = z
   .object({
@@ -100,11 +101,13 @@ export class McsrvstatClient {
       throw new McsrvstatRequestError("INVALID_RESPONSE", "The status response was invalid.");
     }
 
+    const reportedVersion = safeStatusText(parsed.version);
     return {
       online: parsed.online,
       playerCount: parsed.online ? (parsed.players?.online ?? null) : null,
       maxPlayers: parsed.online ? (parsed.players?.max ?? null) : null,
-      version: safeStatusText(parsed.version),
+      version:
+        normalizeMinecraftVersions(reportedVersion ? [reportedVersion] : []).join(", ") || null,
       icon: safeServerIcon(parsed.icon),
     };
   }

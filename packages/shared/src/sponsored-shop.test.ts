@@ -44,6 +44,18 @@ describe("sponsored Sparks shop contracts", () => {
     ).toBe(false);
   });
 
+  it("accepts bounded quantities and defaults legacy requests to one", () => {
+    const base = {
+      itemId: "item_1",
+      idempotencyKey: crypto.randomUUID(),
+      fulfillmentDetails: {},
+    };
+    expect(SponsoredPurchaseInputSchema.parse(base).quantity).toBe(1);
+    expect(SponsoredPurchaseInputSchema.safeParse({ ...base, quantity: 10 }).success).toBe(true);
+    expect(SponsoredPurchaseInputSchema.safeParse({ ...base, quantity: 0 }).success).toBe(false);
+    expect(SponsoredPurchaseInputSchema.safeParse({ ...base, quantity: 11 }).success).toBe(false);
+  });
+
   it("requires confirmation and reasons for refunds", () => {
     expect(
       AdminSponsoredPurchaseActionSchema.safeParse({

@@ -48,8 +48,12 @@ deliberately omitted from audit snapshots.
 Purchase creation runs in a serializable transaction and creates a `SPONSORED_PURCHASE` debit in
 the append-only Sparks ledger. The browser provides an item ID, a UUID idempotency key, and only
 the configured delivery fields; it cannot choose a price, user, status, or ledger amount.
+Sponsored gift quantities are restricted to 1–10. The backend reloads the current unit price,
+calculates and stores the total charge, and debits that total atomically. Permanent cosmetic
+unlocks remain one-per-account and always have a quantity of one.
 
-A refund creates one idempotent `SPONSORED_PURCHASE_REFUND` credit for the original price snapshot.
+A refund creates one idempotent `SPONSORED_PURCHASE_REFUND` credit for the original total-price
+snapshot.
 The original debit is never edited or deleted. Refunded purchases are terminal, and lifecycle
 rules prevent delivery after cancellation or refund.
 

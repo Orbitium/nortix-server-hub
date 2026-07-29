@@ -1294,7 +1294,9 @@ export function AdminSponsoredPurchasesPage() {
               <strong>{purchase.item.name}</strong>
               <small>{purchase.item.store.name} · @{purchase.user.username}</small>
             </span>
-            <span>{purchase.priceSparks.toLocaleString()} Sparks</span>
+            <span>
+              {purchase.quantity} × item · {purchase.priceSparks.toLocaleString()} Sparks
+            </span>
             <span>{new Date(purchase.createdAt).toLocaleString()}</span>
             <i className={`purchase-status purchase-status--${purchase.status.toLowerCase()}`}>
               {purchase.status.replaceAll("_", " ")}
@@ -1337,7 +1339,8 @@ export function AdminSponsoredPurchasesPage() {
             <div className="admin-purchase-details">
               <span><strong>Status</strong>{selected.status.replaceAll("_", " ")}</span>
               <span><strong>Player</strong>{selected.user.displayName} (@{selected.user.username})</span>
-              <span><strong>Sparks charged</strong>{selected.priceSparks.toLocaleString()}</span>
+              <span><strong>Quantity</strong>{selected.quantity}</span>
+              <span><strong>Total Sparks charged</strong>{selected.priceSparks.toLocaleString()}</span>
               {Object.entries(selected.fulfillmentDetails).map(([key, value]) => (
                 <span key={key}><strong>{key.replaceAll(/([A-Z])/g, " $1")}</strong><code>{value}</code></span>
               ))}

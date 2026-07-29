@@ -1,3 +1,5 @@
+import { normalizeMinecraftVersions } from "@nortix/shared";
+
 export type FilterableServer = {
   name: string;
   description: string;
@@ -21,7 +23,7 @@ export function getServerFilterOptions(servers: FilterableServer[]) {
       ...new Set(servers.flatMap((server) => server.categories).filter(Boolean)),
     ].sort(optionCollator.compare),
     versions: [
-      ...new Set(servers.flatMap((server) => server.versions).filter(Boolean)),
+      ...new Set(servers.flatMap((server) => normalizeMinecraftVersions(server.versions))),
     ].sort(optionCollator.compare),
   };
 }
@@ -46,7 +48,7 @@ export function filterServers<T extends FilterableServer>(
 
     return (
       (category === "ALL" || server.categories.includes(category)) &&
-      (version === "ALL" || server.versions.includes(version)) &&
+      (version === "ALL" || normalizeMinecraftVersions(server.versions).includes(version)) &&
       (!query || searchableText.includes(query))
     );
   });

@@ -38,6 +38,10 @@ not authoritative.
 ## Identity and production safeguards
 
 - Firebase Admin verifies production identity tokens and checks revocation.
+- Initial administrator enrollment still requires a verified Firebase session. An operator with
+  API-container access may generate a 256-bit, 10-minute enrollment token; only its SHA-256 hash is
+  stored. Redemption is rate-limited, atomically single-use, bound to the authenticated local user,
+  and recorded in the append-only audit log.
 - Suspended and banned accounts are rejected by the API.
 - Mock authentication is refused in production.
 - Development signing secrets are refused in production.

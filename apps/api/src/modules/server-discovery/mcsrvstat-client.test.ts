@@ -22,7 +22,7 @@ describe("McsrvstatClient", () => {
       online: true,
       playerCount: 12,
       maxPlayers: 100,
-      version: "Paper 1.21.4",
+      version: "1.21.4",
       icon: null,
     });
     expect(request).toHaveBeenCalledWith(

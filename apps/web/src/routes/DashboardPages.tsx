@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
@@ -67,7 +67,15 @@ import { TurnstileWidget } from "../components/TurnstileWidget";
 import { useI18n } from "../lib/i18n";
 import { readRolePreference, saveRolePreference } from "../lib/role-preference";
 import { filterServers, getServerFilterOptions } from "../lib/server-filtering";
-import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
+import { isInsufficientSparksError, sparksPurchaseTotal } from "../lib/sparks-purchase";
+import { referralRegistrationUrl } from "../lib/referral-link";
+import {
+  friendReferralEarningWindowDays,
+  maxFriendReferralInvitesPerMonth,
+  maxSponsoredPurchaseQuantity,
+  minecraftMajorVersions,
+  serverTypes,
+} from "@nortix/shared";
 
 const PageHeading = ({
   eyebrow,
@@ -925,7 +933,11 @@ export function SparksShopPage() {
     isError,
     refetch,
   } = useProfileCosmetics();
-  const { data: sparksSummary, refetch: refetchSparks } = useSparksSummary();
+  const {
+    data: sparksSummary,
+    isLoading: sparksLoading,
+    refetch: refetchSparks,
+  } = useSparksSummary();
   const { data: sponsoredStores = [], refetch: refetchSponsoredStores } = useSponsoredStores();
   const { data: sponsoredPurchases = [], refetch: refetchSponsoredPurchases } =
     useSponsoredPurchases();
@@ -933,6 +945,7 @@ export function SparksShopPage() {
     cosmeticCollection?.items.filter((item) => item.unlockMethod === "SPARKS") ?? [];
   const balance = sparksSummary?.balance ?? 0;
   const [selected, setSelected] = useState<ProfileCosmeticItem | null>(null);
+  const [cosmeticBusy, setCosmeticBusy] = useState(false);
   const [category, setCategory] = useState("ALL");
   const [purchaseMessage, setPurchaseMessage] = useState("");
   const [selectedSponsored, setSelectedSponsored] = useState<{
@@ -940,9 +953,15 @@ export function SparksShopPage() {
     item: SponsoredItem;
   } | null>(null);
   const [sponsoredDetails, setSponsoredDetails] = useState<Record<string, string>>({});
+  const [sponsoredQuantity, setSponsoredQuantity] = useState(1);
   const [sponsoredAttemptKey, setSponsoredAttemptKey] = useState("");
   const [sponsoredMessage, setSponsoredMessage] = useState("");
   const [sponsoredBusy, setSponsoredBusy] = useState(false);
+  const [insufficientPurchase, setInsufficientPurchase] = useState<{
+    itemName: string;
+    required: number;
+    available: number;
+  } | null>(null);
   const fulfillmentField = {
     MINECRAFT_USERNAME: {
       key: "minecraftUsername",
@@ -952,6 +971,9 @@ export function SparksShopPage() {
     DISCORD_USERNAME: { key: "discordUsername", label: "Discord username", type: "text" },
     EMAIL: { key: "email", label: "Delivery email", type: "email" },
   } as const;
+  const selectedSponsoredTotal = selectedSponsored
+    ? sparksPurchaseTotal(selectedSponsored.item.sparksPrice, sponsoredQuantity)
+    : 0;
   return (
     <div className="dashboard-page">
       <PageHeading
@@ -966,10 +988,10 @@ export function SparksShopPage() {
       <Card className="sparks-disclaimer">
         <Sparkles />
         <div>
-          <h3>Sparks are optional platform points.</h3>
+          <h3>Earn Sparks to Spend on the Shop</h3>
           <p>
-            Sparks have no cash value, cannot be transferred or withdrawn, and may be used only for
-            eligible platform features.
+            Complete daily quests and eligible playtest activities to receive Sparks after
+            verification, then spend them on items in the shop.
           </p>
         </div>
       </Card>
@@ -1031,10 +1053,17 @@ export function SparksShopPage() {
                 <small>{item.type.replaceAll("_", " ")}</small>
                 <h3>{item.name}</h3>
                 <button
-                  disabled={item.purchased || balance < item.sparksPrice}
-                  onClick={() => setSelected(item)}
+                  disabled={sparksLoading}
+                  onClick={() => {
+                    setPurchaseMessage("");
+                    setSelected(item);
+                  }}
                 >
-                  {item.purchased ? "Owned" : <Sparks value={item.sparksPrice.toLocaleString()} />}
+                  {item.purchased ? (
+                    "View · Owned"
+                  ) : (
+                    <Sparks value={item.sparksPrice.toLocaleString()} />
+                  )}
                 </button>
               </div>
             </Card>
@@ -1077,10 +1106,11 @@ export function SparksShopPage() {
                     <p>{item.description}</p>
                     <span>{item.fulfillmentSummary}</span>
                     <Button
-                      disabled={balance < item.sparksPrice}
+                      disabled={sparksLoading}
                       onClick={() => {
                         setSelectedSponsored({ store, item });
                         setSponsoredDetails({});
+                        setSponsoredQuantity(1);
                         setSponsoredAttemptKey(crypto.randomUUID());
                         setSponsoredMessage("");
                       }}
@@ -1112,7 +1142,10 @@ export function SparksShopPage() {
                 <div>
                   <small>{purchase.item.store.name}</small>
                   <h3>{purchase.item.name}</h3>
-                  <p>Requested {new Date(purchase.createdAt).toLocaleString()}</p>
+                  <p>
+                    Quantity {purchase.quantity} · Requested{" "}
+                    {new Date(purchase.createdAt).toLocaleString()}
+                  </p>
                 </div>
                 <Badge
                   tone={
@@ -1138,8 +1171,12 @@ export function SparksShopPage() {
         </>
       ) : null}
       {selected && (
-        <Modal title={`Unlock ${selected.name}`} onClose={() => setSelected(null)}>
-          <div className="modal__body">
+        <Modal
+          title={selected.name}
+          className="modal--compact sparks-purchase-modal"
+          onClose={() => setSelected(null)}
+        >
+          <div className="modal__body sparks-purchase-dialog">
             <div
               className="cosmetic-preview cosmetic-preview--modal"
               style={{
@@ -1159,16 +1196,30 @@ export function SparksShopPage() {
                 }}
               />
             </div>
-            <p>
-              This cosmetic costs <strong>{selected.sparksPrice.toLocaleString()} Sparks</strong>.
-              Your remaining Sparks balance will update after confirmation.
-            </p>
+            <div className="sparks-purchase-dialog__copy">
+              <Badge tone={selected.rarity === "EPIC" ? "purple" : "neutral"}>
+                {selected.type} · {selected.rarity}
+              </Badge>
+              <p>{selected.description}</p>
+            </div>
+            <div className="sparks-purchase-dialog__quantity">
+              <span>
+                <strong>Quantity</strong>
+                <small>Permanent cosmetic unlocks can only be purchased once.</small>
+              </span>
+              <input aria-label="Quantity" type="number" value={1} min={1} max={1} disabled />
+            </div>
             <div className="withdraw-summary">
               <span>
-                Current Sparks<b>{balance.toLocaleString()}</b>
+                Price <b>{selected.sparksPrice.toLocaleString()} Sparks</b>
               </span>
               <span>
-                After purchase<strong>{(balance - selected.sparksPrice).toLocaleString()}</strong>
+                {selected.purchased ? "Status" : "Remaining Sparks"}
+                <strong>
+                  {selected.purchased
+                    ? "Owned"
+                    : Math.max(0, balance - selected.sparksPrice).toLocaleString()}
+                </strong>
               </span>
             </div>
             {purchaseMessage ? <p role="status">{purchaseMessage}</p> : null}
@@ -1178,7 +1229,18 @@ export function SparksShopPage() {
               Cancel
             </Button>
             <Button
+              disabled={cosmeticBusy || selected.purchased}
               onClick={async () => {
+                if (balance < selected.sparksPrice) {
+                  setSelected(null);
+                  setInsufficientPurchase({
+                    itemName: selected.name,
+                    required: selected.sparksPrice,
+                    available: balance,
+                  });
+                  return;
+                }
+                setCosmeticBusy(true);
                 setPurchaseMessage("");
                 try {
                   await api("/sparks/purchases", {
@@ -1189,13 +1251,29 @@ export function SparksShopPage() {
                   await refetch();
                   setSelected(null);
                 } catch (error) {
-                  setPurchaseMessage(
-                    error instanceof Error ? error.message : "The cosmetic could not be unlocked.",
-                  );
+                  if (isInsufficientSparksError(error)) {
+                    const refreshed = await refetchSparks();
+                    setSelected(null);
+                    setInsufficientPurchase({
+                      itemName: selected.name,
+                      required: selected.sparksPrice,
+                      available: refreshed.data?.balance ?? balance,
+                    });
+                  } else {
+                    setPurchaseMessage(
+                      error instanceof Error ? error.message : "The cosmetic could not be unlocked.",
+                    );
+                  }
+                } finally {
+                  setCosmeticBusy(false);
                 }
               }}
             >
-              Unlock cosmetic
+              {selected.purchased
+                ? "Already owned"
+                : cosmeticBusy
+                  ? "Purchasing…"
+                  : "Purchase · 1 item"}
             </Button>
           </div>
         </Modal>
@@ -1203,12 +1281,22 @@ export function SparksShopPage() {
       {selectedSponsored ? (
         <Modal
           title={`Request ${selectedSponsored.item.name}`}
+          className="modal--compact sparks-purchase-modal"
           onClose={() => setSelectedSponsored(null)}
         >
           <form
             className="modal__body form-grid"
             onSubmit={async (event) => {
               event.preventDefault();
+              if (balance < selectedSponsoredTotal) {
+                setSelectedSponsored(null);
+                setInsufficientPurchase({
+                  itemName: selectedSponsored.item.name,
+                  required: selectedSponsoredTotal,
+                  available: balance,
+                });
+                return;
+              }
               setSponsoredBusy(true);
               setSponsoredMessage("");
               try {
@@ -1217,6 +1305,7 @@ export function SparksShopPage() {
                   body: JSON.stringify({
                     itemId: selectedSponsored.item.id,
                     idempotencyKey: sponsoredAttemptKey,
+                    quantity: sponsoredQuantity,
                     fulfillmentDetails: sponsoredDetails,
                   }),
                 });
@@ -1227,15 +1316,37 @@ export function SparksShopPage() {
                 ]);
                 setSelectedSponsored(null);
               } catch (error) {
-                setSponsoredMessage(
-                  error instanceof Error ? error.message : "The gift request could not be created.",
-                );
+                if (isInsufficientSparksError(error)) {
+                  const refreshed = await refetchSparks();
+                  setSelectedSponsored(null);
+                  setInsufficientPurchase({
+                    itemName: selectedSponsored.item.name,
+                    required: selectedSponsoredTotal,
+                    available: refreshed.data?.balance ?? balance,
+                  });
+                } else {
+                  setSponsoredMessage(
+                    error instanceof Error
+                      ? error.message
+                      : "The gift request could not be created.",
+                  );
+                }
               } finally {
                 setSponsoredBusy(false);
               }
             }}
           >
-            <p>{selectedSponsored.item.description}</p>
+            <div className="sparks-purchase-dialog__image">
+              {selectedSponsored.item.imageUrl ? (
+                <img src={selectedSponsored.item.imageUrl} alt="" />
+              ) : (
+                <Gift />
+              )}
+            </div>
+            <div className="sparks-purchase-dialog__copy">
+              <Badge tone="neutral">{selectedSponsored.store.name}</Badge>
+              <p>{selectedSponsored.item.description}</p>
+            </div>
             <div className="sparks-disclaimer">
               <Gift />
               <p>
@@ -1243,6 +1354,27 @@ export function SparksShopPage() {
                 endorsed by {selectedSponsored.store.name}.
               </p>
             </div>
+            <label className="sparks-purchase-dialog__quantity">
+              <span>
+                <strong>Quantity</strong>
+                <small>Choose between 1 and {maxSponsoredPurchaseQuantity} units.</small>
+              </span>
+              <input
+                aria-label="Quantity"
+                type="number"
+                min={1}
+                max={maxSponsoredPurchaseQuantity}
+                value={sponsoredQuantity}
+                onChange={(event) => {
+                  const quantity = Math.min(
+                    maxSponsoredPurchaseQuantity,
+                    Math.max(1, Math.trunc(event.currentTarget.valueAsNumber || 1)),
+                  );
+                  setSponsoredQuantity(quantity);
+                  setSponsoredAttemptKey(crypto.randomUUID());
+                }}
+              />
+            </label>
             {selectedSponsored.item.fulfillmentFields.map((field) => {
               const config = fulfillmentField[field];
               return (
@@ -1264,13 +1396,15 @@ export function SparksShopPage() {
             })}
             <div className="withdraw-summary">
               <span>
-                Gift request <b>{selectedSponsored.item.sparksPrice.toLocaleString()} Sparks</b>
+                Unit price
+                <b>{selectedSponsored.item.sparksPrice.toLocaleString()} Sparks</b>
               </span>
               <span>
-                Remaining Sparks
-                <strong>
-                  {(balance - selectedSponsored.item.sparksPrice).toLocaleString()}
-                </strong>
+                Total <strong>{selectedSponsoredTotal.toLocaleString()} Sparks</strong>
+              </span>
+              <span>
+                Remaining Sparks{" "}
+                <strong>{Math.max(0, balance - selectedSponsoredTotal).toLocaleString()}</strong>
               </span>
             </div>
             <small>
@@ -1283,10 +1417,61 @@ export function SparksShopPage() {
                 Cancel
               </Button>
               <Button disabled={sponsoredBusy} type="submit">
-                {sponsoredBusy ? "Requesting…" : "Confirm gift request"}
+                {sponsoredBusy
+                  ? "Requesting…"
+                  : `Purchase ${sponsoredQuantity.toLocaleString()} ${sponsoredQuantity === 1 ? "item" : "items"}`}
               </Button>
             </div>
           </form>
+        </Modal>
+      ) : null}
+      {insufficientPurchase ? (
+        <Modal
+          title="Not Enough Sparks"
+          className="modal--compact"
+          onClose={() => setInsufficientPurchase(null)}
+        >
+          <div className="modal__body insufficient-sparks-dialog">
+            <span className="insufficient-sparks-dialog__icon">
+              <Sparkles />
+            </span>
+            <div>
+              <h3>You need more Sparks for {insufficientPurchase.itemName}.</h3>
+              <p>
+                Sparks are non-withdrawable platform points. Complete eligible activities and
+                verified quests to build your balance.
+              </p>
+            </div>
+            <div className="withdraw-summary">
+              <span>
+                Available <b>{insufficientPurchase.available.toLocaleString()}</b>
+              </span>
+              <span>
+                Required <strong>{insufficientPurchase.required.toLocaleString()}</strong>
+              </span>
+              <span>
+                Still needed
+                <strong>
+                  {Math.max(
+                    0,
+                    insufficientPurchase.required - insufficientPurchase.available,
+                  ).toLocaleString()}
+                </strong>
+              </span>
+            </div>
+          </div>
+          <div className="modal__footer">
+            <Button variant="ghost" onClick={() => setInsufficientPurchase(null)}>
+              Close
+            </Button>
+            <Link
+              className="button button--primary"
+              to="/dashboard/quests"
+              onClick={() => setInsufficientPurchase(null)}
+            >
+              View quests
+            </Link>
+          </div>
         </Modal>
       ) : null}
     </div>
@@ -1294,8 +1479,10 @@ export function SparksShopPage() {
 }
 
 export function VotingPage() {
+  const [searchParams] = useSearchParams();
   const { data, isLoading, isError, refetch } = useVotingServers();
-  const [selectedId, setSelectedId] = useState("");
+  const linkedServerId = searchParams.get("server")?.trim() ?? "";
+  const [selectedId, setSelectedId] = useState(linkedServerId);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [resetKey, setResetKey] = useState(0);
   const [message, setMessage] = useState("");
@@ -1316,7 +1503,6 @@ export function VotingPage() {
         body: JSON.stringify({ vote: true, turnstileToken }),
       });
       setMessage(`Your vote for ${selected?.name ?? "this server"} is counted.`);
-      setSelectedId("");
       await refetch();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Your vote could not be counted.");
@@ -1354,7 +1540,6 @@ export function VotingPage() {
         body: JSON.stringify({ token: session.token }),
       });
       setMessage(`Your vote for ${selected.name} was counted as 2 votes.`);
-      setSelectedId("");
       await refetch();
     } catch (error) {
       setMessage(
@@ -1388,6 +1573,14 @@ export function VotingPage() {
       </Card>
       {isLoading ? <Card><p>Loading eligible servers…</p></Card> : null}
       {isError ? <Card><p>Eligible servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
+      {!isLoading && !isError && linkedServerId && !selected ? (
+        <Card>
+          <p>
+            This voting link does not match a currently eligible Nortix-verified server. The
+            integration may be offline or the link may be outdated.
+          </p>
+        </Card>
+      ) : null}
       <div className="voting-server-grid">
         {data?.servers.map((server) => (
           <button
@@ -1424,13 +1617,13 @@ export function VotingPage() {
         </div>
         <TurnstileWidget resetKey={resetKey} onToken={setTurnstileToken} />
         <div className="vote-submit-actions">
-          <Button disabled={!selected || !turnstileToken || Boolean(busy) || limitReached} onClick={() => void submitVote()}>
+          <Button disabled={!selected || selected.votedToday || !turnstileToken || Boolean(busy) || limitReached} onClick={() => void submitVote()}>
             <ThumbsUp /> {busy === "standard" ? "Voting…" : "Cast 1 vote"}
           </Button>
           {rewardedVoteAvailable ? (
             <Button
               variant="secondary"
-              disabled={!turnstileToken || Boolean(busy) || limitReached}
+              disabled={selected?.votedToday || !turnstileToken || Boolean(busy) || limitReached}
               onClick={() => void submitRewardedVote()}
             >
               <Gift /> {busy === "rewarded" ? "Preparing ad…" : "Watch an ad for a 2× vote"}
@@ -1633,10 +1826,20 @@ export function ReferralsPage() {
     return value;
   });
   const openInvite = invites.find((invite) => invite.status === "OPEN");
+  const openInviteUrl = openInvite
+    ? referralRegistrationUrl(window.location.origin, openInvite.code)
+    : null;
   const registered = invites.filter((invite) =>
     ["REGISTERED", "QUALIFIED"].includes(invite.status),
   ).length;
   const qualified = invites.filter((invite) => invite.status === "QUALIFIED").length;
+  const currentMonthStart = new Date();
+  currentMonthStart.setUTCDate(1);
+  currentMonthStart.setUTCHours(0, 0, 0, 0);
+  const monthlyInvites = invites.filter(
+    (invite) => new Date(invite.createdAt) >= currentMonthStart,
+  ).length;
+  const monthlyInviteLimitReached = monthlyInvites >= maxFriendReferralInvitesPerMonth;
 
   const createInvite = async () => {
     setBusy(true);
@@ -1644,7 +1847,7 @@ export function ReferralsPage() {
     try {
       await api("/referrals", { method: "POST", body: "{}" });
       await refetch();
-      setMessage("A new single-use invite is ready to share.");
+      setMessage("A new single-use registration link is ready to share.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The invite could not be created.");
     } finally {
@@ -1653,13 +1856,12 @@ export function ReferralsPage() {
   };
 
   const copyInvite = async () => {
-    if (!openInvite) return;
-    const url = `${window.location.origin}/register?invite=${encodeURIComponent(openInvite.code)}&next=${encodeURIComponent("/dashboard/referrals")}`;
+    if (!openInviteUrl) return;
     try {
-      await navigator.clipboard.writeText(url);
-      setMessage("Invite link copied.");
+      await navigator.clipboard.writeText(openInviteUrl);
+      setMessage("Registration link copied.");
     } catch {
-      setMessage(`Copy this invite link: ${url}`);
+      setMessage(`Copy this registration link: ${openInviteUrl}`);
     }
   };
 
@@ -1675,19 +1877,20 @@ export function ReferralsPage() {
           <h2>Invite a friend to Nortix.</h2>
           <p>
             Your invite qualifies after your friend registers through the link and earns at least
-            200 Sparks. Your Invite a friend quest may then receive 50 Sparks after backend
-            verification.
+            200 Sparks during their first {friendReferralEarningWindowDays} days. Your Invite a
+            friend quest may then receive 50 Sparks after backend verification. You can create up
+            to {maxFriendReferralInvitesPerMonth} single-use links per calendar month.
           </p>
-          {openInvite ? (
+          {openInviteUrl ? (
             <div className="referral-code">
-              <code>{openInvite.code}</code>
+              <code>{openInviteUrl}</code>
               <Button onClick={copyInvite}>
-                <Copy /> Copy invite link
+                <Copy /> Copy registration link
               </Button>
             </div>
           ) : (
-            <Button onClick={createInvite} disabled={busy}>
-              <UserPlus /> {busy ? "Creating…" : "Create invite"}
+            <Button onClick={createInvite} disabled={busy || monthlyInviteLimitReached}>
+              <UserPlus /> {busy ? "Creating…" : "Create registration link"}
             </Button>
           )}
           {message ? (
@@ -1704,9 +1907,11 @@ export function ReferralsPage() {
             <Users />
           </span>
           <div>
-            <small>Friends invited</small>
-            <strong>{invites.length}</strong>
-            <span>{registered} registered</span>
+            <small>Links this month</small>
+            <strong>
+              {monthlyInvites} / {maxFriendReferralInvitesPerMonth}
+            </strong>
+            <span>{registered} registered overall</span>
           </div>
         </Card>
         <Card>
@@ -1730,6 +1935,22 @@ export function ReferralsPage() {
           </div>
         </Card>
       </div>
+      <Card className="referral-creator">
+        <div>
+          <Badge tone="purple">CONTENT CREATOR?</Badge>
+          <h2>Build with the Nortix Creator Platform.</h2>
+          <p>
+            Apply for a creator referral link and exclusive creator tools within Nortix Hub.
+            Applications are reviewed by the Nortix team.
+          </p>
+        </div>
+        <a
+          className="button button--ghost"
+          href="mailto:contact@nortixlabs.com?subject=Nortix%20Creator%20Platform%20Application"
+        >
+          Apply as a creator <ArrowRight />
+        </a>
+      </Card>
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -1775,7 +1996,9 @@ export function ReferralsPage() {
                         ? "Waiting for registration"
                         : invite.status === "EXPIRED"
                           ? "Invite expired"
-                          : `${Math.min(invite.creditedSparks, invite.requiredSparks)} of ${invite.requiredSparks} Sparks`}
+                          : !invite.earningWindowActive && invite.status !== "QUALIFIED"
+                            ? `${Math.min(invite.creditedSparks, invite.requiredSparks)} of ${invite.requiredSparks} Sparks · 30-day window ended`
+                            : `${Math.min(invite.creditedSparks, invite.requiredSparks)} of ${invite.requiredSparks} Sparks`}
                     </td>
                   </tr>
                 ))

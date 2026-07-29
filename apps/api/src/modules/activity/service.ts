@@ -1,11 +1,6 @@
 import { prisma, type Prisma } from "@nortix/database";
+import { calculateActivityStreak, utcActivityDay } from "./policy.js";
 
-const DAY_MS = 86_400_000;
-const utcDay = (date = new Date()) => {
-  const day = new Date(date);
-  day.setUTCHours(0, 0, 0, 0);
-  return day;
-};
 type ActivityTransaction = Prisma.TransactionClient;
 
 async function recordInTransaction(
@@ -14,7 +9,7 @@ async function recordInTransaction(
   kind: "WEB_OPEN" | "CAMPAIGN_PLAY" | "VERIFIED_SERVER_JOIN",
   date = new Date(),
 ) {
-  const activityDate = utcDay(date);
+  const activityDate = utcActivityDay(date);
   return tx.userDailyActivity.upsert({
     where: { userId_activityDate: { userId, activityDate } },
     create: {
@@ -52,50 +47,19 @@ export class ActivityService {
   }
 
   async streak(userId: string) {
-    const today = utcDay();
     const rows = await prisma.userDailyActivity.findMany({
       where: {
         userId,
-        activityDate: { gte: new Date(today.getTime() - 365 * DAY_MS), lte: today },
+        activityDate: { lte: utcActivityDay() },
       },
-      select: { activityDate: true, webOpened: true, campaignPlayed: true },
+      select: {
+        activityDate: true,
+        webOpened: true,
+        campaignPlayed: true,
+        verifiedServerJoined: true,
+      },
       orderBy: { activityDate: "asc" },
     });
-    const activeDays = new Set(
-      rows
-        .filter((row) => row.webOpened || row.campaignPlayed)
-        .map((row) => row.activityDate.getTime()),
-    );
-    let longest = 0;
-    let run = 0;
-    for (
-      let cursor = new Date(today.getTime() - 364 * DAY_MS);
-      cursor <= today;
-      cursor = new Date(cursor.getTime() + DAY_MS)
-    ) {
-      if (activeDays.has(cursor.getTime())) {
-        run++;
-        longest = Math.max(longest, run);
-      } else run = 0;
-    }
-    let current = 0;
-    for (
-      let cursor = today;
-      activeDays.has(cursor.getTime());
-      cursor = new Date(cursor.getTime() - DAY_MS)
-    ) current++;
-    const rowByDate = new Map(rows.map((row) => [row.activityDate.getTime(), row]));
-    return {
-      current, longest,
-      today: {
-        webOpened: rowByDate.get(today.getTime())?.webOpened ?? false,
-        campaignPlayed: rowByDate.get(today.getTime())?.campaignPlayed ?? false,
-        active: activeDays.has(today.getTime()),
-      },
-      days: Array.from({ length: 7 }, (_, index) => {
-        const date = new Date(today.getTime() - (6 - index) * DAY_MS);
-        return { date: date.toISOString(), active: activeDays.has(date.getTime()) };
-      }),
-    };
+    return calculateActivityStreak(rows);
   }
 }

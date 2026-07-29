@@ -4,6 +4,10 @@ import java.util.Locale;
 import java.util.Arrays;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -20,7 +24,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
 public final class NortixPaperPlugin extends JavaPlugin implements Listener {
-    static final String VERSION = "0.4.0";
+    static final String VERSION = "0.4.1";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private volatile String verificationCode = "";
     private MilestoneReporter reporter;
@@ -58,6 +62,10 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0 || (args.length == 1 && args[0].equalsIgnoreCase("help"))) {
             sendHelp(sender);
+            return true;
+        }
+        if (args.length == 1 && args[0].equalsIgnoreCase("vote")) {
+            sendVotingLink(sender);
             return true;
         }
         if (args.length == 1 && args[0].matches("^[A-Za-z0-9_]{3,16}$")
@@ -133,6 +141,8 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.GREEN + "Nortix");
         sender.sendMessage(ChatColor.GRAY + "/nortix <player> " + ChatColor.WHITE
             + "Open that player's public Nortix profile");
+        sender.sendMessage(ChatColor.GRAY + "/nortix vote " + ChatColor.WHITE
+            + "Open this server's Nortix voting page");
         sender.sendMessage(ChatColor.GRAY + "/nortix help " + ChatColor.WHITE + "Show this help");
         if (sender.hasPermission("nortix.admin")) {
             sender.sendMessage(ChatColor.DARK_GRAY + "Admin: /nortix verify, connect, capabilities, status, clear");
@@ -143,6 +153,32 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
         return value.equalsIgnoreCase("verify") || value.equalsIgnoreCase("connect")
             || value.equalsIgnoreCase("capabilities") || value.equalsIgnoreCase("status")
             || value.equalsIgnoreCase("clear");
+    }
+
+    private void sendVotingLink(CommandSender sender) {
+        String serverId = reporter == null ? "" : reporter.getServerId();
+        if (!serverId.matches("^[A-Za-z0-9_-]{1,120}$")) {
+            sender.sendMessage(ChatColor.YELLOW
+                + "Nortix voting is not connected on this server yet.");
+            return;
+        }
+        String webBaseUrl = getConfig()
+            .getString("web-base-url", "https://hub.nortixlabs.com")
+            .trim()
+            .replaceAll("/+$", "");
+        String url = webBaseUrl + "/dashboard/vote?server=" + serverId;
+        if (sender instanceof Player) {
+            TextComponent link = new TextComponent("Vote for this server on Nortix: " + url);
+            link.setColor(net.md_5.bungee.api.ChatColor.GREEN);
+            link.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
+            link.setHoverEvent(new HoverEvent(
+                HoverEvent.Action.SHOW_TEXT,
+                new ComponentBuilder("Open the Nortix voting page").create()
+            ));
+            ((Player) sender).spigot().sendMessage(link);
+            return;
+        }
+        sender.sendMessage(ChatColor.GREEN + "Vote for this server on Nortix: " + url);
     }
 
     private void openProfile(Player viewer, String requestedName, String response) {

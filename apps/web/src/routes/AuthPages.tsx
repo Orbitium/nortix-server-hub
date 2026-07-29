@@ -1,11 +1,13 @@
 import { ArrowLeft, Check, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@nortix/ui";
 import { Brand } from "../components/Brand";
 import { firebaseActions, firebaseConfigured } from "../lib/firebase";
 import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
+import { useCurrentUser } from "../features/api-data";
 
 export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
   const navigate = useNavigate();
@@ -186,6 +188,105 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
             )}
           </small>
           {!firebaseConfigured && <p className="demo-notice">{t("auth.prototype")}</p>}
+        </form>
+      </main>
+    </div>
+  );
+}
+
+export function AdminEnrollmentPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
+  const [token, setToken] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      await api("/admin/enrollment/redeem", {
+        method: "POST",
+        body: JSON.stringify({ token: token.trim() }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      navigate("/admin", { replace: true });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The enrollment could not be completed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-page">
+      <div className="auth-aside">
+        <Brand />
+        <div>
+          <Badge tone="warning">Restricted operator workflow</Badge>
+          <h1>Enroll a Nortix administrator.</h1>
+          <p>
+            This page never replaces sign-in. It grants the admin role only to the authenticated
+            Nortix account redeeming a valid operator-issued token.
+          </p>
+          <div className="auth-benefits">
+            <span>
+              <Check /> Firebase sign-in is still required
+            </span>
+            <span>
+              <Check /> Tokens expire after 10 minutes
+            </span>
+            <span>
+              <Check /> Each token can be used only once
+            </span>
+            <span>
+              <Check /> Enrollment is written to the audit log
+            </span>
+          </div>
+        </div>
+        <small>Share enrollment tokens only through an approved private channel.</small>
+      </div>
+      <main className="auth-main">
+        <Link to="/dashboard" className="auth-back">
+          <ArrowLeft /> Return to Nortix
+        </Link>
+        <form className="auth-card" onSubmit={submit}>
+          <span className="auth-icon">
+            <ShieldCheck />
+          </span>
+          <h2>Admin enrollment</h2>
+          <p>
+            Signed in as <strong>@{currentUser?.username ?? "loading"}</strong>. This grants full
+            Nortix administrator permissions to this account.
+          </p>
+          <label>
+            Single-use enrollment token
+            <span>
+              <KeyRound />
+              <input
+                required
+                type="password"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="nortix_admin_..."
+              />
+            </span>
+          </label>
+          {message && (
+            <p className="auth-message" role="alert">
+              {message}
+            </p>
+          )}
+          <Button type="submit" disabled={busy || !currentUser}>
+            {busy ? "Enrolling…" : "Grant administrator access"}
+          </Button>
+          <small className="auth-terms">
+            If this is not the intended account, return to Nortix and sign out before continuing.
+          </small>
         </form>
       </main>
     </div>

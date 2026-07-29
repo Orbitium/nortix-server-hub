@@ -17,6 +17,7 @@ import { api } from "../lib/api";
 import { Modal } from "./Modal";
 import { accountCreationUrl } from "../lib/auth-session";
 import { Seo } from "./Seo";
+import { CampaignShareButton } from "./CampaignShareButton";
 
 export function CampaignDetailRedesign() {
   const { id } = useParams();
@@ -179,6 +180,7 @@ export function CampaignDetailRedesign() {
               Join campaign <ChevronRight />
             </button>
           )}
+          <CampaignShareButton campaign={campaign} />
           <small>Eligible activity may receive Sparks after verification.</small>
         </aside>
       </section>

@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { prisma, type Prisma } from "@nortix/database";
 import {
   AdminCampaignTerminationInputSchema,
+  AdminEnrollmentInputSchema,
   AdminMessageInputSchema,
   AdminSponsoredItemInputSchema,
   AdminSponsoredItemUpdateSchema,
@@ -73,6 +74,9 @@ import { VotingService } from "./voting/service.js";
 import { verifyVoteTurnstile } from "./voting/turnstile.js";
 import { GameplayService } from "./gameplay/service.js";
 import { SponsoredShopService } from "./sponsored-shop/service.js";
+import { AdminEnrollmentService } from "./admin-enrollment/service.js";
+import { presentOwnerPluginState } from "./owner-servers/presenter.js";
+import { buildCampaignShareHtml } from "./campaign-sharing/html.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
@@ -85,16 +89,23 @@ const referralService = new ReferralService();
 const votingService = new VotingService();
 const gameplayService = new GameplayService();
 const sponsoredShopService = new SponsoredShopService();
+const adminEnrollmentService = new AdminEnrollmentService();
 const REWARDED_VOTE_SESSION_TTL_MS = 10 * 60_000;
 const hashRewardedVoteToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-const getWeightedVoteCount = async (serverId: string) => {
+const getWeightedVoteCount = async (serverId: string, voteDateFrom?: Date) => {
   const result = await prisma.serverVote.aggregate({
-    where: { serverId },
+    where: {
+      serverId,
+      ...(voteDateFrom ? { voteDate: { gte: voteDateFrom } } : {}),
+    },
     _sum: { weight: true },
   });
   return result._sum.weight ?? 0;
 };
+
+const utcMonthStart = (date = new Date()) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 
 const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
 const normalizeServerHostname = (hostname: string) =>
@@ -297,6 +308,58 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     serverDiscoveryService.stop();
   });
   app.get("/health", async () => ({ status: "ok", service: "nortix-api" }));
+  app.get("/share/campaigns/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        id,
+        status: { in: ["ACTIVE", "SCHEDULED"] },
+        server: { publicListing: true, moderationStatus: "APPROVED" },
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        maximumSparksReward: true,
+        milestones: { select: { id: true } },
+        server: {
+          select: { name: true, slug: true, bannerUrl: true, logoUrl: true },
+        },
+      },
+    });
+    if (!campaign) {
+      return reply.code(404).type("text/html; charset=utf-8").send("<h1>Campaign not found</h1>");
+    }
+    const origin =
+      env.NODE_ENV === "production"
+        ? "https://hub.nortixlabs.com"
+        : env.WEB_ORIGIN.split(",")[0]!.replace(/\/$/, "");
+    const shareUrl = `${origin}/share/campaigns/${encodeURIComponent(campaign.id)}`;
+    const targetUrl = `${origin}/servers/${encodeURIComponent(campaign.server.slug)}?campaign=${encodeURIComponent(campaign.id)}`;
+    const imageSource = campaign.server.bannerUrl ?? campaign.server.logoUrl;
+    let imageUrl: string | null = null;
+    if (imageSource) {
+      try {
+        imageUrl = new URL(imageSource, origin).toString();
+      } catch {
+        imageUrl = null;
+      }
+    }
+    const shortDescription = `${campaign.description.slice(0, 180)} ${campaign.milestones.length} milestones; eligible verified activity may receive up to ${campaign.maximumSparksReward} Sparks.`;
+    return reply
+      .header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600")
+      .type("text/html; charset=utf-8")
+      .send(
+        buildCampaignShareHtml({
+          title: campaign.title,
+          description: shortDescription,
+          serverName: campaign.server.name,
+          shareUrl,
+          targetUrl,
+          imageUrl,
+        }),
+      );
+  });
   app.get("/sitemap.xml", async (_request, reply) => {
     const now = new Date();
     const [servers, campaigns, discoveredServers] = await prisma.$transaction([
@@ -363,6 +426,17 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   );
   app.get("/v1/users/me", { preHandler: app.authenticate }, async (request) =>
     prisma.user.findUnique({ where: { id: request.user!.id }, select: selfUserSelect }),
+  );
+  app.post(
+    "/v1/admin/enrollment/redeem",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const input = AdminEnrollmentInputSchema.parse(request.body);
+      return adminEnrollmentService.redeem(request.user!.id, input.token, request.id);
+    },
   );
   app.get("/v1/referrals", { preHandler: app.authenticate }, async (request) => {
     const invites = await referralService.list(request.user!.id);
@@ -729,7 +803,13 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       where: { slug, publicListing: true, moderationStatus: "APPROVED" },
       select: {
         ...publicServerSelect,
-        _count: { select: { votes: true } },
+        _count: {
+          select: {
+            campaigns: {
+              where: { status: { in: ["SCHEDULED", "ACTIVE", "COMPLETED"] } },
+            },
+          },
+        },
         campaigns: {
           where: { status: "ACTIVE" },
           select: {
@@ -774,6 +854,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       );
     }
     const { _count, ...publicServer } = server;
+    const activitySince = new Date(Date.now() - 7 * 86_400_000);
+    const [voteCount, monthlyVoteCount, playerAverage] = await Promise.all([
+      getWeightedVoteCount(server.id),
+      getWeightedVoteCount(server.id, utcMonthStart()),
+      prisma.serverActivitySample.aggregate({
+        where: { serverId: server.id, observedAt: { gte: activitySince } },
+        _avg: { onlinePlayers: true },
+      }),
+    ]);
     return {
       ...publicServer,
       source: "NORTIX",
@@ -787,7 +876,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             )
           : null,
       reviewCount: server.reviews.length,
-      voteCount: await getWeightedVoteCount(server.id),
+      voteCount,
+      monthlyVoteCount,
+      averagePlayerCount:
+        playerAverage._avg.onlinePlayers == null
+          ? null
+          : Math.round(playerAverage._avg.onlinePlayers * 10) / 10,
+      averagePlayerWindowDays: 7,
+      campaignCountAllTime: _count.campaigns,
+      activeCampaignCount: server.campaigns.length,
     };
   });
   app.get("/v1/voting/config", async () => ({ turnstileSiteKey: env.TURNSTILE_SITE_KEY }));
@@ -951,6 +1048,8 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           versions: input.versions,
           categories: input.categories,
           tags: input.tags,
+          maxPlayers: input.maxPlayers,
+          bannerUrl: input.bannerUrl,
           verificationParentId: verificationParent?.id,
           verificationScope: verificationParent ? "PROXY_CHILD" : "SERVER",
           verificationStatus: verificationParent ? "VERIFIED" : "UNVERIFIED",
@@ -1863,14 +1962,20 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/profile/activity", { preHandler: app.authenticate }, async (request) =>
     cosmeticService.activity(request.user!.id),
   );
+  const checkInAndReadStreak = async (userId: string) => {
+    await activityService.record(userId, "WEB_OPEN");
+    await questService.evaluateAndAward(userId);
+    return activityService.streak(userId);
+  };
+  app.post(
+    "/v1/profile/activity/check-in",
+    { preHandler: app.authenticate, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    (request) => checkInAndReadStreak(request.user!.id),
+  );
   app.post(
     "/v1/profile/activity/streak",
     { preHandler: app.authenticate, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
-    async (request) => {
-      await activityService.record(request.user!.id, "WEB_OPEN");
-      await questService.evaluateAndAward(request.user!.id);
-      return activityService.streak(request.user!.id);
-    },
+    (request) => checkInAndReadStreak(request.user!.id),
   );
   app.get("/v1/profile/activity/streak", { preHandler: app.authenticate }, async (request) =>
     activityService.streak(request.user!.id),
@@ -1928,6 +2033,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         playerCount: true,
         maxPlayers: true,
         pluginLastSeenAt: true,
+        pluginInstanceId: true,
         createdAt: true,
         updatedAt: true,
         owner: { select: { id: true, username: true, displayName: true } },
@@ -1935,10 +2041,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       },
       orderBy: { updatedAt: "desc" },
     });
-    return servers.map(({ teamMembers, ...server }) => {
+    return servers.map(({ teamMembers, pluginInstanceId, pluginLastSeenAt, ...server }) => {
       const membership = teamMembers[0];
       return {
         ...server,
+        plugin: presentOwnerPluginState({ pluginInstanceId, pluginLastSeenAt }),
         access:
           server.ownerId === userId
             ? {

@@ -13,6 +13,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
+      "/share": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
     },
   },
   preview: { port: 4173, strictPort: true },

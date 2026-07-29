@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "simulate:event": "tsx src/jobs/simulate-event.ts"
+    "simulate:event": "tsx src/jobs/simulate-event.ts",
+    "admin:enrollment-token": "node dist/apps/api/src/jobs/create-admin-enrollment.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",

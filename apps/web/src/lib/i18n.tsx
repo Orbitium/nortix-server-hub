@@ -127,7 +127,7 @@ const en = {
   "dashboard.streak": "Your streak",
   "dashboard.notTracked": "Not tracked",
   "dashboard.streakUnavailable":
-    "Streak tracking is unavailable until a persisted activity endpoint is enabled.",
+    "Could not load your streak. Try again.",
   "dashboard.endpointRequired": "Activity endpoint required",
   "dashboard.leaderboard": "Leaderboard",
   "dashboard.thisMonth": "This month",
@@ -382,7 +382,7 @@ const tr: Messages = {
   "dashboard.streak": "Serin",
   "dashboard.notTracked": "Takip edilmiyor",
   "dashboard.streakUnavailable":
-    "Kalıcı etkinlik uç noktası etkinleştirilene kadar seri takibi kullanılamaz.",
+    "Seriniz yüklenemedi. Tekrar deneyin.",
   "dashboard.endpointRequired": "Etkinlik uç noktası gerekli",
   "dashboard.leaderboard": "Liderlik tablosu",
   "dashboard.thisMonth": "Bu ay",
@@ -568,7 +568,7 @@ const es: Messages = {
   "dashboard.streak": "Tu racha",
   "dashboard.notTracked": "Sin seguimiento",
   "dashboard.streakUnavailable":
-    "El seguimiento de rachas no está disponible hasta habilitar un endpoint persistente.",
+    "No se pudo cargar tu racha. Inténtalo de nuevo.",
   "dashboard.endpointRequired": "Se requiere endpoint de actividad",
   "dashboard.leaderboard": "Clasificación",
   "dashboard.thisMonth": "Este mes",
@@ -754,7 +754,7 @@ const de: Messages = {
   "dashboard.streak": "Deine Serie",
   "dashboard.notTracked": "Nicht erfasst",
   "dashboard.streakUnavailable":
-    "Serien werden erst nach Aktivierung eines dauerhaften Aktivitätsendpunkts erfasst.",
+    "Deine Serie konnte nicht geladen werden. Versuche es erneut.",
   "dashboard.endpointRequired": "Aktivitätsendpunkt erforderlich",
   "dashboard.leaderboard": "Bestenliste",
   "dashboard.thisMonth": "Dieser Monat",
@@ -940,7 +940,7 @@ const pt: Messages = {
   "dashboard.streak": "Sua sequência",
   "dashboard.notTracked": "Não rastreada",
   "dashboard.streakUnavailable":
-    "O rastreamento de sequência estará disponível após ativar um endpoint persistente.",
+    "Não foi possível carregar sua sequência. Tente novamente.",
   "dashboard.endpointRequired": "Endpoint de atividade obrigatório",
   "dashboard.leaderboard": "Classificação",
   "dashboard.thisMonth": "Este mês",

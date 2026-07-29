@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { UnifiedInfoPage } from "../components/UnifiedPages";
 import { OwnerPlatform } from "../components/OwnerWorkspace";
@@ -30,10 +31,22 @@ import {
   CampaignReviewPage,
   SparksAdjustmentReviewPage,
 } from "../routes/AdminPages";
-import { AuthPage } from "../routes/AuthPages";
+import { AdminEnrollmentPage, AuthPage } from "../routes/AuthPages";
 import { RouteSeo } from "../components/Seo";
 import { InboxPage, NotificationSettingsPage } from "../components/InboxCenter";
 import { CookieConsent } from "../components/CookieConsent";
+import { useUiStore } from "./store";
+
+function ThemeDocumentSync() {
+  const theme = useUiStore((state) => state.theme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme === "light" ? "light" : "dark";
+  }, [theme]);
+
+  return null;
+}
 
 const managedPages = [
   [
@@ -208,6 +221,7 @@ function AdminRoutes() {
 export function App() {
   return (
     <>
+      <ThemeDocumentSync />
       <RouteSeo />
       <Routes>
         <Route element={<DashboardLayout />}>
@@ -345,6 +359,14 @@ export function App() {
         </Route>
         <Route path="sign-in" element={<AuthPage mode="sign-in" />} />
         <Route path="register" element={<AuthPage mode="register" />} />
+        <Route
+          path="/admin/enroll"
+          element={
+            <RequireSignIn>
+              <AdminEnrollmentPage />
+            </RequireSignIn>
+          }
+        />
         <Route path="profile/:username" element={<PublicProfilePage />} />
         <Route
           path="/admin/*"

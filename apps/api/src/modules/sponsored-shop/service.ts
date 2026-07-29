@@ -16,6 +16,7 @@ import {
 const playerPurchaseSelect = {
   id: true,
   status: true,
+  quantity: true,
   priceSparks: true,
   fulfillmentDetails: true,
   deliveryReference: true,
@@ -145,12 +146,13 @@ export class SponsoredShopService {
             return [key, details[key]];
           }),
         );
-        if (availableSparks(balanceRows) < item.sparksPrice) throw new Error("Not enough Sparks.");
+        const totalPriceSparks = item.sparksPrice * input.quantity;
+        if (availableSparks(balanceRows) < totalPriceSparks) throw new Error("Not enough Sparks.");
         const debit = await tx.sparksLedgerEntry.create({
           data: {
             userId,
             direction: "DEBIT",
-            amount: item.sparksPrice,
+            amount: totalPriceSparks,
             transactionType: "SPONSORED_PURCHASE",
             referenceType: "SPONSORED_ITEM",
             referenceId: item.id,
@@ -162,7 +164,8 @@ export class SponsoredShopService {
           data: {
             userId,
             itemId: item.id,
-            priceSparks: item.sparksPrice,
+            quantity: input.quantity,
+            priceSparks: totalPriceSparks,
             fulfillmentDetails: safeDetails,
             idempotencyKey: input.idempotencyKey,
             sparksDebitLedgerEntryId: debit.id,
@@ -179,7 +182,8 @@ export class SponsoredShopService {
               requestId,
               afterSnapshot: {
                 itemId: item.id,
-                priceSparks: item.sparksPrice,
+                quantity: input.quantity,
+                priceSparks: totalPriceSparks,
                 status: "REQUESTED",
               },
             },
@@ -188,7 +192,7 @@ export class SponsoredShopService {
             recipientId: userId,
             category: "SPARKS",
             title: `${item.name} request received`,
-            body: `${item.sparksPrice.toLocaleString()} Sparks were used. Nortix staff will review the gift delivery request.`,
+            body: `${totalPriceSparks.toLocaleString()} Sparks were used for ${input.quantity.toLocaleString()} ${input.quantity === 1 ? "unit" : "units"}. Nortix staff will review the gift delivery request.`,
             actionUrl: "/dashboard/sparks-shop",
             dedupeKey: `sponsored-purchase:${purchase.id}`,
           }),

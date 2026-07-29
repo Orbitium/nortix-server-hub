@@ -1,5 +1,6 @@
 import { prisma, type Prisma } from "@nortix/database";
 import { reconcileReferredUser } from "../referrals/service.js";
+import { calculateActivityStreak } from "../activity/policy.js";
 
 const ACCOUNT_QUEST_DATE = new Date("1970-01-01T00:00:00.000Z");
 const utcDay = (date = new Date()) =>
@@ -16,6 +17,7 @@ async function isQuestComplete(
   userId: string,
   type: string,
   questDate: Date,
+  target: number,
 ) {
   const nextDay = new Date(questDate.getTime() + 86_400_000);
   switch (type) {
@@ -79,23 +81,15 @@ async function isQuestComplete(
     case "LOGIN_STREAK": {
       const rows = await tx.userDailyActivity.findMany({
         where: { userId, activityDate: { lte: new Date() } },
-        select: { activityDate: true, webOpened: true, campaignPlayed: true },
-        orderBy: { activityDate: "desc" },
-        take: 7,
+        select: {
+          activityDate: true,
+          webOpened: true,
+          campaignPlayed: true,
+          verifiedServerJoined: true,
+        },
+        orderBy: { activityDate: "asc" },
       });
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
-      if (
-        rows.length < 7 ||
-        rows[0]?.activityDate.getTime() !== today.getTime() ||
-        rows.some((row) => !row.webOpened && !row.campaignPlayed)
-      )
-        return false;
-      return rows.every(
-        (row, index) =>
-          index === 0 ||
-          rows[index - 1]!.activityDate.getTime() - row.activityDate.getTime() === 86_400_000,
-      );
+      return calculateActivityStreak(rows).current >= target;
     }
     case "SPARKS_SHOP_PURCHASED":
       return Boolean(
@@ -131,7 +125,7 @@ export class QuestService {
     const result = [];
     for (const quest of quests) {
       const questDate = questDateForCadence(quest.cadence);
-      const complete = await isQuestComplete(tx, userId, quest.type, questDate);
+      const complete = await isQuestComplete(tx, userId, quest.type, questDate, quest.target);
       const current = await tx.userQuest.upsert({
         where: {
           userId_questId_questDate: { userId, questId: quest.id, questDate },

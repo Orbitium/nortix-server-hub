@@ -33,6 +33,10 @@ export type PublicServer = {
   rating?: number | null;
   reviewCount?: number;
   voteCount?: number;
+  monthlyVoteCount?: number;
+  averagePlayerCount?: number | null;
+  averagePlayerWindowDays?: number;
+  campaignCountAllTime?: number;
   rewardedVotingEnabled?: boolean;
   hostname?: string;
   port?: number;
@@ -107,6 +111,8 @@ export type ReferralInvite = {
   expiresAt: string;
   claimedAt?: string | null;
   qualifiedAt?: string | null;
+  earningWindowEndsAt?: string | null;
+  earningWindowActive: boolean;
 };
 
 export type CosmeticItem = {
@@ -187,6 +193,7 @@ export type SponsoredPurchaseStatus =
 export type SponsoredPurchase = {
   id: string;
   status: SponsoredPurchaseStatus;
+  quantity: number;
   priceSparks: number;
   fulfillmentDetails: Record<string, string>;
   deliveryReference?: string | null;
@@ -520,7 +527,13 @@ export type NotificationPreferences = {
 export type Streak = {
   current: number;
   longest: number;
-  today: { webOpened: boolean; campaignPlayed: boolean; active: boolean };
+  timezone: "UTC";
+  today: {
+    webOpened: boolean;
+    campaignPlayed: boolean;
+    verifiedServerJoined: boolean;
+    active: boolean;
+  };
   days: Array<{ date: string; active: boolean }>;
 };
 
@@ -626,7 +639,7 @@ export const useProfileActivity = () =>
 export const useStreak = (enabled = true) =>
   useQuery({
     queryKey: ["profile-streak"],
-    queryFn: () => api<Streak>("/profile/activity/streak", { method: "POST" }),
+    queryFn: () => api<Streak>("/profile/activity/check-in", { method: "POST" }),
     enabled,
     retry: 2,
   });

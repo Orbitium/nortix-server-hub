@@ -163,43 +163,78 @@ const routeMetadata: Record<string, Omit<SeoProps, "path">> = {
   },
 };
 
+const privateRouteMetadata: Record<string, Omit<SeoProps, "path">> = {
+  "/": {
+    title: "Nortix Home",
+    description: "Discover Minecraft servers, playtests, quests, and your Nortix activity.",
+    noIndex: true,
+    image: null,
+  },
+  "/dashboard": {
+    title: "Nortix Home",
+    description: "Discover Minecraft servers, playtests, quests, and your Nortix activity.",
+    noIndex: true,
+    image: null,
+  },
+  "/sign-in": {
+    title: "Sign in to Nortix",
+    description: "Sign in to your Nortix account.",
+    noIndex: true,
+    image: null,
+  },
+  "/register": {
+    title: "Create a Nortix Account",
+    description: "Create your Nortix player or server-owner account.",
+    noIndex: true,
+    image: null,
+  },
+  "/owner/servers/new": {
+    title: "Register a Minecraft Server",
+    description: "Register and verify a Minecraft Java server or proxy network with Nortix.",
+    noIndex: true,
+    image: null,
+  },
+};
+
 const isPrivateRoute = (path: string) =>
-  path === "/" ||
   path.startsWith("/dashboard") ||
   path.startsWith("/owner") ||
   path.startsWith("/admin") ||
   path === "/sign-in" ||
   path === "/register";
 
-export function RouteSeo() {
-  const { pathname } = useLocation();
-
+export function resolveRouteSeo(pathname: string): (SeoProps & { path: string }) | null {
   if (/^\/servers\/[^/]+$/.test(pathname) || /^\/campaigns\/[^/]+$/.test(pathname)) {
     return null;
   }
 
   const metadata = routeMetadata[pathname];
-  if (metadata) return <Seo {...metadata} path={pathname} />;
+  if (metadata) return { ...metadata, path: pathname };
+
+  const privateMetadata = privateRouteMetadata[pathname];
+  if (privateMetadata) return { ...privateMetadata, path: pathname };
 
   if (isPrivateRoute(pathname)) {
-    return (
-      <Seo
-        title="Nortix Account"
-        description="Private Nortix account workspace."
-        path={pathname}
-        noIndex
-        image={null}
-      />
-    );
+    return {
+      title: "Nortix Account",
+      description: "Private Nortix account workspace.",
+      path: pathname,
+      noIndex: true,
+      image: null,
+    };
   }
 
-  return (
-    <Seo
-      title="Page not found"
-      description="This Nortix page could not be found."
-      path={pathname}
-      noIndex
-      image={null}
-    />
-  );
+  return {
+    title: "Page not found",
+    description: "This Nortix page could not be found.",
+    path: pathname,
+    noIndex: true,
+    image: null,
+  };
+}
+
+export function RouteSeo() {
+  const { pathname } = useLocation();
+  const metadata = resolveRouteSeo(pathname);
+  return metadata ? <Seo {...metadata} /> : null;
 }

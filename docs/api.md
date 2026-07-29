@@ -32,6 +32,8 @@ Errors use:
 
 ## Campaigns and participations
 
+- `GET /share/campaigns/:id` — public HTML social preview outside the `/v1` JSON namespace; redirects
+  browsers to the campaign pop-up on its server page
 - `GET /campaigns`
 - `GET /campaigns/:id` — private economics omitted
 - `POST /campaigns/:id/join`
@@ -68,6 +70,9 @@ promise.
 - `PUT /profile/cosmetics/equipped`
 - `DELETE /profile/cosmetics/equipped`
 - `GET /profile/activity`
+- `POST /profile/activity/check-in` — idempotently persists today's authenticated web activity and
+  returns the current streak
+- `GET /profile/activity/streak` — reads the persisted streak without recording activity
 
 Sparks are non-withdrawable, non-transferable platform points with no cash value. Purchase routes
 only debit Sparks and there is no cash-out or conversion endpoint.
@@ -165,6 +170,8 @@ ID. A delivery ID supplied by the browser is never sufficient to access another 
 
 Nortix administrator endpoints:
 
+- `POST /v1/admin/enrollment/redeem` — authenticated account redeems a short-lived, single-use
+  operator token; this is the only admin route that does not require a pre-existing staff role
 - `GET /v1/admin/messages`
 - `POST /v1/admin/messages`
 - `POST /v1/admin/messages/:id/send`

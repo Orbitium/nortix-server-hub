@@ -29,16 +29,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
 import org.slf4j.Logger;
 
 @Plugin(
     id = "nortix-verification",
     name = "Nortix Proxy",
-    version = "0.4.0",
+    version = "0.4.1",
     description = "Verifies one public Velocity proxy; Paper backends report milestones separately"
 )
 public final class NortixVelocityPlugin {
-    private static final String VERSION = "0.4.0";
+    private static final String VERSION = "0.4.1";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private final ProxyServer proxy;
     private final Logger logger;
@@ -135,9 +136,14 @@ public final class NortixVelocityPlugin {
         @Override
         public void execute(Invocation invocation) {
             String[] args = invocation.arguments();
+            if (args.length == 1 && args[0].equalsIgnoreCase("vote")) {
+                sendVotingLink(invocation);
+                return;
+            }
             if (args.length == 0 || (args.length == 1 && args[0].equalsIgnoreCase("help"))) {
                 invocation.source().sendMessage(Component.text("Nortix profiles"));
                 invocation.source().sendMessage(Component.text("/nortix <player> - view a public Nortix profile"));
+                invocation.source().sendMessage(Component.text("/nortix vote - open this server's Nortix voting page"));
                 return;
             }
             if (args.length != 1 || !args[0].matches("^[A-Za-z0-9_]{3,16}$")) {
@@ -179,6 +185,7 @@ public final class NortixVelocityPlugin {
                 }
             }
             config.putIfAbsent("api-base-url", "https://hub.nortixlabs.com/api/v1");
+            config.putIfAbsent("web-base-url", "https://hub.nortixlabs.com");
             config.putIfAbsent("public-address", "");
             config.putIfAbsent("verification-code", "");
             config.putIfAbsent("plugin-motd", "true");
@@ -199,6 +206,24 @@ public final class NortixVelocityPlugin {
         } catch (IOException error) {
             logger.error("Could not save Nortix configuration", error);
         }
+    }
+
+    private void sendVotingLink(SimpleCommand.Invocation invocation) {
+        String serverId = config.getProperty("server-id", "").trim();
+        if (!serverId.matches("^[A-Za-z0-9_-]{1,120}$")) {
+            invocation.source().sendMessage(Component.text(
+                "Nortix voting is not connected on this proxy yet."));
+            return;
+        }
+        String webBaseUrl = config
+            .getProperty("web-base-url", "https://hub.nortixlabs.com")
+            .trim()
+            .replaceAll("/+$", "");
+        String url = webBaseUrl + "/dashboard/vote?server=" + serverId;
+        invocation.source().sendMessage(
+            Component.text("Vote for this server on Nortix: ")
+                .append(Component.text(url).clickEvent(ClickEvent.openUrl(url)))
+        );
     }
 
     private void sendHandshake() {

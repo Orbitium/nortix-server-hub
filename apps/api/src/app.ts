@@ -111,6 +111,7 @@ export const buildApp = async (env: Env) => {
       "CAPTCHA",
       "server votes",
       "voted",
+      "admin enrollment token",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),

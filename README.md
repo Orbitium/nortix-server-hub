@@ -73,6 +73,26 @@ The backend verifies ID tokens, resolves or creates a local user, then uses loca
 permissions, ownership, and status for authorization. Firebase custom claims are not trusted as
 the application's authorization source.
 
+### Enrolling the first Nortix administrator
+
+Administrator enrollment does not bypass Firebase sign-in. First build and start the current
+Compose stack and apply its migrations. Then generate a short-lived, single-use enrollment token
+inside the API container:
+
+```bash
+docker compose exec api npm run admin:enrollment-token
+```
+
+The command prints the token once. The intended administrator must sign in to their normal Nortix
+account, open `/admin/enroll`, and paste the token within 10 minutes. Redemption grants `ADMIN` to
+that authenticated local user, consumes the token atomically, and appends an audit record. The
+database stores only a SHA-256 hash of the token. Send the token only through an approved private
+channel and generate a new one if it expires or is exposed.
+
+This command requires shell access to the running API container and its private database
+connection. It is the bootstrap path for a real administrator; do not grant roles through
+Firebase custom claims or browser state.
+
 ## Database and seed
 
 ```bash

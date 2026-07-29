@@ -18,8 +18,8 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Sun,
   Trophy,
-  ThumbsUp,
   UserPlus,
   UserRound,
   Zap,
@@ -58,7 +58,6 @@ const playerNav = [
   ["/campaigns", "nav.campaigns", Gamepad2],
   ["/dashboard/progress", "nav.progress", LayoutDashboard],
   ["/dashboard/quests", "nav.quests", Zap],
-  ["/dashboard/vote", "nav.voting", ThumbsUp],
   ["/dashboard/referrals", "nav.inviteFriend", UserPlus],
   ["/dashboard/sparks-shop", "nav.sparksShop", Sparkles],
   ["/dashboard/leaderboards", "nav.leaderboards", Trophy],
@@ -95,7 +94,13 @@ export function DashboardLayout() {
   const { data: sparksSummary } = useSparksSummary(isAuthenticated);
   const { data: leaderboardData } = useLeaderboard();
   const { data: dailyQuests = [] } = useDailyQuests(isAuthenticated);
-  const { data: streak, isLoading: streakLoading } = useStreak(isAuthenticated);
+  const {
+    data: streak,
+    isLoading: streakLoading,
+    isFetching: streakFetching,
+    isError: streakError,
+    refetch: refetchStreak,
+  } = useStreak(isAuthenticated);
   const servers = serverData?.items ?? [];
   const campaigns = campaignData?.items ?? [];
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
@@ -261,8 +266,15 @@ export function DashboardLayout() {
 
         <div className="sidebar__bottom">
           <div className="sidebar__utility">
-            <button onClick={toggleTheme} aria-label={t("dashboard.toggleTheme")}>
-              <Moon size={17} />
+            <button
+              onClick={toggleTheme}
+              aria-label={
+                theme === "dark" ? "Switch to cream light mode" : "Switch to dark mode"
+              }
+              aria-pressed={theme === "light"}
+              title={theme === "dark" ? "Cream light mode" : "Dark mode"}
+            >
+              {theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}
             </button>
             <NavLink to="/dashboard/settings" aria-label={t("nav.settings")}>
               <Settings size={17} />
@@ -520,18 +532,40 @@ export function DashboardLayout() {
                 {(
                   streak?.days ?? Array.from({ length: 7 }, () => ({ date: "", active: false }))
                 ).map((day, index) => (
-                  <i className={day.active ? "done" : undefined} key={`${day.date}-${index}`}>
+                  <i
+                    className={day.active ? "done" : undefined}
+                    key={`${day.date}-${index}`}
+                    title={
+                      day.date
+                        ? `${new Date(day.date).toLocaleDateString(undefined, {
+                            weekday: "long",
+                            timeZone: "UTC",
+                          })}: ${day.active ? "active" : "not active"}`
+                        : undefined
+                    }
+                  >
                     {day.active ? "✓" : "·"}
                   </i>
                 ))}
               </div>
-              <span className="rail-action">
-                {streak
-                  ? `Best: ${streak.longest} days`
-                  : streakLoading
-                    ? "Loading streak…"
-                    : t("dashboard.streakUnavailable")}
-              </span>
+              {streakError ? (
+                <button
+                  className="rail-action"
+                  type="button"
+                  disabled={streakFetching}
+                  onClick={() => void refetchStreak()}
+                >
+                  {streakFetching ? "Retrying…" : t("dashboard.streakUnavailable")}
+                </button>
+              ) : (
+                <span className="rail-action">
+                  {streak
+                    ? `Best: ${streak.longest} days · tracked in ${streak.timezone}`
+                    : streakLoading
+                      ? "Loading streak…"
+                      : "No activity recorded yet"}
+                </span>
+              )}
             </div>
           )}
 

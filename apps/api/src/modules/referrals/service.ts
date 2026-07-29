@@ -2,8 +2,11 @@ import { randomBytes } from "node:crypto";
 import { prisma, type Prisma } from "@nortix/database";
 import {
   MAX_OPEN_REFERRAL_INVITES,
+  MAX_MONTHLY_REFERRAL_INVITES,
   REFERRAL_CLAIM_WINDOW_HOURS,
   REFERRAL_INVITE_LIFETIME_DAYS,
+  referralEarningWindowEndsAt,
+  referralMonthWindow,
   referralProgress,
 } from "./policy.js";
 
@@ -14,9 +17,17 @@ const inviteCode = () => {
   return `NFX-${value.slice(0, 4)}-${value.slice(4, 8)}`;
 };
 
-const earnedSparks = async (tx: Prisma.TransactionClient, userId: string) => {
+const earnedSparks = async (
+  tx: Prisma.TransactionClient,
+  userId: string,
+  claimedAt: Date,
+) => {
   const result = await tx.sparksLedgerEntry.aggregate({
-    where: { userId, direction: "CREDIT" },
+    where: {
+      userId,
+      direction: "CREDIT",
+      createdAt: { gte: claimedAt, lt: referralEarningWindowEndsAt(claimedAt) },
+    },
     _sum: { amount: true },
   });
   return result._sum.amount ?? 0;
@@ -25,11 +36,11 @@ const earnedSparks = async (tx: Prisma.TransactionClient, userId: string) => {
 export async function reconcileReferredUser(tx: Prisma.TransactionClient, userId: string) {
   const invite = await tx.referralInvite.findUnique({
     where: { inviteeId: userId },
-    select: { id: true, inviterId: true, qualifiedAt: true },
+    select: { id: true, inviterId: true, claimedAt: true, qualifiedAt: true },
   });
-  if (!invite || invite.qualifiedAt) return null;
+  if (!invite?.claimedAt || invite.qualifiedAt) return null;
 
-  const progress = referralProgress(await earnedSparks(tx, userId));
+  const progress = referralProgress(await earnedSparks(tx, userId, invite.claimedAt));
   if (!progress.qualified) return null;
 
   const qualifiedAt = new Date();
@@ -70,15 +81,30 @@ export class ReferralService {
   async create(inviterId: string, requestId?: string) {
     return prisma.$transaction(
       async (tx) => {
-        const openCount = await tx.referralInvite.count({
-          where: { inviterId, inviteeId: null, expiresAt: { gt: new Date() } },
-        });
+        const now = new Date();
+        const month = referralMonthWindow(now);
+        const [openCount, monthlyCount] = await Promise.all([
+          tx.referralInvite.count({
+            where: { inviterId, inviteeId: null, expiresAt: { gt: now } },
+          }),
+          tx.referralInvite.count({
+            where: {
+              inviterId,
+              createdAt: { gte: month.startsAt, lt: month.endsAt },
+            },
+          }),
+        ]);
         if (openCount >= MAX_OPEN_REFERRAL_INVITES) {
           throw new Error("You already have too many open referral invites.");
         }
+        if (monthlyCount >= MAX_MONTHLY_REFERRAL_INVITES) {
+          throw new Error(
+            `You can create up to ${MAX_MONTHLY_REFERRAL_INVITES} friend invites per calendar month.`,
+          );
+        }
 
         const expiresAt = new Date(
-          Date.now() + REFERRAL_INVITE_LIFETIME_DAYS * 24 * 60 * 60 * 1_000,
+          now.getTime() + REFERRAL_INVITE_LIFETIME_DAYS * 24 * 60 * 60 * 1_000,
         );
         const invite = await tx.referralInvite.create({
           data: { code: inviteCode(), inviterId, expiresAt },
@@ -90,7 +116,10 @@ export class ReferralService {
             action: "REFERRAL_INVITE_CREATED",
             entityType: "REFERRAL_INVITE",
             entityId: invite.id,
-            afterSnapshot: { expiresAt: invite.expiresAt.toISOString() },
+            afterSnapshot: {
+              expiresAt: invite.expiresAt.toISOString(),
+              monthlyInviteNumber: monthlyCount + 1,
+            },
             requestId,
           },
         });
@@ -141,6 +170,7 @@ export class ReferralService {
         if (existing) throw new Error("This account has already claimed a referral invite.");
 
         const claimedAt = new Date();
+        const earningWindowEndsAt = referralEarningWindowEndsAt(claimedAt);
         const claimed = await tx.referralInvite.updateMany({
           where: { id: invite.id, inviteeId: null, claimedAt: null, expiresAt: { gt: claimedAt } },
           data: { inviteeId, claimedAt },
@@ -153,7 +183,10 @@ export class ReferralService {
             entityType: "REFERRAL_INVITE",
             entityId: invite.id,
             beforeSnapshot: { status: "OPEN" },
-            afterSnapshot: { status: "REGISTERED" },
+            afterSnapshot: {
+              status: "REGISTERED",
+              earningWindowEndsAt: earningWindowEndsAt.toISOString(),
+            },
             requestId,
           },
         });
@@ -194,12 +227,11 @@ export class ReferralService {
     const progressByInvitee = new Map<string, number>();
     await Promise.all(
       invites.map(async (invite) => {
-        if (!invite.inviteeId || invite.qualifiedAt) return;
-        const result = await prisma.sparksLedgerEntry.aggregate({
-          where: { userId: invite.inviteeId, direction: "CREDIT" },
-          _sum: { amount: true },
-        });
-        progressByInvitee.set(invite.inviteeId, result._sum.amount ?? 0);
+        if (!invite.inviteeId || !invite.claimedAt || invite.qualifiedAt) return;
+        progressByInvitee.set(
+          invite.inviteeId,
+          await earnedSparks(prisma, invite.inviteeId, invite.claimedAt),
+        );
       }),
     );
 
@@ -213,6 +245,12 @@ export class ReferralService {
         status: statusFor(invite),
         creditedSparks: progress.creditedSparks,
         requiredSparks: progress.requiredSparks,
+        earningWindowEndsAt: invite.claimedAt
+          ? referralEarningWindowEndsAt(invite.claimedAt).toISOString()
+          : null,
+        earningWindowActive: invite.claimedAt
+          ? new Date() < referralEarningWindowEndsAt(invite.claimedAt)
+          : false,
       };
     });
   }

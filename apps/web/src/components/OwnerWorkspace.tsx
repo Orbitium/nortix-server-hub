@@ -1,4 +1,4 @@
-import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, Link2, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Pause, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
+import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
@@ -9,12 +9,14 @@ type ServerRecord = {
   id: string;
   name: string;
   address: string;
-  status: "Live" | "Attention" | "Paused";
+  status: "Live" | "Attention";
   players: number;
   version: string;
-  plugin: string;
-  heartbeat: string;
-  events: string;
+  pluginConnected: boolean;
+  pluginLastSeenAt: string | null;
+  verificationStatus: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
+  claimed: boolean;
+  createdAt: string;
   discovery: boolean;
   rewardedVotingEnabled: boolean;
   accessType?: "OWNER" | "TEAM";
@@ -32,6 +34,13 @@ type AccessibleServer = {
   versions: string[];
   publicListing: boolean;
   rewardedVotingEnabled: boolean;
+  verificationStatus: ServerRecord["verificationStatus"];
+  claimed: boolean;
+  createdAt: string;
+  plugin: {
+    connected: boolean;
+    lastSeenAt: string | null;
+  };
   access: { type: "OWNER" | "TEAM"; role: ServerRecord["teamRole"]; permissions: string[] };
 };
 
@@ -148,15 +157,25 @@ const mapAccessibleServer = (server: AccessibleServer): ServerRecord => ({
   status: server.online ? "Live" : "Attention",
   players: server.playerCount ?? 0,
   version: server.versions[0] ?? "Unknown",
-  plugin: "Connected",
-  heartbeat: server.online ? "Live" : "Awaiting signal",
-  events: "—",
+  pluginConnected: server.plugin.connected,
+  pluginLastSeenAt: server.plugin.lastSeenAt,
+  verificationStatus: server.verificationStatus,
+  claimed: server.claimed,
+  createdAt: server.createdAt,
   discovery: server.publicListing,
   rewardedVotingEnabled: server.rewardedVotingEnabled,
   accessType: server.access.type,
   teamRole: server.access.role,
   permissions: server.access.permissions,
 });
+
+const formatServerTimestamp = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "Never";
 
 function StatusDot({ status }: { status: ServerRecord["status"] }) {
   return <i className={`owner-status owner-status--${status.toLowerCase()}`}>{status}</i>;
@@ -225,13 +244,13 @@ function OwnerHeader({ eyebrow, title, description, server, setServer, action }:
           <CircleDot /> {server.players.toLocaleString()} online now
         </span>
         <span>
-          <Plug /> Plugin {server.plugin}
+          <Plug /> Plugin {server.pluginConnected ? "connected" : "not connected"}
         </span>
         <span>
-          <Radio /> Last signal {server.heartbeat}
+          <Radio /> Last plugin signal {formatServerTimestamp(server.pluginLastSeenAt)}
         </span>
         <span>
-          <Database /> {server.events} events this month
+          <ShieldCheck /> Verification {server.verificationStatus.toLowerCase()}
         </span>
         <StatusDot status={server.status} />
       </div>
@@ -851,8 +870,7 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
 }
 
 function PluginServers({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
-  const { servers: accessibleServers } = useContext(OwnerServersContext);
-  const [servers, setServers] = useState(accessibleServers);
+  const { servers } = useContext(OwnerServersContext);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState("");
   const [connectionToken, setConnectionToken] = useState<{
@@ -861,9 +879,18 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
   } | null>(null);
   const [connectionMessage, setConnectionMessage] = useState("");
   const [capabilities, setCapabilities] = useState<PluginCapabilityInfo[]>([]);
-  const filtered = useMemo(() => servers.filter((item) => `${item.name} ${item.address} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [query, servers]);
-  const togglePause = (id: string) => setServers((items) => items.map((item) => (item.id === id ? { ...item, status: item.status === "Paused" ? "Live" : "Paused" } : item)));
-  useEffect(() => setServers(accessibleServers), [accessibleServers]);
+  const filtered = useMemo(
+    () =>
+      servers.filter((item) =>
+        `${item.name} ${item.address} ${item.status} ${item.verificationStatus}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase()),
+      ),
+    [query, servers],
+  );
+  const onlineCount = servers.filter((item) => item.status === "Live").length;
+  const verifiedCount = servers.filter((item) => item.claimed && item.verificationStatus === "VERIFIED").length;
+  const connectedCount = servers.filter((item) => item.pluginConnected).length;
   useEffect(() => {
     setConnectionToken(null);
     api<{ pluginCapabilities: PluginCapabilityInfo[] }>(`/owner/servers/${server.id}/plugin-capabilities`)
@@ -903,7 +930,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
           <div>
             <small>Registered servers</small>
             <strong>{servers.length}</strong>
-            <p>2 healthy · 1 needs attention</p>
+            <p>{onlineCount} currently online</p>
           </div>
         </article>
         <article className="card">
@@ -911,9 +938,9 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
             <Radio />
           </span>
           <div>
-            <small>Events received today</small>
-            <strong>18.4K</strong>
-            <p className="positive">+12% vs daily average</p>
+            <small>Online servers</small>
+            <strong>{onlineCount}</strong>
+            <p>Based on the latest status check</p>
           </div>
         </article>
         <article className="card">
@@ -921,9 +948,9 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
             <Gauge />
           </span>
           <div>
-            <small>Collection success</small>
-            <strong>99.82%</strong>
-            <p>34 events retried automatically</p>
+            <small>Verified servers</small>
+            <strong>{verifiedCount}</strong>
+            <p>{servers.length - verifiedCount} awaiting verification</p>
           </div>
         </article>
         <article className="card">
@@ -931,9 +958,9 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
             <ShieldCheck />
           </span>
           <div>
-            <small>Data health</small>
-            <strong>Good</strong>
-            <p>1 plugin update recommended</p>
+            <small>Plugin connected</small>
+            <strong>{connectedCount}</strong>
+            <p>{servers.length - connectedCount} awaiting a plugin connection</p>
           </div>
         </article>
       </div>
@@ -950,7 +977,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
           </label>
         </div>
         {filtered.map((item) => (
-          <article className="owner-registry-row" key={item.id}>
+          <article className={`owner-registry-row${item.id === server.id ? " is-selected" : ""}`} key={item.id}>
             <button className="owner-server-mark" onClick={() => setServer(item)}>
               {item.name.slice(0, 2).toUpperCase()}
             </button>
@@ -963,34 +990,43 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
               {item.accessType === "TEAM" && <i className="owner-access-label">Team access · {item.teamRole?.toLowerCase()}</i>}
             </div>
             <div>
-              <small>Plugin</small>
-              <strong>{item.plugin}</strong>
-              <span>{item.id === "factions-legacy" ? "Update available" : "Current"}</span>
+              <small>Verification</small>
+              <strong>{item.verificationStatus.toLowerCase()}</strong>
+              <span>{item.claimed ? "Ownership confirmed" : "Ownership pending"}</span>
             </div>
             <div>
-              <small>Last heartbeat</small>
-              <strong>{item.heartbeat}</strong>
-              <span>{item.status === "Attention" ? "Delayed" : "Normal"}</span>
+              <small>Plugin connection</small>
+              <strong>{item.pluginConnected ? "Connected" : "Not connected"}</strong>
+              <span>Last signal: {formatServerTimestamp(item.pluginLastSeenAt)}</span>
             </div>
             <div>
-              <small>Events this month</small>
-              <strong>{item.events}</strong>
-              <span>{item.id === "skyblock-x" ? "99.9% accepted" : "99.7% accepted"}</span>
+              <small>Discovery</small>
+              <strong>{item.discovery ? "Listed" : "Private"}</strong>
+              <span>Registered {formatServerTimestamp(item.createdAt)}</span>
             </div>
             <div className="owner-registry-actions">
-              <button onClick={() => togglePause(item.id)}>
-                {item.status === "Paused" ? <RefreshCw /> : <Pause />}
-                {item.status === "Paused" ? "Resume" : "Pause"}
-              </button>
-              <button>
-                <Settings /> Configure
-              </button>
-              <button aria-label={`More actions for ${item.name}`}>
-                <MoreHorizontal />
+              <button
+                className={item.id === server.id ? "active" : ""}
+                onClick={() => setServer(item)}
+                aria-pressed={item.id === server.id}
+              >
+                <Settings /> {item.id === server.id ? "Selected" : "Manage integration"}
               </button>
             </div>
           </article>
         ))}
+        {filtered.length === 0 && (
+          <div className="owner-registry-empty">
+            <Server />
+            <div>
+              <strong>No registered server matches this search.</strong>
+              <p>Clear the search or register another Minecraft server.</p>
+            </div>
+            <Link className="button button--primary" to="/owner/servers/new">
+              <Plus /> Register server
+            </Link>
+          </div>
+        )}
       </section>
 
       <section className="card owner-milestone-connect">
@@ -1056,15 +1092,14 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
               <Radio />
               <span>
                 <strong>No capability report yet</strong>
-                <small>Install plugin v0.4.0, run the connection command, and the campaign builder will update automatically.</small>
+                <small>Install plugin v0.4.1, run the connection command, and the campaign builder will update automatically.</small>
               </span>
             </div>
           )}
         </div>
       </section>
 
-      <div className="owner-dashboard-grid">
-        <section className="card owner-plugin-install">
+      <section className="card owner-plugin-install">
           <div className="owner-card-heading">
             <div>
               <h2>Ownership verification plugins</h2>
@@ -1079,7 +1114,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
                 <strong>Paper 1.16 and newer</strong>
                 <small>Install on every backend that should verify milestones. Version 0.4 adds activity eligibility snapshots and public profile lookup.</small>
               </span>
-              <a className="button" href="/downloads/nortix-paper-0.4.0.jar" download>
+              <a className="button" href="/downloads/nortix-paper-0.4.1.jar" download>
                 <Download /> Paper .jar
               </a>
             </li>
@@ -1089,7 +1124,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
                 <strong>Velocity 3.x proxy</strong>
                 <small>Verify the public proxy once, report network activity, and offer public profile lookup across the network.</small>
               </span>
-              <a className="button" href="/downloads/nortix-velocity-0.4.0.jar" download>
+              <a className="button" href="/downloads/nortix-velocity-0.4.1.jar" download>
                 <Download /> Velocity .jar
               </a>
             </li>
@@ -1118,38 +1153,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
           <p className="owner-security-note">
             <LockKeyhole /> These plugins only perform registration and ownership verification. They do not collect gameplay or player data.
           </p>
-        </section>
-        <section className="card">
-          <div className="owner-card-heading">
-            <div>
-              <h2>Live event stream</h2>
-              <p>Recent accepted plugin signals.</p>
-            </div>
-            <span className="live-pill">LIVE</span>
-          </div>
-          <div className="owner-event-stream">
-            {[
-              ["18:42:09", "player_objective", "Skyblock X", "accepted"],
-              ["18:42:07", "session_heartbeat", "PrisonCraft", "accepted"],
-              ["18:41:58", "tutorial_complete", "Skyblock X", "accepted"],
-              ["18:41:52", "server_heartbeat", "Factions Legacy", "delayed"],
-              ["18:41:46", "player_disconnect", "PrisonCraft", "accepted"],
-            ].map(([time, event, source, state]) => (
-              <div key={`${time}-${event}`}>
-                <code>{time}</code>
-                <span>
-                  <strong>{event}</strong>
-                  <small>{source}</small>
-                </span>
-                <i className={state}>{state}</i>
-              </div>
-            ))}
-          </div>
-          <button className="owner-text-button">
-            Open event diagnostics <ArrowUpRight />
-          </button>
-        </section>
-      </div>
+      </section>
     </div>
   );
 }
@@ -2356,21 +2360,31 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
   type AddressValidation = {
     hostname: string;
     port: number;
-    preview: { online: boolean; playerCount: number | null; maxPlayers: number | null; version: string | null };
+    preview: {
+      online: boolean;
+      playerCount: number | null;
+      maxPlayers: number | null;
+      version: string | null;
+      icon: string | null;
+    };
     validationSignature: string;
     expiresAt: string;
   };
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  type RegistrationPlatform = "PAPER" | "VELOCITY" | "DOWNSTREAM";
+  type RegistrationPlatform = "PAPER" | "VELOCITY";
+  type VerificationMethod = "PLUGIN" | "MANUAL";
   const [platform, setPlatform] = useState<RegistrationPlatform>("PAPER");
   const [versions, setVersions] = useState<string[]>(["1.21"]);
   const [categories, setCategories] = useState<string[]>(["Survival"]);
-  const [verifiedProxies, setVerifiedProxies] = useState<Array<{ id: string; name: string; hostname: string }>>([]);
-  const [verificationParentId, setVerificationParentId] = useState("");
-  const [inheritedComplete, setInheritedComplete] = useState(false);
+  const [description, setDescription] = useState("");
+  const [maxPlayers, setMaxPlayers] = useState(100);
+  const [tags, setTags] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
+  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>("PLUGIN");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [addressValidation, setAddressValidation] = useState<AddressValidation | null>(null);
+  const [addressChecking, setAddressChecking] = useState(false);
   const [status, setStatus] = useState<"DETAILS" | "PENDING" | "CHECKING" | "VERIFIED">("DETAILS");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -2387,15 +2401,25 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
           platform: RegistrationPlatform;
           versions: string[];
           categories: string[];
-          verificationParentId: string;
+          description: string;
+          maxPlayers: number;
+          tags: string;
+          bannerUrl: string;
+          verificationMethod: VerificationMethod;
           step: number;
         }>;
         if (typeof draft.name === "string") setName(draft.name);
         if (typeof draft.address === "string") setAddress(draft.address);
-        if (draft.platform) setPlatform(draft.platform);
+        if (draft.platform === "PAPER" || draft.platform === "VELOCITY") setPlatform(draft.platform);
         if (Array.isArray(draft.versions)) setVersions(draft.versions);
         if (Array.isArray(draft.categories)) setCategories(draft.categories);
-        if (typeof draft.verificationParentId === "string") setVerificationParentId(draft.verificationParentId);
+        if (typeof draft.description === "string") setDescription(draft.description);
+        if (typeof draft.maxPlayers === "number") setMaxPlayers(draft.maxPlayers);
+        if (typeof draft.tags === "string") setTags(draft.tags);
+        if (typeof draft.bannerUrl === "string") setBannerUrl(draft.bannerUrl);
+        if (draft.verificationMethod === "PLUGIN" || draft.verificationMethod === "MANUAL") {
+          setVerificationMethod(draft.verificationMethod);
+        }
         if (typeof draft.step === "number") setStep(Math.min(3, Math.max(1, draft.step)));
       }
     } catch {
@@ -2409,27 +2433,34 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
     if (!draftLoaded) return;
     sessionStorage.setItem(
       "nortix-register-server-draft",
-      JSON.stringify({ name, address, platform, versions, categories, verificationParentId, step }),
+      JSON.stringify({
+        name,
+        address,
+        platform,
+        versions,
+        categories,
+        description,
+        maxPlayers,
+        tags,
+        bannerUrl,
+        verificationMethod,
+        step,
+      }),
     );
-  }, [address, categories, draftLoaded, name, platform, step, verificationParentId, versions]);
-
-  useEffect(() => {
-    void api<
-      Array<{
-        id: string;
-        name: string;
-        hostname: string;
-        verificationScope: string;
-        verificationStatus: string;
-      }>
-    >("/owner/servers")
-      .then((items) => {
-        const proxies = items.filter((item) => item.verificationScope === "PROXY_NETWORK" && item.verificationStatus === "VERIFIED");
-        setVerifiedProxies(proxies);
-        if (proxies[0]) setVerificationParentId(proxies[0].id);
-      })
-      .catch(() => undefined);
-  }, []);
+  }, [
+    address,
+    bannerUrl,
+    categories,
+    description,
+    draftLoaded,
+    maxPlayers,
+    name,
+    platform,
+    step,
+    tags,
+    verificationMethod,
+    versions,
+  ]);
 
   const parseAddress = () => {
     const value = address.trim().replace(/^minecraft:\/\//i, "");
@@ -2445,6 +2476,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
 
   const validateAddress = async () => {
     setError("");
+    setAddressChecking(true);
     try {
       const target = parseAddress();
       const validated = await api<AddressValidation>("/servers/validate-address", {
@@ -2452,16 +2484,25 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
         body: JSON.stringify({ hostname: target.hostname, port: target.port, edition: "JAVA" }),
       });
       setAddressValidation(validated);
+      if (validated.preview.maxPlayers) setMaxPlayers(validated.preview.maxPlayers);
     } catch (reason) {
       setAddressValidation(null);
       setError(reason instanceof Error ? reason.message : "The public address could not be validated.");
+    } finally {
+      setAddressChecking(false);
     }
   };
 
   const beginVerification = async () => {
     setError("");
-    if (versions.length === 0 || categories.length === 0 || categories.length > 6) {
-      setError("Choose at least one Minecraft version and one server type, with no more than six server types.");
+    if (
+      name.trim().length < 3 ||
+      description.trim().length < 30 ||
+      versions.length === 0 ||
+      categories.length === 0 ||
+      categories.length > 6
+    ) {
+      setError("Add a name, a description of at least 30 characters, and your supported versions and server types.");
       return;
     }
     try {
@@ -2472,21 +2513,24 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
           name,
           hostname: target.hostname,
           port: target.port,
-          description: `${name} is a Minecraft server registered through the Nortix owner portal.`,
+          description: description.trim(),
           edition: "JAVA",
           versions,
           categories,
-          tags: [platform.toLowerCase()],
+          tags: Array.from(
+            new Set([
+              platform.toLowerCase(),
+              ...tags
+                .split(",")
+                .map((tag) => tag.trim().toLowerCase())
+                .filter(Boolean),
+            ]),
+          ).slice(0, 12),
+          maxPlayers,
+          ...(bannerUrl.trim() ? { bannerUrl: bannerUrl.trim() } : {}),
           serverValidationSignature: addressValidation?.validationSignature,
-          ...(platform === "DOWNSTREAM" ? { verificationParentId } : {}),
         }),
       });
-      if (platform === "DOWNSTREAM") {
-        setInheritedComplete(true);
-        setStatus("VERIFIED");
-        setStep(4);
-        return;
-      }
       const next = await api<Challenge>(`/servers/${created.id}/verification`, {
         method: "POST",
         body: JSON.stringify({ platform }),
@@ -2495,7 +2539,6 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
       setStatus("PENDING");
       setStep(4);
     } catch (reason) {
-      if (platform !== "DOWNSTREAM") setAddressValidation(null);
       setError(reason instanceof Error ? reason.message : "Registration could not be started.");
     }
   };
@@ -2505,6 +2548,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
     if (!quiet) setStatus("CHECKING");
     try {
       await api(`/servers/${challenge.serverId}/verification/check`, { method: "POST" });
+      sessionStorage.removeItem("nortix-register-server-draft");
       setStatus("VERIFIED");
     } catch (reason) {
       if (!quiet) {
@@ -2554,25 +2598,10 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
       )}
       <div className="owner-register-grid">
         <section className="card owner-builder-form">
-          {inheritedComplete ? (
-            <div className="owner-verification">
-              <header>
-                <span>REGISTRATION COMPLETE</span>
-                <h2>Backend server linked</h2>
-                <p>This entry inherits ownership from your verified public proxy and does not need its own MOTD code.</p>
-              </header>
-              <div className="owner-verification-success">
-                <CheckCircle2 />
-                <div>
-                  <strong>Covered by the proxy network claim</strong>
-                  <p>The backend may stay private. If it later becomes a separate public entry point, register and verify that address independently.</p>
-                </div>
-              </div>
-            </div>
-          ) : !challenge && step < 4 ? (
+          {!challenge && step < 4 ? (
             <>
               <nav className="owner-setup-steps" aria-label="Server registration steps">
-                {["Server type", "Server details", "Profile", "Verify"].map((label, index) => {
+                {["Setup type", "Public address", "Server profile", "Verify"].map((label, index) => {
                   const itemStep = index + 1;
                   return (
                     <button
@@ -2592,31 +2621,23 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
               {step === 1 && <section className="owner-setup-section">
                 <header>
                   <span>STEP 1 OF 4</span>
-                  <h2>Choose what players connect to</h2>
-                  <p>Register a standalone Paper server, a public Velocity proxy, or a backend behind an already verified proxy.</p>
+                  <h2>How is your server set up?</h2>
+                  <p>Choose the public entry point players use. You can change configuration details after verification.</p>
                 </header>
               <div className="owner-platform-choice">
                 <button className={platform === "PAPER" ? "selected" : ""} onClick={() => setPlatform("PAPER")}>
                   <Server />
                   <span>
-                    <strong>Paper server</strong>
-                    <small>Verify this standalone server. Compatible with Paper from Minecraft 1.16 onward.</small>
+                    <strong>Single server</strong>
+                    <small>One Minecraft server at one public address. The Nortix Paper plugin can be installed after registration.</small>
                   </span>
                   <CheckCircle2 />
                 </button>
                 <button className={platform === "VELOCITY" ? "selected" : ""} onClick={() => setPlatform("VELOCITY")}>
                   <Network />
                   <span>
-                    <strong>Velocity proxy</strong>
-                    <small>Verify the public proxy once. Backend servers behind it do not need separate claims.</small>
-                  </span>
-                  <CheckCircle2 />
-                </button>
-                <button className={platform === "DOWNSTREAM" ? "selected" : ""} disabled={verifiedProxies.length === 0} onClick={() => setPlatform("DOWNSTREAM")}>
-                  <Link2 />
-                  <span>
-                    <strong>Backend behind proxy</strong>
-                    <small>{verifiedProxies.length ? "Link this server to an already verified proxy without another public MOTD check." : "Verify a Velocity proxy first to enable inherited registration."}</small>
+                    <strong>Proxy network</strong>
+                    <small>Multiple backend servers reached through one domain. Verify the public Velocity proxy once.</small>
                   </span>
                   <CheckCircle2 />
                 </button>
@@ -2626,85 +2647,183 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
               {step === 2 && <section className="owner-setup-section">
                 <header>
                   <span>STEP 2 OF 4</span>
-                  <h2>Add your server details</h2>
-                  <p>Save the name and address Nortix will use for the ownership check.</p>
+                  <h2>Find your public server</h2>
+                  <p>Enter the same Java Edition address players use in Minecraft. Nortix will ping it before continuing.</p>
                 </header>
-              <div className="form-grid form-grid--two owner-register-fields">
+              <div className="owner-address-lookup">
                 <label>
-                  Display name
-                  <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Example Network" />
+                  Public server address
+                  <div className="owner-address-input">
+                    <Globe2 />
+                    <input
+                      value={address}
+                      onChange={(event) => {
+                        setAddress(event.target.value);
+                        setAddressValidation(null);
+                        setError("");
+                      }}
+                      placeholder="play.example.net:25565"
+                      autoComplete="off"
+                    />
+                    <span>Java</span>
+                  </div>
+                  <small>SRV records and the default port 25565 are supported.</small>
                 </label>
-                <label>
-                  {platform === "DOWNSTREAM" ? "Backend address" : "Public address"}
-                  <input value={address} onChange={(event) => { setAddress(event.target.value); setAddressValidation(null); }} placeholder={platform === "DOWNSTREAM" ? "survival.internal:25565" : "play.example.net:25565"} />
-                </label>
-                {platform === "DOWNSTREAM" && (
-                  <label className="span-two">
-                    Verified proxy
-                    <select value={verificationParentId} onChange={(event) => setVerificationParentId(event.target.value)}>
-                      {verifiedProxies.map((proxy) => (
-                        <option key={proxy.id} value={proxy.id}>
-                          {proxy.name} · {proxy.hostname}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
+                <button
+                  className="button button--primary owner-address-check"
+                  disabled={address.trim().length < 3 || addressChecking}
+                  onClick={() => void validateAddress()}
+                >
+                  {addressChecking ? <RefreshCw className="owner-spin" /> : <Search />}
+                  {addressChecking ? "Checking server…" : "Check public address"}
+                </button>
               </div>
               {error && <p className="owner-verification-error">{error}</p>}
-              {platform !== "DOWNSTREAM" && addressValidation && (
-                <div className="owner-verification-success">
-                  <CheckCircle2 />
-                  <div>
-                    <strong>{addressValidation.hostname}:{addressValidation.port} is online</strong>
-                    <p>{addressValidation.preview.version ?? "Minecraft server"} · {addressValidation.preview.playerCount ?? 0}/{addressValidation.preview.maxPlayers ?? "?"} players</p>
-                    <small>Validated until {new Date(addressValidation.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.</small>
+              {addressValidation && (
+                <div className="owner-minecraft-preview">
+                  <div
+                    className="owner-minecraft-preview__backdrop"
+                    style={addressValidation.preview.icon ? { backgroundImage: `url("${addressValidation.preview.icon}")` } : undefined}
+                    aria-hidden="true"
+                  />
+                  <div className="owner-minecraft-preview__content">
+                    <div className="owner-minecraft-preview__icon">
+                      {addressValidation.preview.icon ? <img src={addressValidation.preview.icon} alt="" /> : <Server />}
+                    </div>
+                    <div className="owner-minecraft-preview__copy">
+                      <strong>{name || addressValidation.hostname}</strong>
+                      <span>{addressValidation.hostname}:{addressValidation.port}</span>
+                      <small>{addressValidation.preview.version ?? "Minecraft Java Edition"}</small>
+                    </div>
+                    <div className="owner-minecraft-preview__status">
+                      <b><i /> Online</b>
+                      <strong>{addressValidation.preview.playerCount ?? 0}<small> / {addressValidation.preview.maxPlayers ?? "?"}</small></strong>
+                      <span>players</span>
+                    </div>
                   </div>
                 </div>
               )}
-              {(platform === "DOWNSTREAM" || !addressValidation) && <button className="button button--primary" disabled={name.trim().length < 3 || address.trim().length < 3 || (platform === "DOWNSTREAM" && !verificationParentId)} onClick={() => void (platform === "DOWNSTREAM" ? setStep(3) : validateAddress())}>
-                <Link2 />
-                {platform === "DOWNSTREAM" ? "Continue" : "Check public address"}
-              </button>}
-              {platform !== "DOWNSTREAM" && addressValidation && (
-                <button className="button button--secondary" onClick={() => setStep(3)}>
-                  Continue
+              {addressValidation && (
+                <button className="button button--primary owner-step-continue" onClick={() => setStep(3)}>
+                  Continue to server profile <ArrowUpRight />
                 </button>
               )}
               </section>}
               {step === 3 && <section className="owner-setup-section">
                 <header>
                   <span>STEP 3 OF 4</span>
-                  <h2>Describe your server</h2>
-                  <p>Choose the Minecraft versions and server types that players can expect.</p>
+                  <h2>Build your server profile</h2>
+                  <p>Add the practical details players use to decide whether your server is right for them.</p>
                 </header>
-                <div className="form-grid form-grid--two owner-register-fields">
+                <div className="form-grid form-grid--two owner-register-fields owner-profile-fields">
                   <label>
-                    Supported Minecraft versions
-                    <select multiple size={7} value={versions} onChange={(event) => setVersions(Array.from(event.target.selectedOptions, (option) => option.value))}>
-                      {minecraftMajorVersions.map((version) => <option key={version} value={version}>{version}</option>)}
-                    </select>
-                    <small>Choose every major version supported, from 1.8 through 1.21.</small>
+                    Server name
+                    <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Example Network" maxLength={80} />
                   </label>
                   <label>
-                    Server types
-                    <select multiple size={7} value={categories} onChange={(event) => setCategories(Array.from(event.target.selectedOptions, (option) => option.value))}>
-                      {serverTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                    Edition
+                    <select value="JAVA" disabled>
+                      <option value="JAVA">Minecraft: Java Edition</option>
                     </select>
-                    <small>Select up to six types that best describe this server.</small>
+                    <small>Bedrock registration is not available yet.</small>
+                  </label>
+                  <label>
+                    Maximum players
+                    <input
+                      type="number"
+                      min={1}
+                      max={1_000_000}
+                      value={maxPlayers}
+                      onChange={(event) => setMaxPlayers(Math.max(1, Number(event.target.value) || 1))}
+                    />
+                  </label>
+                  <label>
+                    Custom banner URL
+                    <input
+                      type="url"
+                      value={bannerUrl}
+                      onChange={(event) => setBannerUrl(event.target.value)}
+                      placeholder="https://cdn.example.com/server-banner.png"
+                    />
+                    <small>Optional. Use a wide 16:5 image for the best result.</small>
+                  </label>
+                  <label className="span-two">
+                    Server description
+                    <textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Tell players what makes your server different, what they can play, and what kind of community to expect."
+                      rows={5}
+                      minLength={30}
+                      maxLength={3000}
+                    />
+                    <small>{description.trim().length}/3000 characters · minimum 30</small>
+                  </label>
+                  <div className="owner-profile-field span-two">
+                    <b>Supported Minecraft versions</b>
+                    <small>Select every major Java version players can join with.</small>
+                    <div className="owner-choice-chips">
+                      {minecraftMajorVersions.map((version) => (
+                        <button
+                          type="button"
+                          className={versions.includes(version) ? "selected" : ""}
+                          key={version}
+                          onClick={() => setVersions((current) => current.includes(version) ? current.filter((item) => item !== version) : [...current, version])}
+                        >
+                          {version}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="owner-profile-field span-two">
+                    <b>Server type</b>
+                    <small>Choose up to six game modes that accurately describe the server.</small>
+                    <div className="owner-choice-chips">
+                      {serverTypes.map((type) => (
+                        <button
+                          type="button"
+                          className={categories.includes(type) ? "selected" : ""}
+                          key={type}
+                          disabled={!categories.includes(type) && categories.length >= 6}
+                          onClick={() => setCategories((current) => current.includes(type) ? current.filter((item) => item !== type) : [...current, type])}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="span-two">
+                    Search tags
+                    <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="friendly, economy, custom-items" />
+                    <small>Optional. Separate up to 11 additional tags with commas.</small>
                   </label>
                 </div>
+                {bannerUrl.trim() && (
+                  <div className="owner-banner-preview" style={{ backgroundImage: `url("${bannerUrl.trim()}")` }}>
+                    <span>Banner preview</span>
+                  </div>
+                )}
                 {error && <p className="owner-verification-error">{error}</p>}
-                <button className="button button--primary" disabled={versions.length === 0 || categories.length === 0 || categories.length > 6} onClick={() => void beginVerification()}>
-                  <Link2 />
-                  {platform === "DOWNSTREAM" ? "Link backend server" : "Generate verification code"}
+                <button
+                  className="button button--primary owner-step-continue"
+                  disabled={
+                    !addressValidation ||
+                    name.trim().length < 3 ||
+                    description.trim().length < 30 ||
+                    versions.length === 0 ||
+                    categories.length === 0 ||
+                    categories.length > 6
+                  }
+                  onClick={() => void beginVerification()}
+                >
+                  Continue to verification <ArrowUpRight />
                 </button>
               </section>}
             </>
           ) : challenge ? (
             <>
             <nav className="owner-setup-steps" aria-label="Server registration steps">
-              {["Server type", "Server details", "Profile", "Verify"].map((label, index) => {
+              {["Setup type", "Public address", "Server profile", "Verify"].map((label, index) => {
                 const itemStep = index + 1;
                 return (
                   <button
@@ -2724,21 +2843,89 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
             <div className="owner-verification">
               <header>
                 <span>STEP 4 OF 4</span>
-                <h2>{status === "VERIFIED" ? "Server verified" : "Publish the code in your MOTD"}</h2>
-                <p>{status === "VERIFIED" ? "Ownership is confirmed. The code may now be removed automatically or manually." : "This code expires after 15 minutes. Keep the server reachable from the public internet while Nortix checks it."}</p>
+                <h2>{status === "VERIFIED" ? "Server verified" : "Choose a verification method"}</h2>
+                <p>{status === "VERIFIED" ? "Ownership is confirmed. The server is now attached to your Nortix owner account." : "Use the plugin for the easiest setup, or publish the one-time code manually in your MOTD."}</p>
               </header>
               {status === "VERIFIED" ? (
-                <div className="owner-verification-success">
-                  <CheckCircle2 />
-                  <div>
-                    <strong>{platform === "VELOCITY" ? "Proxy network claimed" : "Paper server claimed"}</strong>
-                    <p>{platform === "VELOCITY" ? "This claim covers the public proxy. Its registered backend servers inherit the network claim and do not need to expose their own MOTDs." : "This standalone server is now linked to your owner account."}</p>
+                <>
+                  <div className="owner-verification-success">
+                    <CheckCircle2 />
+                    <div>
+                      <strong>{platform === "VELOCITY" ? "Proxy network claimed" : "Paper server claimed"}</strong>
+                      <p>{platform === "VELOCITY" ? "This claim covers the public proxy. Its registered backend servers inherit the network claim and do not need to expose their own MOTDs." : "This standalone server is now linked to your owner account."}</p>
+                    </div>
                   </div>
-                </div>
+                  <Link className="button button--primary" to="/owner/integrations">
+                    View registered servers <ArrowUpRight />
+                  </Link>
+                </>
               ) : (
                 <>
+                  <div className="owner-verification-choice" role="radiogroup" aria-label="Verification method">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={verificationMethod === "PLUGIN"}
+                      className={verificationMethod === "PLUGIN" ? "selected" : ""}
+                      onClick={() => setVerificationMethod("PLUGIN")}
+                    >
+                      <Plug />
+                      <span>
+                        <strong>Plugin auto-verification</strong>
+                        <small>Recommended · install once and let the plugin publish the temporary proof.</small>
+                      </span>
+                      <CheckCircle2 />
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={verificationMethod === "MANUAL"}
+                      className={verificationMethod === "MANUAL" ? "selected" : ""}
+                      onClick={() => setVerificationMethod("MANUAL")}
+                    >
+                      <MessageSquareText />
+                      <span>
+                        <strong>Manual MOTD verification</strong>
+                        <small>Edit the public MOTD yourself, then ask Nortix to check it.</small>
+                      </span>
+                      <CheckCircle2 />
+                    </button>
+                  </div>
+                  {verificationMethod === "PLUGIN" ? (
+                    <article className="owner-verification-guide">
+                      <div className="owner-verification-guide__heading">
+                        <span><Download /></span>
+                        <div>
+                          <strong>Install the {platform === "VELOCITY" ? "Velocity" : "Paper"} plugin</strong>
+                          <small>Place the downloaded .jar in the plugins folder and restart the {platform === "VELOCITY" ? "proxy" : "server"}.</small>
+                        </div>
+                        <a
+                          className="button button--secondary button--small"
+                          href={platform === "VELOCITY" ? "/downloads/nortix-velocity-0.4.1.jar" : "/downloads/nortix-paper-0.4.1.jar"}
+                          download
+                        >
+                          <Download /> Download plugin
+                        </a>
+                      </div>
+                      <p>Run this command as an administrator. The plugin exposes the proof briefly; Nortix still confirms it with an independent public ping.</p>
+                      <code>
+                        {platform === "VELOCITY" ? "/nortixproxy" : "/nortix"} verify {challenge.code}
+                      </code>
+                    </article>
+                  ) : (
+                    <article className="owner-verification-guide">
+                      <div className="owner-verification-guide__heading">
+                        <span><MessageSquareText /></span>
+                        <div>
+                          <strong>Add the proof to your public MOTD</strong>
+                          <small>Place the exact token anywhere in the MOTD, then reload or restart the server.</small>
+                        </div>
+                      </div>
+                      <code>[{challenge.code}]</code>
+                    </article>
+                  )}
                   <div className="owner-verification-code">
-                    <small>ONE-TIME MOTD CODE</small>
+                    <small>ONE-TIME VERIFICATION CODE</small>
                     <code>{challenge.code}</code>
                     <button className={`button button--secondary button--small owner-copy-code${copied ? " owner-copy-code--copied" : ""}`} onClick={() => void copyCode()}>
                       <Copy />
@@ -2752,34 +2939,8 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                       })}
                     </span>
                   </div>
-                  <div className="owner-verification-methods">
-                    <article>
-                      <b>Plugin method</b>
-                      <p>Install the {platform === "VELOCITY" ? "Nortix Velocity" : "Nortix Paper"} plugin, then run:</p>
-                      <code>
-                        {platform === "VELOCITY" ? "/nortixproxy" : "/nortix"} verify {challenge.code}
-                      </code>
-                      <small>The plugin temporarily appends the code to the ping MOTD and contacts the Nortix backend.</small>
-                    </article>
-                    <article>
-                      <b>Manual fallback</b>
-                      <p>Add this exact token anywhere in the public MOTD:</p>
-                      <code>[{challenge.code}]</code>
-                      <small>Reload or restart the server so the public server-list ping returns it.</small>
-                    </article>
-                  </div>
                   {error && <p className="owner-verification-error">{error}</p>}
                   <div className="owner-verification-actions">
-                    <a
-                      className="button button--secondary button--small owner-plugin-link"
-                      href="https://modrinth.com/"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Download />
-                      Get the Plugin
-                      <ArrowUpRight />
-                    </a>
                     <button
                       className="button button--ghost button--small owner-start-over"
                       onClick={() => {
@@ -2803,27 +2964,20 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
             </>
           ) : null}
         </section>
-        <aside className="card owner-registration-checklist">
-          <h2>How ownership proof works</h2>
-          {[
-            ["Enter the public address", "Nortix creates a short-lived code for that exact host and port."],
-            ["Publish the code", "The plugin can add it to ping responses, or you may edit the MOTD yourself."],
-            ["Independent check", "The backend connects like a server-list client and reads the public MOTD."],
-            ["Claim recorded", "A matching code links the server to this signed-in owner account."],
-            ["Proxy-aware scope", "A verified Velocity entry covers its network; private backend servers are not each verified."],
-          ].map(([title, note], index) => (
-            <div key={title}>
-              <b>{index + 1}</b>
-              <span>
-                <strong>{title}</strong>
-                <small>{note}</small>
-              </span>
+        <details className="card owner-registration-proof">
+          <summary>
+            <span><LockKeyhole /></span>
+            <div>
+              <strong>How ownership proof works</strong>
+              <small>Why Nortix asks for a temporary public code</small>
             </div>
-          ))}
-          <p className="owner-security-note">
-            <LockKeyhole /> Plugin callbacks alone never claim a server. Nortix must independently observe the one-time code.
-          </p>
-        </aside>
+            <ChevronDown />
+          </summary>
+          <div>
+            <p>Nortix binds a short-lived code to the signed-in owner and exact public address. The plugin or your MOTD publishes that code temporarily.</p>
+            <p>Our backend then connects like a normal server-list client. A plugin callback cannot claim a server by itself, and a verified proxy covers the network behind its public address.</p>
+          </div>
+        </details>
       </div>
     </div>
   );

@@ -302,6 +302,7 @@ model User {
   moderationCases           ModerationCase[]            @relation("ModerationSubjectUser")
   assignedCases             ModerationCase[]            @relation("ModerationAssignee")
   auditLogs                 AuditLog[]                  @relation("AuditActor")
+  consumedAdminEnrollmentTokens AdminEnrollmentToken[]  @relation("AdminEnrollmentConsumer")
   userQuests                UserQuest[]
   badgeAwards               BadgeAward[]
   premiumIdentityClaims     PremiumIdentityClaim[]
@@ -1033,6 +1034,7 @@ model SponsoredPurchase {
   itemId                     String
   item                       SponsoredItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
   status                     SponsoredPurchaseStatus @default(REQUESTED)
+  quantity                   Int                     @default(1)
   priceSparks                Int
   fulfillmentDetails         Json                    @default("{}")
   deliveryReference          String?
@@ -1195,6 +1197,19 @@ model AuditLog {
 
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])
+}
+
+model AdminEnrollmentToken {
+  id           String    @id @default(cuid())
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  consumedById String?
+  consumedBy   User?     @relation("AdminEnrollmentConsumer", fields: [consumedById], references: [id])
+  createdAt    DateTime  @default(now())
+
+  @@index([expiresAt, consumedAt])
+  @@index([consumedById])
 }
 
 model FeatureFlag {

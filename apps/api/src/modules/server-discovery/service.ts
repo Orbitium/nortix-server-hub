@@ -1,4 +1,5 @@
 import { prisma } from "@nortix/database";
+import { normalizeMinecraftVersions } from "@nortix/shared";
 import type { FastifyBaseLogger } from "fastify";
 import type { Env } from "../../config/env.js";
 import { McsrvstatClient, McsrvstatRequestError } from "./mcsrvstat-client.js";
@@ -26,7 +27,7 @@ const toPublicServer = (server: {
   description: discoveredServerDescription(server.edition),
   hostname: server.hostname,
   port: server.port,
-  versions: server.version ? [server.version] : [],
+  versions: normalizeMinecraftVersions(server.version ? [server.version] : []),
   edition: server.edition,
   categories: ["Public server"],
   tags: [],
@@ -42,6 +43,11 @@ const toPublicServer = (server: {
   maxPlayers: server.maxPlayers,
   rating: null,
   reviewCount: 0,
+  voteCount: 0,
+  monthlyVoteCount: 0,
+  averagePlayerCount: null,
+  averagePlayerWindowDays: 7,
+  campaignCountAllTime: 0,
   activeCampaignCount: 0,
   crackedAccountLinkingAvailable: false,
   lastCheckedAt: server.lastCheckedAt?.toISOString() ?? null,

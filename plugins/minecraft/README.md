@@ -2,7 +2,7 @@
 
 ## Nortix-operated premium identity verifier
 
-`nortix-identity-verifier-0.4.0.jar` is only for the server operated by Nortix
+`nortix-identity-verifier-0.4.1.jar` is only for the server operated by Nortix
 at `verify.nortixlabs.com`. It deliberately refuses to operate unless the
 server uses `online-mode=true` and a dedicated secret of at least 32
 characters is configured.
@@ -21,7 +21,7 @@ timestamped request; the API atomically consumes the one-time claim.
 
 ## Server-scoped cracked names
 
-The standard Paper plugin 0.4.0 reports a `PLAYER_JOIN` observation with the
+The standard Paper plugin 0.4.1 reports a `PLAYER_JOIN` observation with the
 server-scoped name. A player must reserve that exact name on the server's
 Nortix page before its first observed join. The API, not the plugin, decides
 whether the reservation predates the first join and whether it is still within
@@ -47,6 +47,15 @@ Paper backends report milestones independently.
 
 A verified Velocity proxy covers its registered child servers. Those backends
 do not need public addresses or separate MOTD verification.
+
+## Server voting links
+
+Players can run `/nortix vote` on a connected Paper server or Velocity proxy. The plugin sends a
+clickable link to `/dashboard/vote?server=SERVER_ID`, so that server is already selected after the
+player signs in. The URL does not grant voting authority: Nortix still checks the authenticated
+player, verified server binding, recent plugin heartbeat, Turnstile proof, and daily vote limits.
+
+Self-hosted installations can set `web-base-url`; it defaults to `https://hub.nortixlabs.com`.
 
 ## Milestone tracking
 
@@ -98,6 +107,7 @@ Built JARs are copied to `plugins/minecraft/dist/` and the web downloads folder.
 ## Paper configuration
 
 - `api-base-url`: Nortix API base URL.
+- `web-base-url`: public Nortix Hub origin used by `/nortix vote`.
 - `public-address`: optional verification diagnostic.
 - `verification-code`: active temporary ownership code.
 - `plugin-motd`: publish the ownership code in ping responses.

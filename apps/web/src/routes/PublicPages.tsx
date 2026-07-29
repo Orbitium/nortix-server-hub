@@ -10,16 +10,18 @@ import {
   Globe2,
   HeartHandshake,
   MessageSquareText,
+  Radio,
   Search,
   ShieldCheck,
   Sparkles,
   Target,
+  ThumbsUp,
   Users,
   WalletCards,
   Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, Sparks, VerifiedBadge } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
@@ -29,13 +31,15 @@ import { Seo } from "../components/Seo";
 import {
   artIndexFor,
   usePublicCampaigns,
+  usePublicCampaign,
   usePublicProfile,
   usePublicServer,
   usePublicServers,
 } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
-import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
+import { minecraftMajorVersions, normalizeMinecraftVersions, serverTypes } from "@nortix/shared";
+import { accountCreationUrl } from "../lib/auth-session";
 
 const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
 
@@ -621,7 +625,12 @@ export function BrowseCampaignsPage() {
 export function ServerDetailPage() {
   const { t } = useI18n();
   const { slug } = useParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sharedCampaignId = searchParams.get("campaign") ?? undefined;
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
+  const { data: sharedCampaign, isLoading: sharedCampaignLoading } =
+    usePublicCampaign(sharedCampaignId);
   const { data: campaignData } = usePublicCampaigns();
   const [addressCopied, setAddressCopied] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -631,6 +640,9 @@ export function ServerDetailPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
+  const [shareTermsAccepted, setShareTermsAccepted] = useState(false);
+  const [shareJoinMessage, setShareJoinMessage] = useState("");
+  const [shareJoined, setShareJoined] = useState(false);
   if (isLoading) {
     return (
       <div className="detail-page">
@@ -654,6 +666,7 @@ export function ServerDetailPage() {
     (campaign) => campaign.server.id === server.id,
   );
   const isDiscovered = server.source === "DISCOVERED";
+  const isVerified = server.verificationStatus === "VERIFIED";
   const defaultPort = server.edition === "BEDROCK" ? 19132 : 25565;
   const serverAddress = server.hostname
     ? `${server.hostname}${server.port && server.port !== defaultPort ? `:${server.port}` : ""}`
@@ -668,7 +681,38 @@ export function ServerDetailPage() {
       setAddressCopied(false);
     }
   };
+  const closeSharedCampaign = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("campaign");
+    setSearchParams(next, { replace: true });
+    setShareJoinMessage("");
+  };
+  const joinSharedCampaign = async () => {
+    if (!sharedCampaign || !shareTermsAccepted) return;
+    setShareJoinMessage("");
+    try {
+      await api(`/campaigns/${sharedCampaign.id}/join`, {
+        method: "POST",
+        body: JSON.stringify({ acceptedTerms: true }),
+      });
+      setShareJoined(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The campaign could not be joined.";
+      if (/auth|account|sign in|unauthorized/i.test(message)) {
+        navigate(
+          accountCreationUrl(
+            `/servers/${server.slug}?campaign=${encodeURIComponent(sharedCampaign.id)}`,
+            "campaign",
+          ),
+        );
+        return;
+      }
+      setShareJoinMessage(message);
+    }
+  };
   const canonicalPath = `/servers/${server.slug}`;
+  const normalizedVersions = normalizeMinecraftVersions(server.versions);
+  const heroArtwork = server.bannerUrl ?? server.logoUrl;
   const submitReview = async () => {
     try {
       await api(`/servers/${server.id}/reviews`, {
@@ -711,11 +755,65 @@ export function ServerDetailPage() {
         path={canonicalPath}
         jsonLd={serverSchema}
       />
+      {sharedCampaignId && sharedCampaignLoading ? (
+        <Modal title="Opening campaign" onClose={closeSharedCampaign}>
+          <div className="modal__body"><p>Loading campaign details…</p></div>
+        </Modal>
+      ) : null}
+      {sharedCampaign && sharedCampaign.server.id === server.id ? (
+        <Modal
+          title={`${sharedCampaign.title} · ${server.name}`}
+          className="shared-campaign-modal"
+          onClose={closeSharedCampaign}
+        >
+          <div className="modal__body shared-campaign-preview">
+            <span className="eyebrow">SHARED NORTIX PLAYTEST</span>
+            <p>{sharedCampaign.description}</p>
+            <div className="shared-campaign-preview__facts">
+              <span><Target /> {sharedCampaign.milestones.length} milestones</span>
+              <span><Sparkles /> Up to {sharedCampaign.maximumSparksReward} Sparks</span>
+              <span><Clock3 /> Ends {new Date(sharedCampaign.endsAt).toLocaleDateString()}</span>
+            </div>
+            <div className="shared-campaign-preview__server">
+              <div>
+                <small>SERVER ADDRESS</small>
+                <strong>{serverAddress || "Address unavailable"}</strong>
+              </div>
+              <Button disabled={!serverAddress} onClick={() => void copyServerAddress()}>
+                {addressCopied ? "Copied" : "Copy server IP"}
+              </Button>
+            </div>
+            {!shareJoined ? (
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={shareTermsAccepted}
+                  onChange={(event) => setShareTermsAccepted(event.target.checked)}
+                />
+                <span>I understand that rewards depend on eligible, verified activity.</span>
+              </label>
+            ) : null}
+            {shareJoinMessage ? <p role="alert">{shareJoinMessage}</p> : null}
+          </div>
+          <div className="modal__footer">
+            <Link className="button button--secondary" to={`/campaigns/${sharedCampaign.id}`}>
+              Full campaign details
+            </Link>
+            {shareJoined ? (
+              <Link className="button button--primary" to="/dashboard/progress">View progress</Link>
+            ) : (
+              <Button disabled={!shareTermsAccepted} onClick={() => void joinSharedCampaign()}>
+                Join or register
+              </Button>
+            )}
+          </div>
+        </Modal>
+      ) : null}
       <div className="server-detail-hero">
-        {server.logoUrl ? (
+        {heroArtwork ? (
           <img
             className="server-detail-hero__backdrop"
-            src={server.logoUrl}
+            src={heroArtwork}
             alt=""
             aria-hidden="true"
           />
@@ -730,10 +828,12 @@ export function ServerDetailPage() {
         <div>
           <div className="detail-title-row">
             <h1>{server.name}</h1>
-            {isDiscovered ? (
-              <Badge tone="neutral">{t("ui.publicListing")}</Badge>
-            ) : (
+            {isVerified ? (
               <VerifiedBadge />
+            ) : (
+              <Badge tone="neutral">
+                {isDiscovered ? t("ui.publicListing") : "Unverified listing"}
+              </Badge>
             )}
           </div>
           <p>{server.description}</p>
@@ -742,7 +842,7 @@ export function ServerDetailPage() {
               <Badge key={tag}>{tag}</Badge>
             ))}
             <Badge tone="info">{server.edition}</Badge>
-            {server.versions.map((version) => (
+            {normalizedVersions.map((version) => (
               <Badge key={version}>{version}</Badge>
             ))}
           </div>
@@ -760,7 +860,10 @@ export function ServerDetailPage() {
             {addressCopied ? t("ui.addressCopied") : t("ui.copyAddress")}
           </button>
           {!isDiscovered ? (
-            <Link className="button button--secondary" to="/dashboard/vote">
+            <Link
+              className="button button--secondary"
+              to={`/dashboard/vote?server=${encodeURIComponent(server.id)}`}
+            >
               Vote on Nortix ({server.voteCount ?? 0})
             </Link>
           ) : null}
@@ -770,36 +873,41 @@ export function ServerDetailPage() {
         <div className="detail-content">
           <Card>
             <h2>{t("ui.aboutServer", { name: server.name })}</h2>
-            <p>{server.description}</p>
-            {!isDiscovered ? (
+            {!isDiscovered ? <p>{server.description}</p> : null}
+            {isVerified ? (
               <p>
                 The server team has completed Nortix ownership verification and follows the
                 guidelines for public listings and campaigns.
               </p>
             ) : null}
             <div className="feature-list">
-              {isDiscovered ? (
-                <span>
-                  <Globe2 /> Public server listing
-                </span>
-              ) : (
-                <span>
-                  <ShieldCheck /> Verified ownership
-                </span>
-              )}
               <span>
-                <Users /> Live server status
+                <Globe2 />
+                <b>Listing type</b> {isDiscovered ? "Public listing" : "Nortix listing"}
               </span>
               <span>
-                {isDiscovered ? (
-                  <>
-                    <ShieldCheck /> Not yet Nortix verified
-                  </>
-                ) : (
-                  <>
-                    <MessageSquareText /> Player feedback welcomed
-                  </>
-                )}
+                <ShieldCheck />
+                <b>Verification</b>{" "}
+                {isVerified ? "Nortix verified" : "Not verified"}
+              </span>
+              <span>
+                <Users />
+                <b>Avg. players ({server.averagePlayerWindowDays ?? 7} days)</b>{" "}
+                {server.averagePlayerCount == null
+                  ? "Not available"
+                  : server.averagePlayerCount.toLocaleString()}
+              </span>
+              <span>
+                <Radio />
+                <b>Live status</b> {server.online ? "Online" : "Offline"}
+              </span>
+              <span>
+                <ThumbsUp />
+                <b>Votes this month</b> {(server.monthlyVoteCount ?? 0).toLocaleString()}
+              </span>
+              <span>
+                <MessageSquareText />
+                <b>Campaigns all time</b> {(server.campaignCountAllTime ?? 0).toLocaleString()}
               </span>
             </div>
           </Card>
@@ -813,18 +921,20 @@ export function ServerDetailPage() {
             {related.length ? (
               related.map((campaign) => <CampaignCard campaign={campaign} key={campaign.id} />)
             ) : (
-              <Card>
+              <Card className="empty-campaign-card">
                 <p>
                   {isDiscovered
                     ? "This public listing has no Nortix campaigns. Its owner can register and verify it to create campaigns."
-                    : "No active campaign right now. You can still join and review this server."}
+                    : isVerified
+                      ? "No active campaign right now. You can still join and review this server."
+                      : "This listing has no active Nortix campaigns. Verification is required before campaigns and reviews become available."}
                 </p>
               </Card>
             )}
           </section>
-          <Card>
-            <h2>Community reviews</h2>
-            {!isDiscovered ? (
+          {isVerified ? (
+            <Card>
+              <h2>Community reviews</h2>
               <div className="review-composer">
                 <strong>Rate this server after at least 15 minutes of gameplay</strong>
                 <div className="stars" role="radiogroup" aria-label="Rating">
@@ -854,39 +964,29 @@ export function ServerDetailPage() {
                 </button>
                 {reviewMessage ? <small>{reviewMessage}</small> : null}
               </div>
-            ) : null}
-            <div className="review-summary">
-              <strong>{server.rating ?? "New"}</strong>
-              <span>
-                <span className="stars">★★★★★</span>
-                <small>
-                  {isDiscovered
-                    ? "Reviews become available after Nortix verification"
-                    : "Based on verified community reviews"}
-                </small>
-              </span>
-            </div>
-            {(server.reviews ?? []).map((review) => (
-              <div className="review" key={review.id}>
-                <span className="avatar">{review.player.username.slice(0, 2).toUpperCase()}</span>
-                <div>
-                  <strong>
-                    {review.player.displayName ?? review.player.username}
-                    {review.campaignLinked ? <Badge tone="success">Campaign linked</Badge> : null}
-                  </strong>
-                  <span className="stars">{"★".repeat(review.rating)}</span>
-                  <p>{review.text}</p>
-                </div>
+              <div className="review-summary">
+                <strong>{server.rating ?? "New"}</strong>
+                <span>
+                  <span className="stars">★★★★★</span>
+                  <small>Based on verified community reviews</small>
+                </span>
               </div>
-            ))}
-            {(server.reviews ?? []).length === 0 ? (
-              <p>
-                {isDiscovered
-                  ? "This listing has not been claimed and verified on Nortix."
-                  : "No approved reviews yet."}
-              </p>
-            ) : null}
-          </Card>
+              {(server.reviews ?? []).map((review) => (
+                <div className="review" key={review.id}>
+                  <span className="avatar">{review.player.username.slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>
+                      {review.player.displayName ?? review.player.username}
+                      {review.campaignLinked ? <Badge tone="success">Campaign linked</Badge> : null}
+                    </strong>
+                    <span className="stars">{"★".repeat(review.rating)}</span>
+                    <p>{review.text}</p>
+                  </div>
+                </div>
+              ))}
+              {(server.reviews ?? []).length === 0 ? <p>No approved reviews yet.</p> : null}
+            </Card>
+          ) : null}
         </div>
         <aside className="detail-aside">
           <Card>
@@ -904,16 +1004,18 @@ export function ServerDetailPage() {
               ) : null}
               <div>
                 <dt>{t("ui.versions")}</dt>
-                <dd>{server.versions.join(", ")}</dd>
+                <dd>{normalizedVersions.join(", ") || "Unknown"}</dd>
               </div>
               <div>
                 <dt>{t("ui.playersOnline")}</dt>
                 <dd>{(server.playerCount ?? 0).toLocaleString()}</dd>
               </div>
-              <div>
-                <dt>{t("ui.communityRating")}</dt>
-                <dd>{server.rating == null ? "No reviews yet" : `${server.rating}/5`}</dd>
-              </div>
+              {isVerified ? (
+                <div>
+                  <dt>{t("ui.communityRating")}</dt>
+                  <dd>{server.rating == null ? "No reviews yet" : `${server.rating}/5`}</dd>
+                </div>
+              ) : null}
               {isDiscovered && server.lastCheckedAt ? (
                 <div>
                   <dt>Status checked</dt>

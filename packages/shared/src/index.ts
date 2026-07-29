@@ -38,6 +38,22 @@ export const minecraftMajorVersions = [
 ] as const;
 export const MinecraftMajorVersionSchema = z.enum(minecraftMajorVersions);
 
+const minecraftVersionPattern = /(?<![\d.])1\.\d{1,2}(?:\.\d{1,3})?(?!\d|\.\d)/g;
+const minecraftVersionCollator = new Intl.Collator("en", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+export function extractMinecraftVersions(value: string) {
+  return value.match(minecraftVersionPattern) ?? [];
+}
+
+export function normalizeMinecraftVersions(values: readonly string[]) {
+  return [...new Set(values.flatMap(extractMinecraftVersions))].sort(
+    minecraftVersionCollator.compare,
+  );
+}
+
 export const serverTypes = [
   "Survival",
   "SMP",
@@ -63,6 +79,19 @@ export const rolePermissions: Record<UserRole, readonly Permission[]> = {
   MODERATOR: ["campaign:review", "campaign:publish", "reward:approve"],
   ADMIN: permissions,
 };
+
+export const AdminEnrollmentInputSchema = z
+  .object({
+    token: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .regex(/^nortix_admin_[A-Za-z0-9_-]{43}$/),
+  })
+  .strict();
+
+export type AdminEnrollmentInput = z.infer<typeof AdminEnrollmentInputSchema>;
 
 export const campaignStatuses = [
   "DRAFT",
@@ -119,6 +148,9 @@ export const ClaimReferralInviteInputSchema = z
 
 export type ClaimReferralInviteInput = z.infer<typeof ClaimReferralInviteInputSchema>;
 
+export const maxFriendReferralInvitesPerMonth = 10;
+export const friendReferralEarningWindowDays = 30;
+
 export const SponsoredFulfillmentFieldSchema = z.enum([
   "MINECRAFT_USERNAME",
   "DISCORD_USERNAME",
@@ -169,10 +201,13 @@ export const AdminSponsoredItemUpdateSchema = AdminSponsoredItemInputSchema.part
   .strict()
   .refine((value) => Object.keys(value).length > 0, "At least one item field is required.");
 
+export const maxSponsoredPurchaseQuantity = 10;
+
 export const SponsoredPurchaseInputSchema = z
   .object({
     itemId: z.string().min(1).max(120),
     idempotencyKey: z.string().uuid(),
+    quantity: z.number().int().min(1).max(maxSponsoredPurchaseQuantity).default(1),
     fulfillmentDetails: z
       .object({
         minecraftUsername: z.string().trim().regex(/^[A-Za-z0-9_]{3,16}$/).optional(),
@@ -265,6 +300,15 @@ export const ServerInputSchema = z.object({
   versions: z.array(z.string()).min(1),
   categories: z.array(z.string()).min(1).max(6),
   tags: z.array(z.string()).max(12).default([]),
+  maxPlayers: z.number().int().min(1).max(1_000_000).optional(),
+  bannerUrl: z
+    .string()
+    .url()
+    .max(2_000)
+    .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), {
+      message: "Banner URL must use HTTP or HTTPS.",
+    })
+    .optional(),
   verificationParentId: z.string().min(1).optional(),
   websiteUrl: z.string().url().optional(),
   discordUrl: z.string().url().optional(),
