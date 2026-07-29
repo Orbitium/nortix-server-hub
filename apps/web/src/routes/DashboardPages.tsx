@@ -1862,6 +1862,13 @@ export function ProfilePage() {
       .filter((item) => item.unlockMethod === "LEVEL" && item.requiredLevel !== null)
       .sort((left, right) => left.requiredLevel! - right.requiredLevel!)
       .slice(0, 5) ?? [];
+  const testerLevel = currentUser?.testerLevel ?? 1;
+  const testerExperience = cosmetics?.testerExperience ?? currentUser?.testerExperience ?? 0;
+  const currentLevelExperience = cosmetics?.currentLevelExperience ?? 0;
+  const nextLevelExperience = cosmetics?.nextLevelExperience ?? 1_000;
+  const levelXpEarned = Math.max(0, testerExperience - currentLevelExperience);
+  const levelXpRequired = Math.max(1, nextLevelExperience - currentLevelExperience);
+  const levelXpPercent = Math.min(100, (levelXpEarned / levelXpRequired) * 100);
   const gameplay = profileActivity?.gameplay;
   const maxDailyPlayMinutes = Math.max(
     1,
@@ -2136,31 +2143,34 @@ export function ProfilePage() {
           <div className="profile-level-card__heading">
             <span>
               <small>TESTER PROGRESSION</small>
-              <strong>Level {currentUser?.testerLevel ?? 1}</strong>
+              <strong>Level {testerLevel}</strong>
             </span>
-            <b>
-              {(cosmetics?.testerExperience ?? currentUser?.testerExperience ?? 0).toLocaleString()}{" "}
-              / {(cosmetics?.nextLevelExperience ?? 1_000).toLocaleString()} XP
-            </b>
+            <b>{testerExperience.toLocaleString()} total XP</b>
           </div>
-          <div className="profile-level-card__meter">
-            <span
-              style={{
-                width: `${
-                  cosmetics
-                    ? Math.min(
-                        100,
-                        ((cosmetics.testerExperience - cosmetics.currentLevelExperience) /
-                          Math.max(
-                            1,
-                            cosmetics.nextLevelExperience - cosmetics.currentLevelExperience,
-                          )) *
-                          100,
-                      )
-                    : 0
-                }%`,
-              }}
-            />
+          <div className="profile-level-card__xp-label">
+            <span>
+              <Zap />
+              XP progress to Level {testerLevel + 1}
+            </span>
+            <strong>
+              {levelXpEarned.toLocaleString()} / {levelXpRequired.toLocaleString()} XP
+            </strong>
+          </div>
+          <div
+            className="profile-level-card__meter"
+            role="progressbar"
+            aria-label={`Experience progress to level ${testerLevel + 1}`}
+            aria-valuemin={0}
+            aria-valuemax={levelXpRequired}
+            aria-valuenow={Math.min(levelXpEarned, levelXpRequired)}
+          >
+            <span style={{ width: `${levelXpPercent}%` }} />
+            <b>{Math.round(levelXpPercent)}%</b>
+          </div>
+          <div className="profile-level-card__meter-scale">
+            <span>Level {testerLevel}</span>
+            <span>{Math.max(0, levelXpRequired - levelXpEarned).toLocaleString()} XP to go</span>
+            <span>Level {testerLevel + 1}</span>
           </div>
           <p>
             {cosmetics?.nextLevelUnlock

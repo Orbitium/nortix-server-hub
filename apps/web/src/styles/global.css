@@ -12347,19 +12347,82 @@ td > small {
   font-size: 11px;
 }
 
+.profile-level-card__xp-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 24px;
+  font-size: 11px;
+}
+
+.profile-level-card__xp-label span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.profile-level-card__xp-label svg {
+  width: 15px;
+  height: 15px;
+  color: var(--nortix-green);
+}
+
+.profile-level-card__xp-label strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
 .profile-level-card__meter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  height: 7px;
-  margin: 22px 0 10px;
+  height: 16px;
+  margin: 9px 0 6px;
+  border: 1px solid color-mix(in srgb, var(--nortix-green) 28%, var(--border));
   border-radius: 999px;
   background: var(--surface-3);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.22);
 }
 
 .profile-level-card__meter span {
+  position: absolute;
+  inset: 0 auto 0 0;
   display: block;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--nortix-green), #8de967);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--nortix-green) 35%, transparent);
+  transition: width 300ms ease;
+}
+
+.profile-level-card__meter b {
+  position: relative;
+  z-index: 1;
+  color: var(--text-primary);
+  font-size: 9px;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+.profile-level-card__meter-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.profile-level-card__meter-scale span:nth-child(2) {
+  color: var(--text-secondary);
+  font-weight: 700;
 }
 
 .profile-level-card > p {
