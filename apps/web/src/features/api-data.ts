@@ -68,8 +68,6 @@ export type PublicCampaign = {
   description: string;
   status: "ACTIVE" | "SCHEDULED" | "COMPLETED";
   category: string;
-  quickStart?: string | null;
-  quickStartConfig?: Record<string, unknown>;
   startsAt: string;
   endsAt: string;
   maxParticipants: number;

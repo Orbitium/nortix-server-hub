@@ -41,6 +41,13 @@ import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
 import { ServerCategoryFilter } from "../components/ServerCategoryFilter";
+import {
+  CardGridSkeleton,
+  DetailPageSkeleton,
+  ListSkeleton,
+  ShimmerBlock,
+  TableSkeleton,
+} from "../components/LoadingSkeletons";
 import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
 import { SeededProgressPage } from "../components/SeededProgressPage";
 import {
@@ -393,12 +400,10 @@ export function DashboardServersPage() {
         value={category}
         onChange={setCategory}
       />
+      {isLoading ? (
+        <CardGridSkeleton cards={6} className="server-grid" label="Loading servers" />
+      ) : (
       <div className="server-grid">
-        {isLoading ? (
-          <Card className="directory-status-card">
-            <p>Loading servers…</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card className="directory-status-card">
             <p>{t("listing.serverError")}</p>
@@ -414,6 +419,7 @@ export function DashboardServersPage() {
           <ServerCard server={server} key={server.id} />
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -517,12 +523,10 @@ export function DashboardCampaignsPage() {
           </button>
         ))}
       </div>
+      {isLoading ? (
+        <CardGridSkeleton cards={6} className="campaign-grid" label="Loading campaigns" />
+      ) : (
       <div className="campaign-grid">
-        {isLoading ? (
-          <Card className="directory-status-card">
-            <p>Loading seeded campaigns…</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card className="directory-status-card">
             <p>{t("listing.campaignError")}</p>
@@ -538,6 +542,7 @@ export function DashboardCampaignsPage() {
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -842,9 +847,13 @@ export function QuestsPage() {
       <Card className="quest-hero">
         <div>
           <Badge tone="purple">DAILY SET</Badge>
-          <h2>
-            {recurringQuests.length} daily quests · up to {totalPotentialSparks} Sparks may be available
-          </h2>
+          {isLoading ? (
+            <ShimmerBlock width="72%" height={24} />
+          ) : (
+            <h2>
+              {recurringQuests.length} daily quests · up to {totalPotentialSparks} Sparks may be available
+            </h2>
+          )}
           <p>
             Daily progress resets at 00:00 UTC. Sign in to receive Sparks only after the backend
             verifies the activity.
@@ -852,16 +861,14 @@ export function QuestsPage() {
         </div>
         <div className="streak-large">
           <Flame />
-          <strong>{completedQuests}</strong>
+          {isLoading ? <ShimmerBlock width={44} height={34} /> : <strong>{completedQuests}</strong>}
           <span>completed today</span>
         </div>
       </Card>
+      {isLoading ? (
+        <CardGridSkeleton cards={4} className="quest-grid" label="Loading quests" />
+      ) : (
       <div className="quest-grid">
-        {isLoading ? (
-          <Card>
-            <p>Loading seeded quests…</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card>
             <p>Seeded quests could not be loaded.</p>
@@ -890,6 +897,7 @@ export function QuestsPage() {
           );
         })}
       </div>
+      )}
       {accountQuests.length ? (
         <>
           <PageHeading
@@ -932,12 +940,26 @@ export function SparksShopPage() {
     isLoading: sparksLoading,
     refetch: refetchSparks,
   } = useSparksSummary();
-  const { data: sponsoredStores = [], refetch: refetchSponsoredStores } = useSponsoredStores();
-  const { data: sponsoredPurchases = [], refetch: refetchSponsoredPurchases } =
-    useSponsoredPurchases();
-  const { data: serverStores = [], refetch: refetchServerStores } = useServerStores();
-  const { data: serverStorePurchases = [], refetch: refetchServerStorePurchases } =
-    useServerStorePurchases();
+  const {
+    data: sponsoredStores = [],
+    isLoading: sponsoredStoresLoading,
+    refetch: refetchSponsoredStores,
+  } = useSponsoredStores();
+  const {
+    data: sponsoredPurchases = [],
+    isLoading: sponsoredPurchasesLoading,
+    refetch: refetchSponsoredPurchases,
+  } = useSponsoredPurchases();
+  const {
+    data: serverStores = [],
+    isLoading: serverStoresLoading,
+    refetch: refetchServerStores,
+  } = useServerStores();
+  const {
+    data: serverStorePurchases = [],
+    isLoading: serverPurchasesLoading,
+    refetch: refetchServerStorePurchases,
+  } = useServerStorePurchases();
   const cosmetics =
     cosmeticCollection?.items.filter((item) => item.unlockMethod === "SPARKS") ?? [];
   const balance = sparksSummary?.balance ?? 0;
@@ -1082,7 +1104,8 @@ export function SparksShopPage() {
         }
         action={
           <div className="balance-pill">
-            <Sparkles /> <strong>{balance.toLocaleString()}</strong> Sparks
+            <Sparkles />{" "}
+            {sparksLoading ? <ShimmerBlock width={56} height={18} /> : <strong>{balance.toLocaleString()}</strong>} Sparks
           </div>
         }
       />
@@ -1138,12 +1161,10 @@ export function SparksShopPage() {
           </button>
         ))}
       </div>
+      {isLoading ? (
+        <CardGridSkeleton cards={6} className="cosmetic-grid" label="Loading cosmetics" />
+      ) : (
       <div className="cosmetic-grid">
-        {isLoading ? (
-          <Card>
-            <p>Loading seeded cosmetics…</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card>
             <p>Seeded cosmetics could not be loaded.</p>
@@ -1194,6 +1215,7 @@ export function SparksShopPage() {
             </Card>
           ))}
       </div>
+      )}
         </>
       ) : null}
         </>
@@ -1224,6 +1246,9 @@ export function SparksShopPage() {
           </button>
         ))}
       </div>
+      {serverStoresLoading ? (
+        <CardGridSkeleton cards={4} className="cosmetic-grid" label="Loading server markets" />
+      ) : (
       <div className="sponsored-store-list">
         {visibleServerStores.map((store) => (
           <section className="sponsored-store" key={store.id}>
@@ -1288,7 +1313,8 @@ export function SparksShopPage() {
           </section>
         ))}
       </div>
-      {visibleServerStores.length === 0 ? (
+      )}
+      {!serverStoresLoading && visibleServerStores.length === 0 ? (
         <Card className="sparks-shop-empty-state">
           <p>
             {serverStores.length === 0
@@ -1297,7 +1323,9 @@ export function SparksShopPage() {
           </p>
         </Card>
       ) : null}
-      {serverStorePurchases.length ? (
+      {serverPurchasesLoading ? (
+        <ListSkeleton rows={3} label="Loading server-store purchases" />
+      ) : serverStorePurchases.length ? (
         <>
           <PageHeading
             eyebrow="IN-GAME DELIVERY"
@@ -1429,6 +1457,9 @@ export function SparksShopPage() {
           </button>
         ))}
       </div>
+      {sponsoredStoresLoading ? (
+        <CardGridSkeleton cards={4} className="cosmetic-grid" label="Loading Nortix-sponsored gifts" />
+      ) : (
       <div className="sponsored-store-list">
         {visibleSponsoredStores.map((store) => (
           <section className="sponsored-store" key={store.id}>
@@ -1470,7 +1501,8 @@ export function SparksShopPage() {
           </section>
         ))}
       </div>
-      {visibleSponsoredStores.length === 0 ? (
+      )}
+      {!sponsoredStoresLoading && visibleSponsoredStores.length === 0 ? (
         <Card className="sparks-shop-empty-state">
           <p>
             {sponsoredStores.length === 0
@@ -1479,7 +1511,9 @@ export function SparksShopPage() {
           </p>
         </Card>
       ) : null}
-      {sponsoredPurchases.length ? (
+      {sponsoredPurchasesLoading ? (
+        <ListSkeleton rows={3} label="Loading sponsored gift requests" />
+      ) : sponsoredPurchases.length ? (
         <>
           <PageHeading
             eyebrow="PRIVATE TO YOUR ACCOUNT"
@@ -2065,7 +2099,13 @@ export function VotingPage() {
         description="Support servers with a recently connected Nortix plugin. Each account may vote for up to five different servers per UTC day."
         action={
           <div className="balance-pill">
-            <ThumbsUp /> <strong>{data?.votesUsed ?? 0} / {data?.dailyLimit ?? 5}</strong> used
+            <ThumbsUp />{" "}
+            {isLoading ? (
+              <ShimmerBlock width={64} height={18} />
+            ) : (
+              <strong>{data?.votesUsed ?? 0} / {data?.dailyLimit ?? 5}</strong>
+            )}{" "}
+            used
           </div>
         }
       />
@@ -2076,7 +2116,9 @@ export function VotingPage() {
           <p>One vote per server each day. Your first eligible vote today may complete the 5 Sparks daily quest after backend verification.</p>
         </div>
       </Card>
-      {isLoading ? <Card><p>Loading eligible servers…</p></Card> : null}
+      {isLoading ? (
+        <CardGridSkeleton cards={4} className="voting-server-grid" label="Loading eligible servers" />
+      ) : null}
       {isError ? <Card><p>Eligible servers could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card> : null}
       {!isLoading && !isError && linkedServerId && !selected ? (
         <Card>
@@ -2086,7 +2128,7 @@ export function VotingPage() {
           </p>
         </Card>
       ) : null}
-      <div className="voting-server-grid">
+      {!isLoading ? <div className="voting-server-grid">
         {data?.servers.map((server) => (
           <button
             type="button"
@@ -2111,11 +2153,11 @@ export function VotingPage() {
             </Badge>
           </button>
         ))}
-      </div>
+      </div> : null}
       {!isLoading && data?.servers.length === 0 ? (
         <Card><p>No verified servers have a recent plugin heartbeat right now. Check back soon.</p></Card>
       ) : null}
-      <Card className="vote-submit-card">
+      {!isLoading ? <Card className="vote-submit-card">
         <div>
           <small>SELECTED SERVER</small>
           <h3>{selected?.name ?? "Choose a server above"}</h3>
@@ -2142,7 +2184,7 @@ export function VotingPage() {
           </small>
         ) : null}
         {message ? <p role="status">{message}</p> : null}
-      </Card>
+      </Card> : null}
     </div>
   );
 }
@@ -2156,12 +2198,10 @@ export function LeaderboardsPage() {
         title="Leaderboards"
         description="Recognition for reputation and consistent, useful participation—not spending."
       />
+      {isLoading ? (
+        <CardGridSkeleton cards={3} className="leaderboard-podium" label="Loading leaderboard" />
+      ) : (
       <div className="leaderboard-podium">
-        {isLoading ? (
-          <Card>
-            <p>Loading seeded leaderboard…</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card>
             <p>The seeded leaderboard could not be loaded.</p>
@@ -2179,6 +2219,7 @@ export function LeaderboardsPage() {
           </Card>
         ))}
       </div>
+      )}
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -2191,6 +2232,9 @@ export function LeaderboardsPage() {
           </div>
         </div>
         <div className="table-wrap">
+          {isLoading ? (
+            <TableSkeleton rows={8} columns={5} label="Loading leaderboard rankings" />
+          ) : (
           <table>
             <thead>
               <tr>
@@ -2222,6 +2266,7 @@ export function LeaderboardsPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </Card>
       <Card className="earnings-notice">
@@ -2386,7 +2431,9 @@ export function ReferralsPage() {
             friend quest may then receive 50 Sparks after backend verification. You can create up
             to {maxFriendReferralInvitesPerMonth} single-use links per calendar month.
           </p>
-          {openInviteUrl ? (
+          {isLoading ? (
+            <ListSkeleton rows={1} label="Loading referral link" />
+          ) : openInviteUrl ? (
             <div className="referral-code">
               <code>{openInviteUrl}</code>
               <Button onClick={copyInvite}>
@@ -2413,10 +2460,17 @@ export function ReferralsPage() {
           </span>
           <div>
             <small>Links this month</small>
-            <strong>
-              {monthlyInvites} / {maxFriendReferralInvitesPerMonth}
-            </strong>
-            <span>{registered} registered overall</span>
+            {isLoading ? (
+              <>
+                <ShimmerBlock width={72} height={24} />
+                <ShimmerBlock width={110} height={10} />
+              </>
+            ) : (
+              <>
+                <strong>{monthlyInvites} / {maxFriendReferralInvitesPerMonth}</strong>
+                <span>{registered} registered overall</span>
+              </>
+            )}
           </div>
         </Card>
         <Card>
@@ -2425,7 +2479,7 @@ export function ReferralsPage() {
           </span>
           <div>
             <small>Qualified invites</small>
-            <strong>{qualified}</strong>
+            {isLoading ? <ShimmerBlock width={48} height={24} /> : <strong>{qualified}</strong>}
             <span>Reached 200 earned Sparks</span>
           </div>
         </Card>
@@ -2435,7 +2489,11 @@ export function ReferralsPage() {
           </span>
           <div>
             <small>Quest eligibility</small>
-            <strong>{qualified ? "Verified" : "Pending"}</strong>
+            {isLoading ? (
+              <ShimmerBlock width={74} height={24} />
+            ) : (
+              <strong>{qualified ? "Verified" : "Pending"}</strong>
+            )}
             <span>May receive 50 Sparks once</span>
           </div>
         </Card>
@@ -2476,7 +2534,9 @@ export function ReferralsPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={4}>Loading invites…</td>
+                  <td colSpan={4}>
+                    <TableSkeleton rows={4} columns={4} label="Loading invites" />
+                  </td>
                 </tr>
               ) : isError ? (
                 <tr>
@@ -2553,6 +2613,7 @@ export function ProfilePage() {
   const [crackedName, setCrackedName] = useState("");
   const [identityMessage, setIdentityMessage] = useState("");
   const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityLoading, setIdentityLoading] = useState(true);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
@@ -2567,13 +2628,21 @@ export function ProfilePage() {
     isPublic: true,
     showReputation: true,
   });
-  const { data: currentUser } = useCurrentUser();
-  const { data: cosmetics, refetch: refetchCosmetics } = useProfileCosmetics();
-  const { data: profileActivity } = useProfileActivity();
-  const { data: sparksSummary, refetch: refetchSparks } = useSparksSummary();
+  const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser();
+  const {
+    data: cosmetics,
+    isLoading: cosmeticsLoading,
+    refetch: refetchCosmetics,
+  } = useProfileCosmetics();
+  const { data: profileActivity, isLoading: activityLoading } = useProfileActivity();
+  const {
+    data: sparksSummary,
+    isLoading: profileSparksLoading,
+    refetch: refetchSparks,
+  } = useSparksSummary();
   const queryClient = useQueryClient();
   const { t } = useI18n();
-  const { data: participations = [] } = useParticipations();
+  const { data: participations = [], isLoading: participationsLoading } = useParticipations();
   const approvedMilestones = participations.reduce(
     (total, participation) =>
       total + participation.completions.filter((item) => item.status === "VERIFIED").length,
@@ -2615,16 +2684,18 @@ export function ProfilePage() {
   };
 
   useEffect(() => {
-    refreshIdentities().catch((error: Error) => setIdentityMessage(error.message));
-    api<{ items: ServerOption[] }>("/servers?pageSize=50")
-      .then((result) => {
-        setServerOptions(result.items);
-        setServerId(
-          (current) =>
-            current || result.items.find((item) => item.crackedAccountLinkingAvailable)?.id || "",
-        );
-      })
-      .catch(() => undefined);
+    void Promise.all([
+      refreshIdentities().catch((error: Error) => setIdentityMessage(error.message)),
+      api<{ items: ServerOption[] }>("/servers?pageSize=50")
+        .then((result) => {
+          setServerOptions(result.items);
+          setServerId(
+            (current) =>
+              current || result.items.find((item) => item.crackedAccountLinkingAvailable)?.id || "",
+          );
+        })
+        .catch(() => undefined),
+    ]).finally(() => setIdentityLoading(false));
   }, []);
 
   const createPremiumClaim = async () => {
@@ -2774,6 +2845,17 @@ export function ProfilePage() {
     }
   };
 
+  if (
+    currentUserLoading ||
+    cosmeticsLoading ||
+    activityLoading ||
+    profileSparksLoading ||
+    participationsLoading ||
+    identityLoading
+  ) {
+    return <DetailPageSkeleton label="Loading profile" />;
+  }
+
   return (
     <div
       className="dashboard-page profile-experience"
@@ -2824,10 +2906,10 @@ export function ProfilePage() {
             </span>
             <div className="profile-identity-card__copy">
               <h1>
-                {currentUser?.displayName ?? currentUser?.username ?? "Loading profile…"}
+                {currentUser?.displayName ?? currentUser?.username ?? "Nortix user"}
                 <ShieldCheck aria-label="Nortix account" />
               </h1>
-              <p>@{currentUser?.username ?? "loading"}</p>
+              <p>@{currentUser?.username ?? "user"}</p>
               <div className="chip-row">
                 <Badge tone="purple">
                   {equippedTitle?.name ?? currentUser?.reputationTier ?? "Tester"}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui";
 import { useState } from "react";
 import { useParticipations } from "../features/api-data";
+import { CardGridSkeleton, MetricGridSkeleton } from "./LoadingSkeletons";
 
 export function SeededProgressPage() {
   const [tab, setTab] = useState("Active");
@@ -24,6 +25,17 @@ export function SeededProgressPage() {
           <p>Track backend-verified campaign milestones and potential Sparks.</p>
         </div>
       </div>
+      {isLoading ? (
+        <>
+          <MetricGridSkeleton items={4} label="Loading participation summary" />
+          <CardGridSkeleton
+            cards={3}
+            className="campaign-grid"
+            label="Loading participation records"
+          />
+        </>
+      ) : (
+      <>
       <div className="summary-strip">
         <span><small>Active campaigns</small><strong>{active.length}</strong></span>
         <span><small>Completed</small><strong>{participations.filter((item) => item.status === "COMPLETED").length}</strong></span>
@@ -35,7 +47,6 @@ export function SeededProgressPage() {
           <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>{item}</button>
         ))}
       </div>
-      {isLoading && <Card><p>Loading your seeded participation records…</p></Card>}
       {isError && <Card><p>Participation records could not be loaded.</p><Button onClick={() => refetch()}>Retry</Button></Card>}
       {!isLoading && !isError && visible.length === 0 && (
         <Card className="empty-state-card"><p>No participation records match this view.</p><Link className="button button--primary" to="/campaigns">Browse campaigns</Link></Card>
@@ -75,6 +86,8 @@ export function SeededProgressPage() {
           );
         })}
       </div>
+      </>
+      )}
     </div>
   );
 }

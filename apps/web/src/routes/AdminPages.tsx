@@ -36,6 +36,13 @@ import { Modal } from "../components/Modal";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { AdminEnrollmentForm } from "../components/AdminEnrollmentForm";
 import {
+  CardGridSkeleton,
+  DetailPageSkeleton,
+  ListSkeleton,
+  MetricGridSkeleton,
+  TableSkeleton,
+} from "../components/LoadingSkeletons";
+import {
   artIndexFor,
   type AdminCampaignServer,
   type AdminOngoingCampaign,
@@ -97,8 +104,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   if (accessLoading) {
     return (
       <div className="admin-access-state">
-        <ShieldCheck />
-        <h1>Checking administrator access…</h1>
+        <DetailPageSkeleton label="Checking administrator access" />
       </div>
     );
   }
@@ -192,7 +198,7 @@ const AdminHeading = ({
 export function AdminOverviewPage() {
   const [messageOpen, setMessageOpen] = useState(false);
   const { data: overview, isLoading, isError, refetch } = useAdminOverview();
-  const { data: auditLogs } = useAuditLogs();
+  const { data: auditLogs, isLoading: auditLoading } = useAuditLogs();
   const { data: currentUser } = useCurrentUser();
   const overviewEvents = (auditLogs ?? [])
     .slice(0, 8)
@@ -216,17 +222,15 @@ export function AdminOverviewPage() {
           ) : undefined
         }
       />
-      {isLoading ? (
-        <Card>
-          <p>Loading seeded operations data…</p>
-        </Card>
-      ) : null}
+      {isLoading ? <MetricGridSkeleton items={6} label="Loading operations data" /> : null}
       {isError ? (
         <Card>
           <p>Seeded operations data could not be loaded.</p>
           <Button onClick={() => refetch()}>Retry</Button>
         </Card>
       ) : null}
+      {!isLoading ? (
+        <>
       <div className="admin-kpi-grid">
         {[
           {
@@ -327,7 +331,10 @@ export function AdminOverviewPage() {
           </label>
         </Card>
       </div>
+        </>
+      ) : null}
 
+      {!isLoading ? (
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -336,8 +343,13 @@ export function AdminOverviewPage() {
           </div>
           <NavLink to="/admin/audit-logs">Open full log</NavLink>
         </div>
-        <AdminLogTable rows={overviewEvents} />
+        {auditLoading ? (
+          <TableSkeleton rows={8} columns={4} label="Loading recent administrative activity" />
+        ) : (
+          <AdminLogTable rows={overviewEvents} />
+        )}
       </Card>
+      ) : null}
 
       {messageOpen && <AdminMessageComposer onClose={() => setMessageOpen(false)} />}
     </>
@@ -461,7 +473,6 @@ export function CampaignReviewPage() {
             .split(",")
             .map((value) => value.trim())
             .filter(Boolean),
-          quickStartConfig: {},
           milestones: [
             {
               templateType: "SUBMIT_FEEDBACK",
@@ -531,11 +542,7 @@ export function CampaignReviewPage() {
         }
       />
       {createMessage && !createOpen ? <p role="status">{createMessage}</p> : null}
-      {isLoading ? (
-        <Card>
-          <p>Loading seeded moderation queue…</p>
-        </Card>
-      ) : null}
+      {isLoading ? <CardGridSkeleton cards={4} label="Loading moderation queue" /> : null}
       {isError ? (
         <Card>
           <p>The seeded moderation queue could not be loaded.</p>
@@ -613,11 +620,7 @@ export function CampaignReviewPage() {
               </p>
             </div>
           </div>
-          {ongoingLoading ? (
-            <Card>
-              <p>Loading ongoing campaigns…</p>
-            </Card>
-          ) : null}
+          {ongoingLoading ? <CardGridSkeleton cards={3} label="Loading ongoing campaigns" /> : null}
           {!ongoingLoading && ongoingCampaigns.length === 0 ? (
             <Card>
               <p>No campaigns are currently eligible for termination.</p>
@@ -1062,7 +1065,7 @@ export function SparksAdjustmentReviewPage() {
         }
       />
 
-      {isLoading ? <Card><p>Loading Sparks activity…</p></Card> : null}
+      {isLoading ? <MetricGridSkeleton items={6} label="Loading Sparks activity" /> : null}
       {isError ? (
         <Card>
           <p>Sparks administration data could not be loaded.</p>
@@ -1070,6 +1073,8 @@ export function SparksAdjustmentReviewPage() {
         </Card>
       ) : null}
 
+      {!isLoading ? (
+        <>
       <div className="admin-kpi-grid admin-sparks-kpis">
         {[
           ["Active players", data?.summary.activePlayers, "Active player accounts"],
@@ -1323,6 +1328,8 @@ export function SparksAdjustmentReviewPage() {
           </form>
         </Modal>
       ) : null}
+        </>
+      ) : null}
     </>
   );
 }
@@ -1409,7 +1416,7 @@ export function AdminSponsoredShopPage() {
         </div>
       </Card>
       {message ? <p role="status">{message}</p> : null}
-      {isLoading ? <Card><p>Loading sponsored catalog…</p></Card> : null}
+      {isLoading ? <CardGridSkeleton cards={4} label="Loading sponsored catalog" /> : null}
       <div className="admin-sponsored-store-list">
         {stores.map((store) => (
           <Card key={store.id}>
@@ -1628,7 +1635,7 @@ export function AdminSponsoredPurchasesPage() {
         </div>
       </Card>
       {message ? <p role="status">{message}</p> : null}
-      {isLoading ? <Card><p>Loading sponsored purchases…</p></Card> : null}
+      {isLoading ? <ListSkeleton rows={6} label="Loading sponsored purchases" /> : null}
       <div className="admin-sponsored-purchase-list">
         {purchases.map((purchase) => (
           <button key={purchase.id} onClick={() => setSelected(purchase)}>
@@ -1826,7 +1833,7 @@ export function AdminStorePayoutsPage() {
       </Card>
       <Card>
         <h2>Requests</h2>
-        {isLoading ? <p>Loading requests…</p> : isError ? <p>Requests could not be loaded.</p> : (
+        {isLoading ? <ListSkeleton rows={5} label="Loading proceeds requests" /> : isError ? <p>Requests could not be loaded.</p> : (
           <div className="admin-table-list">
             {requests.map((request) => (
               <article key={request.id}>
@@ -1955,6 +1962,9 @@ function EntityManagementPage({
           </Button>
         }
       />
+      {isLoading ? (
+        <TableSkeleton rows={8} columns={6} label="Loading administration records" />
+      ) : (
       <Card className="data-card">
         <div className="data-card__header">
           <div>
@@ -2020,10 +2030,6 @@ function EntityManagementPage({
           </table>
         </div>
       </Card>
-      {isLoading && (
-        <Card>
-          <p>Loading seeded administration records…</p>
-        </Card>
       )}
       {!supportedType && (
         <Card>
@@ -2197,7 +2203,7 @@ export function AdminUserDetailPage() {
     enabled: Boolean(userId),
   });
 
-  if (isLoading) return <Card><p>Loading the user report…</p></Card>;
+  if (isLoading) return <DetailPageSkeleton label="Loading the user report" />;
   if (isError || !user) {
     return (
       <Card>
@@ -2352,7 +2358,7 @@ export function AdminServerDetailPage() {
     enabled: Boolean(serverId),
   });
 
-  if (isLoading) return <Card><p>Loading the server report…</p></Card>;
+  if (isLoading) return <DetailPageSkeleton label="Loading the server report" />;
   if (isError || !server) {
     return (
       <Card><h2>Server report unavailable</h2><p>The server may not exist or your role may not inspect it.</p><Button variant="secondary" onClick={() => navigate("/admin/servers")}>Back to servers</Button></Card>
@@ -2627,7 +2633,7 @@ function AdminMessagesPage() {
               ))}
               {isLoading ? (
                 <tr>
-                  <td colSpan={5}>Loading persisted messages…</td>
+                  <td colSpan={5}><TableSkeleton rows={5} columns={5} label="Loading persisted messages" /></td>
                 </tr>
               ) : null}
               {isError ? (
@@ -2768,8 +2774,9 @@ function AdminMessageComposer({ onClose }: { onClose: () => void }) {
 
 function AdminAnalyticsPage({ type }: { type: string }) {
   const [range, setRange] = useState("7 days");
-  const { data: overview } = useAdminOverview();
-  const { data: auditLogs = [] } = useAuditLogs();
+  const { data: overview, isLoading: overviewLoading } = useAdminOverview();
+  const { data: auditLogs = [], isLoading: auditLoading } = useAuditLogs();
+  const analyticsLoading = overviewLoading || auditLoading;
   return (
     <>
       <AdminHeading
@@ -2787,6 +2794,13 @@ function AdminAnalyticsPage({ type }: { type: string }) {
           </select>
         }
       />
+      {analyticsLoading ? (
+        <>
+          <MetricGridSkeleton items={6} label="Loading product analytics" />
+          <CardGridSkeleton cards={2} label="Loading analytics charts" />
+        </>
+      ) : (
+        <>
       <div className="admin-kpi-grid">
         {[
           ["Seeded users", (overview?.users ?? 0).toLocaleString(), "Database"],
@@ -2843,13 +2857,15 @@ function AdminAnalyticsPage({ type }: { type: string }) {
           <Save /> Save analytics configuration
         </Button>
       </Card>
+        </>
+      )}
     </>
   );
 }
 
 function AdminMonitorPage() {
   const [paused, setPaused] = useState(false);
-  const { data: auditLogs = [] } = useAuditLogs();
+  const { data: auditLogs = [], isLoading } = useAuditLogs();
   const events = paused ? [] : auditLogs.slice(0, 20);
   return (
     <>
@@ -2866,6 +2882,7 @@ function AdminMonitorPage() {
         <Card>
           <h2>Live event stream</h2>
           <div className="live-event-stream">
+            {isLoading ? <ListSkeleton rows={8} label="Loading live activity" /> : null}
             {events.map((event) => (
               <div key={event.id}>
                 <i />
@@ -2917,17 +2934,14 @@ function AdminAuditPage() {
         title="Activity logs"
         description="Search administrative, moderation, security, and system events."
       />
-      {isLoading ? (
-        <Card>
-          <p>Loading seeded audit records…</p>
-        </Card>
-      ) : null}
+      {isLoading ? <TableSkeleton rows={8} columns={5} label="Loading audit records" /> : null}
       {isError ? (
         <Card>
           <p>Seeded audit records could not be loaded.</p>
           <Button onClick={() => refetch()}>Retry</Button>
         </Card>
       ) : null}
+      {!isLoading ? (
       <Card className="data-card">
         <div className="data-card__header">
           <label className="table-search">
@@ -2942,6 +2956,7 @@ function AdminAuditPage() {
         </div>
         <AdminLogTable rows={rows} />
       </Card>
+      ) : null}
     </>
   );
 }

@@ -18,6 +18,7 @@ import { Modal } from "./Modal";
 import { accountCreationUrl } from "../lib/auth-session";
 import { Seo } from "./Seo";
 import { CampaignShareButton } from "./CampaignShareButton";
+import { DetailPageSkeleton } from "./LoadingSkeletons";
 
 export function CampaignDetailRedesign() {
   const { id } = useParams();
@@ -29,7 +30,7 @@ export function CampaignDetailRedesign() {
   const [joinMessage, setJoinMessage] = useState("");
 
   if (isLoading) {
-    return <div className="campaign-v2"><p>Loading seeded campaign…</p></div>;
+    return <DetailPageSkeleton label="Loading campaign" />;
   }
   if (isError || !campaign) {
     return (

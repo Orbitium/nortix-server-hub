@@ -32,6 +32,7 @@ import { useUiStore } from "../app/store";
 import { Brand } from "../components/Brand";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { RoleChooser } from "../components/RoleChooser";
+import { ListSkeleton, ShimmerBlock } from "../components/LoadingSkeletons";
 import {
   useCurrentUser,
   useDailyQuests,
@@ -93,10 +94,10 @@ export function DashboardLayout() {
   const showRightRail = location.pathname === "/dashboard";
   const { data: serverData } = usePublicServers();
   const { data: campaignData } = usePublicCampaigns();
-  const { data: currentUser } = useCurrentUser(isAuthenticated);
-  const { data: sparksSummary } = useSparksSummary(isAuthenticated);
-  const { data: leaderboardData } = useLeaderboard();
-  const { data: dailyQuests = [] } = useDailyQuests(isAuthenticated);
+  const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser(isAuthenticated);
+  const { data: sparksSummary, isLoading: sparksLoading } = useSparksSummary(isAuthenticated);
+  const { data: leaderboardData, isLoading: leaderboardLoading } = useLeaderboard();
+  const { data: dailyQuests = [], isLoading: questsLoading } = useDailyQuests(isAuthenticated);
   const {
     data: streak,
     isLoading: streakLoading,
@@ -109,8 +110,8 @@ export function DashboardLayout() {
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
   const dailyQuest = dailyQuests[0];
   const { data: inboxSummary } = useInboxSummary(isAuthenticated);
-  const { data: notificationItems = [] } = useNotifications(false, isAuthenticated);
-  const { data: messageItems = [] } = useInboxMessages(true, isAuthenticated);
+  const { data: notificationItems = [], isLoading: notificationsLoading } = useNotifications(false, isAuthenticated);
+  const { data: messageItems = [], isLoading: messagesLoading } = useInboxMessages(true, isAuthenticated);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -372,6 +373,9 @@ export function DashboardLayout() {
                       {t("dashboard.unread", { count: inboxSummary?.unreadNotifications ?? 0 })}
                     </small>
                   </header>
+                  {notificationsLoading ? (
+                    <ListSkeleton rows={3} label="Loading notifications" />
+                  ) : null}
                   {notificationItems.slice(0, 4).map((item) => (
                     <button
                       className="inbox-popover__item"
@@ -382,7 +386,7 @@ export function DashboardLayout() {
                       <p>{item.body}</p>
                     </button>
                   ))}
-                  {notificationItems.length === 0 ? (
+                  {!notificationsLoading && notificationItems.length === 0 ? (
                     <article>
                       <strong>{t("dashboard.caughtUp")}</strong>
                       <p>{t("dashboard.noNotifications")}</p>
@@ -421,6 +425,7 @@ export function DashboardLayout() {
                       {t("dashboard.unread", { count: inboxSummary?.unreadMessages ?? 0 })}
                     </small>
                   </header>
+                  {messagesLoading ? <ListSkeleton rows={3} label="Loading messages" /> : null}
                   {messageItems.slice(0, 4).map((delivery) => (
                     <button
                       className="inbox-popover__item"
@@ -431,7 +436,7 @@ export function DashboardLayout() {
                       <p>{delivery.message.body}</p>
                     </button>
                   ))}
-                  {messageItems.length === 0 ? (
+                  {!messagesLoading && messageItems.length === 0 ? (
                     <article>
                       <strong>{t("dashboard.caughtUp")}</strong>
                       <p>{t("dashboard.noMessages")}</p>
@@ -462,16 +467,22 @@ export function DashboardLayout() {
             </span>
             <span>
               <strong>
-                {isInitializing
-                  ? t("dashboard.loadingAccount")
-                  : isAuthenticated
-                    ? (currentUser?.displayName ?? currentUser?.username ?? t("dashboard.account"))
-                    : t("dashboard.guest")}
+                {isInitializing || currentUserLoading ? (
+                  <ShimmerBlock width={92} height={14} />
+                ) : isAuthenticated ? (
+                  currentUser?.displayName ?? currentUser?.username ?? t("dashboard.account")
+                ) : (
+                  t("dashboard.guest")
+                )}
               </strong>
               <small>
-                {isAuthenticated
-                  ? t("dashboard.level", { level: currentUser?.testerLevel ?? "—" })
-                  : t("nav.signIn")}
+                {isAuthenticated && currentUserLoading ? (
+                  <ShimmerBlock width={54} height={10} />
+                ) : isAuthenticated ? (
+                  t("dashboard.level", { level: currentUser?.testerLevel ?? "—" })
+                ) : (
+                  t("nav.signIn")
+                )}
               </small>
             </span>
             <ChevronDown size={14} />
@@ -491,7 +502,11 @@ export function DashboardLayout() {
                 <span>
                   <Sparkles size={15} /> Sparks
                 </span>
-                <strong>{sparksSummary ? formatNumber(sparksSummary.balance) : "—"}</strong>
+                {sparksLoading ? (
+                  <ShimmerBlock width={72} height={26} />
+                ) : (
+                  <strong>{sparksSummary ? formatNumber(sparksSummary.balance) : 0}</strong>
+                )}
                 <NavLink to="/dashboard/sparks-shop">{t("dashboard.exploreShop")}</NavLink>
               </div>
             </div>
@@ -513,6 +528,10 @@ export function DashboardLayout() {
                 </span>
                 <small>11h 32m</small>
               </div>
+              {questsLoading ? (
+                <ListSkeleton rows={1} label="Loading daily quest" />
+              ) : (
+              <>
               <div className="quest-row">
                 <strong className="rail-title">
                   {dailyQuest?.title ?? t("dashboard.noQuest")}
@@ -529,6 +548,8 @@ export function DashboardLayout() {
                 />
               </div>
               <p>{t("dashboard.potential", { count: dailyQuest?.sparksReward ?? 0 })}</p>
+              </>
+              )}
               <NavLink className="rail-action" to="/dashboard/quests">
                 {t("dashboard.questDetails")}
               </NavLink>
@@ -541,8 +562,16 @@ export function DashboardLayout() {
                 <span>
                   <Crown size={18} /> {t("dashboard.streak")}
                 </span>
-                <b>{streak ? `${streak.current} days` : "—"}</b>
+                {streakLoading ? (
+                  <ShimmerBlock width={64} height={18} />
+                ) : (
+                  <b>{streak ? `${streak.current} days` : "—"}</b>
+                )}
               </div>
+              {streakLoading ? (
+                <ListSkeleton rows={2} label="Loading streak" />
+              ) : (
+              <>
               <p>
                 {streak?.today.active
                   ? "Active today. Keep it going."
@@ -581,10 +610,10 @@ export function DashboardLayout() {
                 <span className="rail-action">
                   {streak
                     ? `Best: ${streak.longest} days · web check-ins · ${streak.timezone}`
-                    : streakLoading
-                      ? "Loading streak…"
-                      : "No activity recorded yet"}
+                    : "No activity recorded yet"}
                 </span>
+              )}
+              </>
               )}
             </div>
           )}
@@ -599,6 +628,9 @@ export function DashboardLayout() {
               </button>
             </div>
             <div className="mini-leaderboard">
+              {leaderboardLoading ? (
+                <ListSkeleton rows={5} label="Loading leaderboard" />
+              ) : null}
               {railLeaders.map((entry, index) => (
                 <div
                   className={entry.username === currentUser?.username ? "is-current" : ""}

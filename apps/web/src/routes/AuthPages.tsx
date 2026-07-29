@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge, Button } from "@nortix/ui";
 import { Brand } from "../components/Brand";
 import { AdminEnrollmentForm } from "../components/AdminEnrollmentForm";
+import { ShimmerBlock } from "../components/LoadingSkeletons";
 import { firebaseActions, firebaseConfigured } from "../lib/firebase";
 import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
@@ -196,7 +197,7 @@ export function AuthPage({ mode }: { mode: "sign-in" | "register" }) {
 
 export function AdminEnrollmentPage() {
   const navigate = useNavigate();
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser, isLoading } = useCurrentUser();
 
   return (
     <div className="auth-page">
@@ -236,7 +237,9 @@ export function AdminEnrollmentPage() {
           </span>
           <h2>Admin enrollment</h2>
           <p>
-            Signed in as <strong>@{currentUser?.username ?? "loading"}</strong>. This grants full
+            Signed in as{" "}
+            {isLoading ? <ShimmerBlock width={110} height={18} /> : <strong>@{currentUser?.username}</strong>}.
+            {" "}This grants full
             Nortix administrator permissions to this account.
           </p>
           <AdminEnrollmentForm

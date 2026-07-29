@@ -44,16 +44,17 @@ describe("campaign input", () => {
     ).toBe(false);
   });
 
-  it("rejects campaigns dominated by manual confirmation", () => {
+  it("requires one automatically verified milestone", () => {
     const manual = {
       ...campaign.milestones[0],
       templateType: "CUSTOM_MANUAL",
       verificationMethod: "MANUAL",
     };
+    expect(CampaignInputSchema.safeParse({ ...campaign, milestones: [manual] }).success).toBe(false);
     expect(
       CampaignInputSchema.safeParse({
         ...campaign,
-        milestones: [campaign.milestones[0], manual],
+        milestones: [campaign.milestones[0], campaign.milestones[0]],
       }).success,
     ).toBe(false);
   });

@@ -25,6 +25,7 @@ import {
 } from "../features/api-data";
 import { api } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { ListSkeleton } from "./LoadingSkeletons";
 
 const relativeTime = (value: string) => {
   const elapsed = Date.now() - new Date(value).getTime();
@@ -155,7 +156,7 @@ export function InboxPage() {
           </label>
         </div>
 
-        {activeQuery.isLoading ? <div className="inbox-loading">Loading your inbox…</div> : null}
+        {activeQuery.isLoading ? <ListSkeleton rows={5} label="Loading your inbox" /> : null}
         {activeQuery.isError ? (
           <div className="inbox-loading" role="alert">
             {t("ui.inboxError")} <button onClick={() => activeQuery.refetch()}>{t("ui.retry")}</button>
@@ -267,7 +268,21 @@ export function NotificationSettingsPage() {
   };
 
   if (isError) return <div className="dashboard-page"><p>{t("ui.preferencesError")}</p><Button onClick={() => refetch()}>{t("ui.retry")}</Button></div>;
-  if (isLoading || !draft) return <div className="dashboard-page"><p>Loading notification preferences…</p></div>;
+  if (isLoading || !draft)
+    return (
+      <div className="dashboard-page notification-settings-page">
+        <div className="dashboard-heading">
+          <div>
+            <span className="eyebrow">{t("ui.accountSettings")}</span>
+            <h1>{t("ui.notificationSettings")}</h1>
+            <p>{t("ui.notificationDescription")}</p>
+          </div>
+        </div>
+        <Card className="notification-settings-card">
+          <ListSkeleton rows={6} label="Loading notification preferences" />
+        </Card>
+      </div>
+    );
 
   return (
     <div className="dashboard-page notification-settings-page">

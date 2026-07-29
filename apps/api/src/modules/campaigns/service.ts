@@ -21,6 +21,9 @@ import { normalizeServerHostname } from "../server-registration/policy.js";
 
 export class CampaignService {
   async create(ownerId: string, input: CampaignInput) {
+    if (input.milestones.length !== 1) {
+      throw new Error("A campaign must have exactly one milestone.");
+    }
     for (const milestone of input.milestones) {
       if (milestone.verificationMethod !== "SERVER_PLUGIN") continue;
       const metric = String(milestone.config.metric ?? milestone.templateType).toUpperCase();
@@ -67,8 +70,6 @@ export class CampaignService {
             title: input.title,
             description: input.description,
             category: input.category,
-            quickStart: input.quickStart,
-            quickStartConfig: input.quickStartConfig as Prisma.InputJsonValue,
             startsAt: input.startsAt,
             endsAt: input.endsAt,
             maxParticipants: capacity.capacity,
@@ -116,6 +117,9 @@ export class CampaignService {
   }
 
   async createSponsored(adminId: string, input: AdminSponsoredCampaignInput, requestId?: string) {
+    if (input.milestones.length !== 1) {
+      throw new Error("A campaign must have exactly one milestone.");
+    }
     for (const milestone of input.milestones) {
       if (milestone.verificationMethod !== "SERVER_PLUGIN") continue;
       const metric = String(milestone.config.metric ?? milestone.templateType).toUpperCase();
@@ -219,8 +223,6 @@ export class CampaignService {
             description: input.description,
             status: "ACTIVE",
             category: input.category,
-            quickStart: input.quickStart,
-            quickStartConfig: input.quickStartConfig as Prisma.InputJsonValue,
             startsAt: input.startsAt,
             endsAt: input.endsAt,
             maxParticipants: capacity.capacity,

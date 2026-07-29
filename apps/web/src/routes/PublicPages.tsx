@@ -27,6 +27,12 @@ import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
 import { ServerCategoryFilter } from "../components/ServerCategoryFilter";
+import {
+  CardGridSkeleton,
+  DetailPageSkeleton,
+  ListSkeleton,
+  ShimmerBlock,
+} from "../components/LoadingSkeletons";
 import { CampaignDetailRedesign } from "../components/CampaignDetailRedesign";
 import { Seo } from "../components/Seo";
 import {
@@ -54,13 +60,7 @@ export function PublicProfilePage() {
   const { username } = useParams();
   const { data: profile, isLoading, isError } = usePublicProfile(username);
   if (isLoading)
-    return (
-      <div className="content-page narrow-page">
-        <Card>
-          <p>Loading profile…</p>
-        </Card>
-      </div>
-    );
+    return <DetailPageSkeleton label="Loading profile" />;
   if (isError || !profile)
     return (
       <div className="content-page narrow-page">
@@ -143,8 +143,8 @@ export function PublicProfilePage() {
 }
 
 export function HomePage() {
-  const { data: campaignData } = usePublicCampaigns();
-  const { data: serverData } = usePublicServers();
+  const { data: campaignData, isLoading: campaignsLoading } = usePublicCampaigns();
+  const { data: serverData, isLoading: serversLoading } = usePublicServers();
   const campaigns = campaignData?.items ?? [];
   const featuredCampaign = campaigns[0];
   return (
@@ -205,13 +205,21 @@ export function HomePage() {
                   {featuredCampaign?.server.name.slice(0, 2).toUpperCase() ?? "NX"}
                 </span>
                 <span>
-                  <strong>{featuredCampaign?.title ?? "Loading active campaign…"}</strong>
+                  {campaignsLoading ? (
+                    <ShimmerBlock width={180} height={16} />
+                  ) : (
+                    <strong>{featuredCampaign?.title ?? "No active campaign"}</strong>
+                  )}
                   <small>Skyblock X · Verified</small>
                 </span>
               </div>
               <div className="hero-reward">
                 <small>POTENTIAL REWARD</small>
-                <strong>Up to {featuredCampaign?.maximumSparksReward ?? "—"} Sparks</strong>
+                {campaignsLoading ? (
+                  <ShimmerBlock width={120} height={16} />
+                ) : (
+                  <strong>Up to {featuredCampaign?.maximumSparksReward ?? 0} Sparks</strong>
+                )}
               </div>
             </div>
             <div className="hero-milestones">
@@ -247,11 +255,19 @@ export function HomePage() {
 
       <section className="social-proof">
         <div>
-          <strong>{serverData?.total ?? "—"}</strong>
+          {serversLoading ? (
+            <ShimmerBlock width={56} height={30} />
+          ) : (
+            <strong>{serverData?.total ?? 0}</strong>
+          )}
           <span>verified servers</span>
         </div>
         <div>
-          <strong>{campaignData?.total ?? "—"}</strong>
+          {campaignsLoading ? (
+            <ShimmerBlock width={56} height={30} />
+          ) : (
+            <strong>{campaignData?.total ?? 0}</strong>
+          )}
           <span>active playtests</span>
         </div>
         <div>
@@ -469,12 +485,10 @@ export function BrowseServersPage() {
         value={serverType}
         onChange={setServerType}
       />
+      {isLoading ? (
+        <CardGridSkeleton cards={6} className="server-grid" label="Loading servers" />
+      ) : (
       <div className="server-grid">
-        {isLoading ? (
-          <Card>
-            <p>{t("listing.loadingServers")}</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card>
             <p>{t("listing.serverError")}</p>
@@ -485,6 +499,7 @@ export function BrowseServersPage() {
           <ServerCard server={server} key={server.id} />
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -577,12 +592,14 @@ export function BrowseCampaignsPage() {
         </select>
         <span>{t("listing.playtestCount", { count: formatNumber(visible.length) })}</span>
       </div>
+      {isLoading ? (
+        <CardGridSkeleton
+          cards={6}
+          className="campaign-grid campaign-grid--listing"
+          label="Loading campaigns"
+        />
+      ) : (
       <div className="campaign-grid campaign-grid--listing">
-        {isLoading ? (
-          <Card>
-            <p>{t("home.loading")}</p>
-          </Card>
-        ) : null}
         {isError ? (
           <Card>
             <p>{t("listing.campaignError")}</p>
@@ -598,6 +615,7 @@ export function BrowseCampaignsPage() {
           <CampaignCard campaign={campaign} key={campaign.id} />
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -611,7 +629,7 @@ export function ServerDetailPage() {
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
   const { data: sharedCampaign, isLoading: sharedCampaignLoading } =
     usePublicCampaign(sharedCampaignId);
-  const { data: campaignData } = usePublicCampaigns();
+  const { data: campaignData, isLoading: campaignsLoading } = usePublicCampaigns();
   const [addressCopied, setAddressCopied] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
@@ -624,13 +642,7 @@ export function ServerDetailPage() {
   const [shareJoinMessage, setShareJoinMessage] = useState("");
   const [shareJoined, setShareJoined] = useState(false);
   if (isLoading) {
-    return (
-      <div className="detail-page">
-        <Card>
-          <p>Loading server…</p>
-        </Card>
-      </div>
-    );
+    return <DetailPageSkeleton label="Loading server" />;
   }
   if (isError || !server) {
     return (
@@ -737,7 +749,9 @@ export function ServerDetailPage() {
       />
       {sharedCampaignId && sharedCampaignLoading ? (
         <Modal title="Opening campaign" onClose={closeSharedCampaign}>
-          <div className="modal__body"><p>Loading campaign details…</p></div>
+          <div className="modal__body">
+            <ListSkeleton rows={3} label="Loading campaign details" />
+          </div>
         </Modal>
       ) : null}
       {sharedCampaign && sharedCampaign.server.id === server.id ? (
@@ -904,7 +918,9 @@ export function ServerDetailPage() {
                 <p>Eligible activity may receive Sparks while helping this server improve.</p>
               </div>
             </div>
-            {related.length ? (
+            {campaignsLoading ? (
+              <ListSkeleton rows={3} label="Loading active playtests" />
+            ) : related.length ? (
               related.map((campaign) => <CampaignCard campaign={campaign} key={campaign.id} />)
             ) : (
               <Card className="empty-campaign-card">

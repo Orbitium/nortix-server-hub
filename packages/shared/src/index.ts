@@ -452,25 +452,6 @@ export const milestoneTypes = [
 ] as const;
 export const MilestoneTypeSchema = z.enum(milestoneTypes);
 
-export const campaignQuickStarts = [
-  "FIRST_JOIN",
-  "JOIN_DAILY",
-  "JOIN_WEEKLY",
-  "PLAYTIME",
-  "JOIN_DISCORD",
-  "VOTE_SERVER",
-  "TOTAL_PLAYTIME",
-  "SERVER_REVIEW",
-] as const;
-export const CampaignQuickStartSchema = z.enum(campaignQuickStarts);
-export const CampaignQuickStartConfigSchema = z
-  .object({
-    minutes: z.union([z.literal(15), z.literal(30), z.literal(45)]).optional(),
-    hours: z.union([z.literal(1), z.literal(5), z.literal(15), z.literal(30)]).optional(),
-    optional: z.boolean().optional(),
-  })
-  .default({});
-
 export const ServerInputSchema = z.object({
   name: z.string().min(3).max(80),
   hostname: z.string().min(3).max(255),
@@ -606,9 +587,9 @@ const CampaignConfigurationShape = {
   }),
   regionRestrictions: z.array(z.string()).default([]),
   versionRequirements: z.array(z.string()).default([]),
-  milestones: z.array(CampaignMilestoneInputSchema).min(1).max(8),
-  quickStart: CampaignQuickStartSchema.optional(),
-  quickStartConfig: CampaignQuickStartConfigSchema,
+  milestones: z
+    .array(CampaignMilestoneInputSchema)
+    .length(1, "A campaign must have exactly one milestone"),
 };
 
 type CampaignConfiguration = z.infer<z.ZodObject<typeof CampaignConfigurationShape>>;

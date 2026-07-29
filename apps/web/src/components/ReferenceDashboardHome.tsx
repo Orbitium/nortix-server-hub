@@ -13,6 +13,7 @@ import { Link } from "react-router-dom";
 import { artIndexFor, usePublicCampaigns, usePublicServers } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
 import { ServerCard } from "./ServerCard";
+import { CardGridSkeleton, ListSkeleton } from "./LoadingSkeletons";
 
 export function ReferenceDashboardHome() {
   const { t, formatNumber } = useI18n();
@@ -86,17 +87,24 @@ export function ReferenceDashboardHome() {
             {t("home.viewAll")} <ArrowRight />
           </Link>
         </div>
+        {serversLoading ? (
+          <CardGridSkeleton
+            cards={4}
+            className="featured-servers-row"
+            label="Loading featured servers"
+          />
+        ) : (
         <div className="featured-servers-row">
           {featuredServers.map((server) => (
             <ServerCard server={server} key={server.id} />
           ))}
-          {serversLoading ? <p>Loading featured servers…</p> : null}
           {serversError ? (
             <button type="button" onClick={() => void refetchServers()}>
               {t("home.retry")}
             </button>
           ) : null}
         </div>
+        )}
       </section>
 
       <section className="home-section">
@@ -111,6 +119,13 @@ export function ReferenceDashboardHome() {
             {t("home.viewAll")} <ArrowRight />
           </Link>
         </div>
+        {isLoading ? (
+          <CardGridSkeleton
+            cards={4}
+            className="featured-campaigns"
+            label="Loading featured campaigns"
+          />
+        ) : (
         <div className="featured-campaigns">
           {campaigns.slice(0, 4).map((campaign, index) => (
             <Link className="featured-tile" to={`/campaigns/${campaign.id}`} key={campaign.id}>
@@ -140,9 +155,9 @@ export function ReferenceDashboardHome() {
               </div>
             </Link>
           ))}
-          {isLoading ? <p>{t("home.loading")}</p> : null}
           {isError ? <button onClick={() => refetch()}>{t("home.retry")}</button> : null}
         </div>
+        )}
       </section>
 
       <section className="home-section campaign-directory">
@@ -201,6 +216,7 @@ export function ReferenceDashboardHome() {
         </div>
 
         <div className="campaign-list">
+          {isLoading ? <ListSkeleton rows={4} label="Loading campaigns" /> : null}
           {matchingCampaigns.slice(0, visibleCount).map((campaign) => (
             <div className="campaign-row" key={campaign.id}>
               <div

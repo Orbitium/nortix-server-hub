@@ -702,8 +702,6 @@ model Campaign {
   description              String
   status                   CampaignStatus          @default(DRAFT)
   category                 String
-  quickStart               String?
-  quickStartConfig         Json                    @default("{}")
   internalBudgetCents      Int
   campaignBudgetCredits    Int                     @default(0)
   fundingSource            CampaignFundingSource   @default(OWNER_CREDITS)

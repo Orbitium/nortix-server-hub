@@ -42,14 +42,14 @@ Errors use:
 - `POST /participations/:id/milestones/:milestoneId/submit`
 - `POST /owner/campaigns`
 - `POST /owner/campaigns/:id/submit`
-- `GET /owner/servers/:id/campaign-suggestions?budgetCredits=5000&maximumSparksReward=100&milestoneCount=3`
+- `GET /owner/servers/:id/campaign-suggestions?budgetCredits=5000&maximumSparksReward=100`
 
 Joining requires `{ "acceptedTerms": true }`. Reward amounts and completion approval are never
 accepted from the player client.
 
 Campaign creation accepts compact player-facing copy, a campaign-level
-`sparksRewardRange`, a Campaign Credits budget, and up to eight structured
-milestones. Owners do not submit a participant limit. The backend derives an
+`sparksRewardRange`, a Campaign Credits budget, and exactly one structured,
+automatically verified milestone. Owners do not submit a participant limit. The backend derives an
 internal capacity from the credit budget and campaign configuration. It rejects
 budgets above the authoritative Campaign Credits ledger balance and reserves
 the budget transactionally when the campaign is submitted. The suggestions

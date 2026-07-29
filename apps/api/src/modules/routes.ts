@@ -1377,7 +1377,6 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       const query = request.query as {
         budgetCredits?: string;
         maximumSparksReward?: string;
-        milestoneCount?: string;
       };
       const boundedInteger = (
         value: string | undefined,
@@ -1392,11 +1391,10 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       };
       const budgetCredits = boundedInteger(query.budgetCredits, 5_000, 100, 10_000_000);
       const maximumSparksReward = boundedInteger(query.maximumSparksReward, 100, 10, 2_000);
-      const milestoneCount = boundedInteger(query.milestoneCount, 3, 1, 8);
       const capacity = deriveCampaignCapacity({
         budgetCredits,
         maximumSparksReward,
-        milestoneCount,
+        milestoneCount: 1,
       });
       const server = await prisma.server.findUniqueOrThrow({
         where: { id },
@@ -1930,8 +1928,6 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           description: true,
           status: true,
           category: true,
-          quickStart: true,
-          quickStartConfig: true,
           startsAt: true,
           endsAt: true,
           maxParticipants: true,
@@ -1968,8 +1964,6 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         description: true,
         status: true,
         category: true,
-        quickStart: true,
-        quickStartConfig: true,
         startsAt: true,
         endsAt: true,
         maxParticipants: true,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { ShimmerBlock } from "./LoadingSkeletons";
 
 type TurnstileApi = {
   render: (
@@ -55,18 +56,22 @@ export function TurnstileWidget({
   onToken: (token: string) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
-  const [message, setMessage] = useState("Loading secure CAPTCHA…");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     let widgetId: string | undefined;
     onToken("");
+    setLoading(true);
+    setMessage("");
     Promise.all([
       loadTurnstile(),
       api<{ turnstileSiteKey: string }>("/voting/config"),
     ])
       .then(([, config]) => {
         if (cancelled || !container.current || !window.turnstile) return;
+        setLoading(false);
         setMessage("");
         widgetId = window.turnstile.render(container.current, {
           sitekey: config.turnstileSiteKey,
@@ -83,7 +88,10 @@ export function TurnstileWidget({
           },
         });
       })
-      .catch(() => setMessage("CAPTCHA could not be loaded. Check your connection and retry."));
+      .catch(() => {
+        setLoading(false);
+        setMessage("CAPTCHA could not be loaded. Check your connection and retry.");
+      });
     return () => {
       cancelled = true;
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
@@ -93,6 +101,12 @@ export function TurnstileWidget({
   return (
     <div className="turnstile-wrap">
       <div ref={container} />
+      {loading ? (
+        <>
+          <ShimmerBlock width={300} height={65} />
+          <span className="sr-only" role="status">Loading secure CAPTCHA</span>
+        </>
+      ) : null}
       {message ? <small role="status">{message}</small> : null}
     </div>
   );

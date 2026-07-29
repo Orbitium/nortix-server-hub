@@ -4,6 +4,13 @@ import { Link, useLocation } from "react-router-dom";
 import { Button } from "@nortix/ui";
 import { api } from "../lib/api";
 import { Modal } from "./Modal";
+import {
+  CardGridSkeleton,
+  DetailPageSkeleton,
+  ListSkeleton,
+  MetricGridSkeleton,
+  TableSkeleton,
+} from "./LoadingSkeletons";
 import { useNotificationPreferences, useOwnerAnalytics } from "../features/api-data";
 import {
   minecraftMajorVersions,
@@ -316,7 +323,7 @@ export function OwnerPlatform() {
     return (
       <div className="dashboard-page owner-platform">
         {!serversLoaded ? (
-          <section className="card owner-server-empty"><p>Loading your server portfolio…</p></section>
+          <DetailPageSkeleton label="Loading your server portfolio" />
         ) : (
           <section className="card owner-server-empty">
             <div className="owner-server-empty__art" aria-hidden="true">
@@ -385,12 +392,19 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
         </button>
       </div>
 
+      {analyticsLoading ? (
+        <>
+          <MetricGridSkeleton items={6} label="Loading server analytics" />
+          <CardGridSkeleton cards={4} label="Loading analytics panels" />
+        </>
+      ) : (
+        <>
       <div className="owner-kpi-grid">
         {[
           {
             icon: Eye,
             label: "Discovery impressions",
-            value: analyticsLoading ? "Loading…" : (totals?.impressions ?? 0).toLocaleString(),
+            value: (totals?.impressions ?? 0).toLocaleString(),
             delta: `${days}d`,
             note: "seeded event window",
             positive: false,
@@ -398,7 +412,7 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
           {
             icon: UserPlus,
             label: "Qualified server joins",
-            value: analyticsLoading ? "Loading…" : (totals?.joins ?? 0).toLocaleString(),
+            value: (totals?.joins ?? 0).toLocaleString(),
             delta: "Observed",
             note: "campaign join events",
             positive: false,
@@ -406,7 +420,7 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
           {
             icon: Users,
             label: "Unique active players",
-            value: analyticsLoading ? "Loading…" : (totals?.uniquePlayers ?? 0).toLocaleString(),
+            value: (totals?.uniquePlayers ?? 0).toLocaleString(),
             delta: "Observed",
             note: "distinct event users",
             positive: false,
@@ -416,7 +430,7 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
             label: "7-day return rate",
             value: analytics?.retention.day7 == null ? "Insufficient data" : `${analytics.retention.day7}%`,
             delta: "D7",
-            note: analytics?.retention.label ?? "Loading retention signal",
+            note: analytics?.retention.label ?? "Retention signal unavailable",
             positive: false,
           },
           {
@@ -430,7 +444,7 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
           {
             icon: Sparkles,
             label: "Potential Sparks exposure",
-            value: analyticsLoading ? "Loading…" : `${totals?.campaigns ?? 0} campaigns`,
+            value: `${totals?.campaigns ?? 0} campaigns`,
             delta: "Configured",
             note: `${totals?.participations ?? 0} participation records`,
             positive: false,
@@ -632,6 +646,8 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
           ))}
         </div>
       </section>
+        </>
+      )}
     </div>
   );
 }
@@ -640,7 +656,10 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
   const [tab, setTab] = useState("Overview");
   const [range, setRange] = useState("Last 30 days");
   const days = Number.parseInt(range.replace(/\D/g, ""), 10) || 30;
-  const { data: analytics } = useOwnerAnalytics(server.id, Math.min(90, Math.max(7, days)));
+  const { data: analytics, isLoading: analyticsLoading } = useOwnerAnalytics(
+    server.id,
+    Math.min(90, Math.max(7, days)),
+  );
   const analyticsMaximum = Math.max(1, ...(analytics?.daily.map((day) => day.impressions) ?? [1]));
   const trendBars = (analytics?.daily ?? []).map((day) => Math.max(4, (day.impressions / analyticsMaximum) * 100));
   const retentionBars = [analytics?.retention.day1, analytics?.retention.day7].filter((value): value is number => value != null);
@@ -677,6 +696,14 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
         </label>
       </div>
 
+      {analyticsLoading ? (
+        <>
+          <MetricGridSkeleton items={5} label="Loading analytics summary" />
+          <CardGridSkeleton cards={4} label="Loading analytics charts" />
+          <TableSkeleton rows={4} columns={8} label="Loading cohort data" />
+        </>
+      ) : (
+        <>
       <div className="owner-kpi-grid owner-kpi-grid--analytics">
         {[
           ["Qualified joins", (analytics?.totals.joins ?? 0).toLocaleString(), "Observed", "seeded campaign join events"],
@@ -876,6 +903,8 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
           </table>
         </div>
       </section>
+        </>
+      )}
     </div>
   );
 }
@@ -898,6 +927,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
   const [deleteReason, setDeleteReason] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [capabilities, setCapabilities] = useState<PluginCapabilityInfo[]>([]);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(true);
   const filtered = useMemo(
     () =>
       servers.filter((item) =>
@@ -912,9 +942,11 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
   const connectedCount = servers.filter((item) => item.pluginConnected).length;
   useEffect(() => {
     setConnectionCredentials(null);
+    setCapabilitiesLoading(true);
     api<{ pluginCapabilities: PluginCapabilityInfo[] }>(`/owner/servers/${server.id}/plugin-capabilities`)
       .then((result) => setCapabilities(result.pluginCapabilities ?? []))
-      .catch(() => setCapabilities([]));
+      .catch(() => setCapabilities([]))
+      .finally(() => setCapabilitiesLoading(false));
   }, [server.id]);
 
   const generatePluginCredentials = async () => {
@@ -1197,7 +1229,9 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
             <strong>Detected milestone providers</strong>
             <span>{capabilities.length ? `${capabilities.length} connected` : "Waiting for plugin heartbeat"}</span>
           </div>
-          {capabilities.length ? (
+          {capabilitiesLoading ? (
+            <ListSkeleton rows={3} label="Loading plugin capabilities" />
+          ) : capabilities.length ? (
             capabilities.map((capability) => (
               <article key={capability.id}>
                 <span>
@@ -1419,7 +1453,14 @@ function OwnerStoreSales() {
   if (!data) {
     return (
       <div className="dashboard-page owner-platform">
-        <section className="card"><p>{message || "Loading private store sales…"}</p></section>
+        {message ? (
+          <section className="card"><p>{message}</p></section>
+        ) : (
+          <>
+            <MetricGridSkeleton items={4} label="Loading store sales summary" />
+            <TableSkeleton rows={6} columns={5} label="Loading private store sales" />
+          </>
+        )}
       </div>
     );
   }
@@ -1598,6 +1639,7 @@ function OwnerStoreManager({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [storeLoading, setStoreLoading] = useState(true);
   const storePublishEligible =
     server.claimed &&
     server.verificationStatus === "VERIFIED" &&
@@ -1628,12 +1670,15 @@ function OwnerStoreManager({
 
   useEffect(() => {
     setMessage("");
+    setStoreLoading(true);
     setSection("items");
     setEditingItemId(null);
     setItemDraft(emptyStoreItemDraft);
-    load().catch((error) =>
-      setMessage(error instanceof Error ? error.message : "The server store could not be loaded."),
-    );
+    load()
+      .catch((error) =>
+        setMessage(error instanceof Error ? error.message : "The server store could not be loaded."),
+      )
+      .finally(() => setStoreLoading(false));
   }, [server.id]);
 
   const saveStore = async (event: React.FormEvent) => {
@@ -1814,6 +1859,14 @@ function OwnerStoreManager({
       setBusy(false);
     }
   };
+
+  if (storeLoading) {
+    return (
+      <div className="dashboard-page owner-platform">
+        <DetailPageSkeleton label="Loading server store" />
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-page owner-platform">
@@ -2207,8 +2260,10 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
   const [inviteRole, setInviteRole] = useState<TeamInvite["role"]>("MANAGER");
   const [teamMessage, setTeamMessage] = useState("");
   const [teamBusy, setTeamBusy] = useState("");
+  const [teamLoading, setTeamLoading] = useState(true);
   const { refreshServers } = useContext(OwnerServersContext);
-  const { data: notificationPreferences } = useNotificationPreferences();
+  const { data: notificationPreferences, isLoading: preferencesLoading } =
+    useNotificationPreferences();
 
   useEffect(() => {
     if (!notificationPreferences) return;
@@ -2261,7 +2316,10 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
   };
 
   useEffect(() => {
-    loadTeam().catch(() => undefined);
+    setTeamLoading(true);
+    loadTeam()
+      .catch(() => undefined)
+      .finally(() => setTeamLoading(false));
   }, [server.id, server.accessType]);
 
   const answerInvite = async (inviteId: string, action: "ACCEPT" | "DECLINE") => {
@@ -2339,6 +2397,14 @@ function OwnerSettings({ server, setServer }: { server: ServerRecord; setServer:
   };
 
   const groups = ["Discovery", "Voting", "Sparks", "Notifications", "Data & privacy", "Team access", "Security"];
+  if (preferencesLoading || teamLoading) {
+    return (
+      <div className="dashboard-page owner-platform">
+        <DetailPageSkeleton label="Loading server settings" />
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-page owner-platform">
       <OwnerHeader
@@ -2718,7 +2784,8 @@ function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: 
     fundingSource: "OWNER_CREDITS" | "NORTIX_SPONSORED";
   }>>([]);
   const { servers } = useContext(OwnerServersContext);
-  const [balanceMessage, setBalanceMessage] = useState("Loading Campaign Credits…");
+  const [balanceMessage, setBalanceMessage] = useState("");
+  const [balanceLoading, setBalanceLoading] = useState(true);
   useEffect(() => {
     Promise.all([
       api<CampaignCreditBalance>("/owner/campaign-balance"),
@@ -2735,7 +2802,8 @@ function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: 
         setOwnerCampaigns(campaignsResult);
         setBalanceMessage("");
       })
-      .catch(() => setBalanceMessage("Campaign Credits are available when the owner API is connected."));
+      .catch(() => setBalanceMessage("Campaign Credits are available when the owner API is connected."))
+      .finally(() => setBalanceLoading(false));
   }, []);
   return (
     <div className="dashboard-page owner-platform">
@@ -2751,6 +2819,13 @@ function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: 
           </Link>
         }
       />
+      {balanceLoading ? (
+        <>
+          <MetricGridSkeleton items={5} label="Loading Campaign Credits" />
+          <TableSkeleton rows={5} columns={5} label="Loading Campaign Credits activity" />
+        </>
+      ) : (
+        <>
       <div className="owner-kpi-grid owner-kpi-grid--analytics">
         {[
           ["Available Campaign Credits", balance.availableCredits.toLocaleString(), "Maximum available for a new campaign budget"],
@@ -2862,6 +2937,8 @@ function OwnerCredits({ server, setServer }: { server: ServerRecord; setServer: 
           </table>
         </div>
       </section>
+        </>
+      )}
     </div>
   );
 }
@@ -2878,15 +2955,11 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
   const [estimatedCreditCost, setEstimatedCreditCost] = useState(29);
   const [category, setCategory] = useState("Onboarding");
   const [campaignVersions, setCampaignVersions] = useState<string[]>(["1.21"]);
-  const [quickStart, setQuickStart] = useState("FIRST_JOIN");
-  const [quickStartValue, setQuickStartValue] = useState("15");
   const [rewardRange, setRewardRange] = useState("50-100");
   const [suggestions, setSuggestions] = useState<CampaignSuggestion[]>([]);
   const [suggestionsServer, setSuggestionsServer] = useState("");
   const [exposure, setExposure] = useState({ minimum: 100, maximum: 400 });
-  const [milestones, setMilestones] = useState<ConfiguredMilestone[]>([
-    { id: "quick-start-first-join", metric: "JOIN_SERVER", target: 1, scope: "SERVER", title: "First join" },
-  ]);
+  const [milestones, setMilestones] = useState<ConfiguredMilestone[]>([]);
   const [milestoneComposerOpen, setMilestoneComposerOpen] = useState(false);
   const [milestoneDraft, setMilestoneDraft] = useState({
     metric: "",
@@ -2895,21 +2968,9 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
   });
   const [milestoneDraftMessage, setMilestoneDraftMessage] = useState("");
   const [eligibility, setEligibility] = useState<CampaignEligibility | null>(null);
-
-  const applyQuickStart = (kind: string, value = quickStartValue) => {
-    const definitions: Record<string, { metric: string; title: string; target: number; scope: "SERVER" }> = {
-      FIRST_JOIN: { metric: "JOIN_SERVER", title: "First join", target: 1, scope: "SERVER" },
-      JOIN_DAILY: { metric: "JOIN_DAILY", title: "Join on a different day", target: 1, scope: "SERVER" },
-      JOIN_WEEKLY: { metric: "JOIN_WEEKLY", title: "Join in a different week", target: 1, scope: "SERVER" },
-      JOIN_DISCORD: { metric: "JOIN_DISCORD", title: "Join the Discord community", target: 1, scope: "SERVER" },
-      VOTE_SERVER: { metric: "VOTE_SERVER", title: "Vote for this server on Nortix", target: 1, scope: "SERVER" },
-      SERVER_REVIEW: { metric: "SERVER_REVIEW", title: "Review the server after playing", target: 1, scope: "SERVER" },
-      PLAYTIME: { metric: "ACTIVE_DURATION", title: `Play for ${value} minutes`, target: Number(value) * 60, scope: "SERVER" },
-      TOTAL_PLAYTIME: { metric: "PLAYTIME_TOTAL", title: `Reach ${value} hour${value === "1" ? "" : "s"} of playtime`, target: Number(value) * 3600, scope: "SERVER" },
-    };
-    const definition = definitions[kind];
-    if (definition) setMilestones([{ id: crypto.randomUUID(), ...definition }]);
-  };
+  const [creditLoading, setCreditLoading] = useState(true);
+  const [eligibilityLoading, setEligibilityLoading] = useState(true);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   useEffect(() => {
     api<CampaignCreditBalance>("/owner/campaign-balance")
@@ -2924,22 +2985,29 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
             ? error.message
             : "The seeded Campaign Credits balance could not be loaded.",
         );
-      });
+      })
+      .finally(() => setCreditLoading(false));
   }, []);
 
   useEffect(() => {
     setEligibility(null);
+    setEligibilityLoading(true);
+    setSuggestionsLoading(true);
     api<CampaignEligibility>(`/owner/servers/${server.id}/campaign-eligibility`)
       .then(setEligibility)
       .catch((error) => {
         setBuilderMessage(error instanceof Error ? error.message : "Campaign eligibility could not be checked.");
-      });
+      })
+      .finally(() => setEligibilityLoading(false));
   }, [server.id]);
 
   useEffect(() => {
     const maximumSparksReward = Number(rewardRange.split("-")[1] ?? 100);
-    if (budgetCredits < 100) return;
-    api<CampaignSuggestionResponse>(`/owner/servers/${server.id}/campaign-suggestions?budgetCredits=${budgetCredits}&maximumSparksReward=${maximumSparksReward}&milestoneCount=${Math.max(1, milestones.length)}`)
+    if (budgetCredits < 100) {
+      setSuggestionsLoading(false);
+      return;
+    }
+    api<CampaignSuggestionResponse>(`/owner/servers/${server.id}/campaign-suggestions?budgetCredits=${budgetCredits}&maximumSparksReward=${maximumSparksReward}`)
       .then((result) => {
         setSuggestions(result.suggestions);
         setExposure(result.exposure);
@@ -2956,7 +3024,8 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
         setDerivedCapacity(capacity);
         setEstimatedCreditCost(estimatedCost);
         setExposure({ minimum, maximum: Math.max(minimum, Math.floor(capacity * 0.75)) });
-      });
+      })
+      .finally(() => setSuggestionsLoading(false));
   }, [budgetCredits, milestones.length, rewardRange, server.id, suggestionsServer]);
 
   const selectedMetrics = new Set(milestones.map((item) => item.metric));
@@ -2972,17 +3041,13 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
       return;
     }
     if (!suggestion.available) return;
-    if (milestones.length >= 8) {
-      setBuilderMessage("A campaign can contain up to eight milestones.");
-      return;
-    }
     setBuilderMessage("");
-    setMilestones((items) => [...items, toConfiguredMilestone(suggestion)]);
+    setMilestones([toConfiguredMilestone(suggestion)]);
   };
   const openMilestoneComposer = () => {
     const firstSuggestion = creatableSuggestions[0];
-    if (milestones.length >= 8) {
-      setBuilderMessage("A campaign can contain up to eight milestones.");
+    if (milestones.length === 1) {
+      setBuilderMessage("Remove the selected milestone before creating a different one.");
       return;
     }
     if (!firstSuggestion) {
@@ -3029,8 +3094,7 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
       );
       return;
     }
-    setMilestones((items) => [
-      ...items,
+    setMilestones([
       {
         id: crypto.randomUUID(),
         metric: suggestion.metric,
@@ -3038,7 +3102,7 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
         scope: suggestion.scope,
         title,
       },
-    ].slice(0, 8));
+    ]);
     setMilestoneComposerOpen(false);
     setMilestoneDraftMessage("");
   };
@@ -3048,8 +3112,8 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
       setBuilderMessage("This server needs at least 10 average active players and a current plugin activity history before it can run campaigns.");
       return;
     }
-    if (!milestones.length) {
-      setBuilderMessage("Choose at least one suggested milestone.");
+    if (milestones.length !== 1) {
+      setBuilderMessage("Choose exactly one suggested or custom milestone.");
       return;
     }
     if (!campaignVersions.length) {
@@ -3087,15 +3151,9 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
             templateType: item.metric,
             title: `${item.title} · ${item.target.toLocaleString()}`,
             instructions: `${item.title} on ${item.scope === "SERVER" ? server.name : "this proxy network"}. Nortix checks progress automatically from safeguarded plugin data.`,
-            verificationMethod: quickStart === "JOIN_DISCORD" ? "API" : "WEB_EVENT",
+            verificationMethod: "SERVER_PLUGIN",
             config: { metric: item.metric, target: item.target, scope: item.scope },
           })),
-          quickStart,
-          quickStartConfig: quickStart === "PLAYTIME"
-            ? { minutes: Number(quickStartValue) }
-            : quickStart === "TOTAL_PLAYTIME"
-              ? { hours: Number(quickStartValue) }
-              : quickStart === "JOIN_DISCORD" ? { optional: true } : {},
         }),
       });
       await api(`/owner/campaigns/${created.id}/submit`, { method: "POST" });
@@ -3107,6 +3165,13 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
       setSaving(false);
     }
   };
+  if (creditLoading || eligibilityLoading || suggestionsLoading) {
+    return (
+      <div className="dashboard-page owner-platform">
+        <DetailPageSkeleton label="Loading campaign builder" />
+      </div>
+    );
+  }
   return (
     <div className="dashboard-page owner-platform">
       <OwnerHeader
@@ -3160,42 +3225,8 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
           <div className="owner-simple-heading">
             <span>2</span>
             <div>
-              <h2>Quick-start campaign</h2>
-              <p>Choose a ready-made player goal, then adjust the campaign details below.</p>
-            </div>
-          </div>
-          <div className="form-grid form-grid--two owner-compact-fields">
-            <label>
-              Quick start
-              <select value={quickStart} onChange={(event) => { setQuickStart(event.target.value); applyQuickStart(event.target.value); }}>
-                <option value="FIRST_JOIN">First Join</option>
-                <option value="JOIN_DAILY">Join Daily</option>
-                <option value="JOIN_WEEKLY">Join Weekly</option>
-                <option value="PLAYTIME">Play 15–30–45 minutes</option>
-                <option value="JOIN_DISCORD">Join Discord (optional OAuth)</option>
-                <option value="VOTE_SERVER">Voted server on Nortix</option>
-                <option value="TOTAL_PLAYTIME">Total playtime reached: 1–5–15–30 hours</option>
-                <option value="SERVER_REVIEW">Ranked server on Nortix (post-play)</option>
-              </select>
-            </label>
-            {(quickStart === "PLAYTIME" || quickStart === "TOTAL_PLAYTIME") ? (
-              <label>
-                Goal amount
-                <select value={quickStartValue} onChange={(event) => { setQuickStartValue(event.target.value); applyQuickStart(quickStart, event.target.value); }}>
-                  {(quickStart === "PLAYTIME" ? ["15", "30", "45"] : ["1", "5", "15", "30"]).map((value) => <option value={value} key={value}>{value} {quickStart === "PLAYTIME" ? "minutes" : "hours"}</option>)}
-                </select>
-              </label>
-            ) : null}
-          </div>
-          <div className="owner-auto-note">
-            <ShieldCheck />
-            <span><strong>{quickStart === "JOIN_DISCORD" ? "Optional Discord OAuth" : "Quick start ready"}</strong><small>{quickStart === "JOIN_DISCORD" ? "OAuth connection can be completed later; the campaign intent is stored now." : "Gameplay validation will be connected in a later backend integration step."}</small></span>
-          </div>
-          <div className="owner-simple-heading">
-            <span>3</span>
-            <div>
-              <h2>Suggested milestones</h2>
-              <p>Suggestions come from the capabilities reported by the plugin on {server.name}.</p>
+              <h2>Choose one milestone</h2>
+              <p>Select one plugin-backed suggestion or create one custom milestone for this campaign.</p>
             </div>
           </div>
           <div className="owner-auto-note">
@@ -3238,13 +3269,15 @@ function CampaignBuilder({ server, setServer }: { server: ServerRecord; setServe
           <div className="owner-configured-milestones owner-configured-milestones--simple">
             <div className="owner-configured-milestones__heading">
               <span>
-                <strong>Campaign milestones</strong>
-                <small>{milestones.length} of 8 created</small>
+                <strong>Campaign milestone</strong>
+                <small>{milestones.length === 1 ? "1 selected" : "None selected"}</small>
               </span>
               <button
                 type="button"
                 className="button button--secondary owner-create-milestone"
                 onClick={openMilestoneComposer}
+                disabled={milestones.length === 1}
+                title={milestones.length === 1 ? "Remove the selected milestone first." : undefined}
               >
                 <Plus /> Create milestone
               </button>
@@ -3669,6 +3702,14 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_500);
   };
+
+  if (!draftLoaded) {
+    return (
+      <div className="dashboard-page owner-platform">
+        <DetailPageSkeleton label="Loading server registration" />
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-page owner-platform">
