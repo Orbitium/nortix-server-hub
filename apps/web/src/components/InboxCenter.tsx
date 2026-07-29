@@ -72,6 +72,7 @@ export function InboxPage() {
     if (tab !== "notifications") return;
     void api("/inbox/read-all", {
       method: "POST",
+      body: JSON.stringify({ kind: "notifications" }),
     })
       .then(() =>
         Promise.all([
