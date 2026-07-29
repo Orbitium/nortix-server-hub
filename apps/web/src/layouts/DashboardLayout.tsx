@@ -109,7 +109,7 @@ export function DashboardLayout() {
   const railLeaders = leaderboardData?.slice(0, 5) ?? [];
   const dailyQuest = dailyQuests[0];
   const { data: inboxSummary } = useInboxSummary(isAuthenticated);
-  const { data: notificationItems = [] } = useNotifications(true, isAuthenticated);
+  const { data: notificationItems = [] } = useNotifications(false, isAuthenticated);
   const { data: messageItems = [] } = useInboxMessages(true, isAuthenticated);
 
   useEffect(() => {
@@ -195,6 +195,26 @@ export function DashboardLayout() {
       queryClient.invalidateQueries({ queryKey: ["inbox-messages"] }),
       queryClient.invalidateQueries({ queryKey: ["inbox-summary"] }),
     ]);
+  };
+
+  const markNotificationsRead = async () => {
+    await api("/inbox/read-all", {
+      method: "POST",
+      body: JSON.stringify({ kind: "notifications" }),
+    });
+    await refreshInbox();
+  };
+
+  const toggleNotifications = () => {
+    if (notificationsOpen) {
+      setNotificationsOpen(false);
+      return;
+    }
+    setNotificationsOpen(true);
+    setMessagesOpen(false);
+    void markNotificationsRead().catch(() => {
+      void queryClient.invalidateQueries({ queryKey: ["inbox-summary"] });
+    });
   };
 
   const openNotification = async (id: string, actionUrl?: string | null) => {
@@ -335,10 +355,7 @@ export function DashboardLayout() {
                 className="icon-button"
                 aria-label={`${inboxSummary?.unreadNotifications ?? 0} unread notifications`}
                 aria-expanded={notificationsOpen}
-                onClick={() => {
-                  setNotificationsOpen((value) => !value);
-                  setMessagesOpen(false);
-                }}
+                onClick={toggleNotifications}
               >
                 <Bell />
                 {(inboxSummary?.unreadNotifications ?? 0) > 0 ? (

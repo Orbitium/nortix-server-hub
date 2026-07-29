@@ -68,6 +68,20 @@ export function InboxPage() {
   const notifications = useNotifications(unreadOnly);
   const messages = useInboxMessages(unreadOnly);
 
+  useEffect(() => {
+    if (tab !== "notifications") return;
+    void api("/inbox/read-all", {
+      method: "POST",
+    })
+      .then(() =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+          queryClient.invalidateQueries({ queryKey: ["inbox-summary"] }),
+        ]),
+      )
+      .catch(() => undefined);
+  }, [queryClient, tab]);
+
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["notifications"] }),
