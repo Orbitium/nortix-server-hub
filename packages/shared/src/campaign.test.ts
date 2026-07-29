@@ -63,8 +63,32 @@ describe("campaign input", () => {
     expect(CampaignInputSchema.safeParse({ ...campaign, budgetCredits: 5_000 }).success).toBe(true);
   });
 
-  it("uses the normal campaign contract for Nortix-sponsored campaigns", () => {
-    expect(AdminSponsoredCampaignInputSchema.safeParse(campaign).success).toBe(true);
+  it("requires an explicit target for Nortix-sponsored campaigns", () => {
+    const { serverId, ...configuration } = campaign;
+    expect(AdminSponsoredCampaignInputSchema.safeParse(configuration).success).toBe(false);
+    expect(
+      AdminSponsoredCampaignInputSchema.safeParse({
+        ...configuration,
+        target: { serverId },
+      }).success,
+    ).toBe(true);
+    expect(
+      AdminSponsoredCampaignInputSchema.safeParse({
+        ...configuration,
+        target: {
+          address: { hostname: "play.example.net", port: 25565, edition: "JAVA" },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      AdminSponsoredCampaignInputSchema.safeParse({
+        ...configuration,
+        target: {
+          serverId,
+          address: { hostname: "play.example.net", port: 25565, edition: "JAVA" },
+        },
+      }).success,
+    ).toBe(true);
   });
 
   it("validates typed campaign termination choices", () => {

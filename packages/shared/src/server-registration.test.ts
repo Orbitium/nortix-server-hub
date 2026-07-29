@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DeleteServerRegistrationSchema, ServerInputSchema } from "./index";
+import {
+  DeleteServerRegistrationSchema,
+  ServerAddressValidationSchema,
+  ServerInputSchema,
+} from "./index";
 
 const registration = {
   name: "Example Network",
@@ -30,6 +34,18 @@ describe("server registration input", () => {
       ServerInputSchema.safeParse({
         ...registration,
         bannerUrl: "javascript:alert(1)",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only Java Edition registrations and address checks", () => {
+    expect(ServerInputSchema.safeParse({ ...registration, edition: "JAVA" }).success).toBe(true);
+    expect(ServerInputSchema.safeParse({ ...registration, edition: "BEDROCK" }).success).toBe(false);
+    expect(
+      ServerAddressValidationSchema.safeParse({
+        hostname: registration.hostname,
+        port: 19132,
+        edition: "BEDROCK",
       }).success,
     ).toBe(false);
   });

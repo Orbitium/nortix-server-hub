@@ -40,6 +40,7 @@ import { Badge, Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
+import { ServerCategoryFilter } from "../components/ServerCategoryFilter";
 import { ReferenceDashboardHome } from "../components/ReferenceDashboardHome";
 import { SeededProgressPage } from "../components/SeededProgressPage";
 import {
@@ -71,7 +72,11 @@ import { showGoogleRewardedAd } from "../lib/google-rewarded-ad";
 import { TurnstileWidget } from "../components/TurnstileWidget";
 import { useI18n } from "../lib/i18n";
 import { readRolePreference, saveRolePreference } from "../lib/role-preference";
-import { filterServers, getServerFilterOptions } from "../lib/server-filtering";
+import {
+  filterServers,
+  getServerFilterOptions,
+  sortServersByCategory,
+} from "../lib/server-filtering";
 import { isInsufficientSparksError, sparksPurchaseTotal } from "../lib/sparks-purchase";
 import { referralRegistrationUrl } from "../lib/referral-link";
 import {
@@ -80,6 +85,8 @@ import {
   maxSponsoredPurchaseQuantity,
   minecraftMajorVersions,
   serverTypes,
+  storeItemCategoryLabels,
+  type StoreItemCategory,
 } from "@nortix/shared";
 
 const PageHeading = ({
@@ -352,7 +359,7 @@ export function DashboardServersPage() {
   const servers = data?.items ?? [];
   const filterOptions = useMemo(() => getServerFilterOptions(servers), [servers]);
   const filtered = useMemo(
-    () => filterServers(servers, { search, category, version }),
+    () => sortServersByCategory(filterServers(servers, { search, category, version })),
     [servers, search, category, version],
   );
   return (
@@ -369,19 +376,6 @@ export function DashboardServersPage() {
         </label>
         <select
           className="filter-select"
-          aria-label={t("ui.allCategories")}
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-        >
-          <option value="ALL">{t("ui.allCategories")}</option>
-          {filterOptions.categories.map((item) => (
-            <option value={item} key={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-        <select
-          className="filter-select"
           aria-label={t("ui.allVersions")}
           value={version}
           onChange={(event) => setVersion(event.target.value)}
@@ -394,6 +388,11 @@ export function DashboardServersPage() {
           ))}
         </select>
       </div>
+      <ServerCategoryFilter
+        categories={filterOptions.categories}
+        value={category}
+        onChange={setCategory}
+      />
       <div className="server-grid">
         {isLoading ? (
           <Card className="directory-status-card">
@@ -425,7 +424,6 @@ export function DashboardCampaignsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("ALL");
   const [version, setVersion] = useState("ALL");
-  const [edition, setEdition] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
   const campaigns = data?.items ?? [];
   const categories = useMemo(
@@ -465,7 +463,6 @@ export function DashboardCampaignsPage() {
           campaign.server.versions.some(
             (item) => item === version || item.startsWith(`${version}.`),
           )) &&
-        (edition === "ALL" || campaign.server.edition === edition) &&
         (!query || searchableText.includes(query))
       );
     });
@@ -476,7 +473,7 @@ export function DashboardCampaignsPage() {
         return new Date(left.endsAt).getTime() - new Date(right.endsAt).getTime();
       return new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime();
     });
-  }, [campaigns, category, edition, search, tab, version]);
+  }, [campaigns, category, search, tab, version]);
   return (
     <div className="dashboard-page">
       <PageHeading title={t("ui.campaigns")} description={t("ui.campaignDescription")} />
@@ -511,15 +508,6 @@ export function DashboardCampaignsPage() {
               {item}
             </option>
           ))}
-        </select>
-        <select
-          aria-label={t("ui.allEditions")}
-          value={edition}
-          onChange={(event) => setEdition(event.target.value)}
-        >
-          <option value="ALL">{t("ui.allEditions")}</option>
-          <option value="JAVA">Java</option>
-          <option value="BEDROCK">Bedrock</option>
         </select>
       </div>
       <div className="tabs">
@@ -956,7 +944,10 @@ export function SparksShopPage() {
   const [selected, setSelected] = useState<ProfileCosmeticItem | null>(null);
   const [cosmeticBusy, setCosmeticBusy] = useState(false);
   const [marketView, setMarketView] = useState<"NORTIX" | "SERVER">("NORTIX");
+  const [nortixSection, setNortixSection] = useState<"COSMETICS" | "SPONSORED">("COSMETICS");
   const [category, setCategory] = useState("ALL");
+  const [sponsoredCategory, setSponsoredCategory] = useState<"ALL" | StoreItemCategory>("ALL");
+  const [serverCategory, setServerCategory] = useState<"ALL" | StoreItemCategory>("ALL");
   const [purchaseMessage, setPurchaseMessage] = useState("");
   const [selectedSponsored, setSelectedSponsored] = useState<{
     store: SponsoredStore;
@@ -999,6 +990,36 @@ export function SparksShopPage() {
   const selectedServerStoreTotal = selectedServerItem
     ? sparksPurchaseTotal(selectedServerItem.item.sparksPrice, serverStoreQuantity)
     : 0;
+  const sponsoredCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(sponsoredStores.flatMap((store) => store.items.map((item) => item.category))),
+      ),
+    [sponsoredStores],
+  );
+  const serverCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(serverStores.flatMap((store) => store.items.map((item) => item.category))),
+      ),
+    [serverStores],
+  );
+  const visibleSponsoredStores = sponsoredStores
+    .map((store) => ({
+      ...store,
+      items: store.items.filter(
+        (item) => sponsoredCategory === "ALL" || item.category === sponsoredCategory,
+      ),
+    }))
+    .filter((store) => store.items.length > 0);
+  const visibleServerStores = serverStores
+    .map((store) => ({
+      ...store,
+      items: store.items.filter(
+        (item) => serverCategory === "ALL" || item.category === serverCategory,
+      ),
+    }))
+    .filter((store) => store.items.length > 0);
   const updateServerPurchase = async (
     purchase: ServerStorePurchase,
     action: "redeem" | "refund",
@@ -1066,6 +1087,28 @@ export function SparksShopPage() {
         }
       />
       {marketView === "NORTIX" ? (
+        <>
+      <div className="shop-tabs sparks-shop-section-tabs" role="tablist" aria-label="Nortix Market sections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={nortixSection === "COSMETICS"}
+          className={nortixSection === "COSMETICS" ? "active" : ""}
+          onClick={() => setNortixSection("COSMETICS")}
+        >
+          Cosmetics
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={nortixSection === "SPONSORED"}
+          className={nortixSection === "SPONSORED" ? "active" : ""}
+          onClick={() => setNortixSection("SPONSORED")}
+        >
+          Nortix Sponsored
+        </button>
+      </div>
+      {nortixSection === "COSMETICS" ? (
         <>
       <Card className="sparks-disclaimer">
         <Sparkles />
@@ -1153,6 +1196,8 @@ export function SparksShopPage() {
       </div>
         </>
       ) : null}
+        </>
+      ) : null}
       {marketView === "SERVER" ? (
         <>
       <PageHeading
@@ -1160,8 +1205,27 @@ export function SparksShopPage() {
         title="Items delivered in-game"
         description="Purchase items for yourself or gift them to another Nortix user. Delivery is performed by the verified server plugin."
       />
+      <div className="shop-tabs" aria-label="Server item categories">
+        <button
+          type="button"
+          className={serverCategory === "ALL" ? "active" : ""}
+          onClick={() => setServerCategory("ALL")}
+        >
+          All
+        </button>
+        {serverCategories.map((value) => (
+          <button
+            type="button"
+            key={value}
+            className={serverCategory === value ? "active" : ""}
+            onClick={() => setServerCategory(value)}
+          >
+            {storeItemCategoryLabels[value]}
+          </button>
+        ))}
+      </div>
       <div className="sponsored-store-list">
-        {serverStores.map((store) => (
+        {visibleServerStores.map((store) => (
           <section className="sponsored-store" key={store.id}>
             <div className="sponsored-store__heading">
               {store.logoUrl || store.server.logoUrl ? (
@@ -1194,7 +1258,9 @@ export function SparksShopPage() {
                     />
                   ) : <Gift />}
                   <div>
-                    <small>{store.server.name}</small>
+                    <small>
+                      {store.server.name} · {storeItemCategoryLabels[item.category]}
+                    </small>
                     <h3>{item.name}</h3>
                     <p>{item.description}</p>
                     <span>
@@ -1222,9 +1288,13 @@ export function SparksShopPage() {
           </section>
         ))}
       </div>
-      {serverStores.length === 0 ? (
+      {visibleServerStores.length === 0 ? (
         <Card className="sparks-shop-empty-state">
-          <p>No verified server stores are available right now.</p>
+          <p>
+            {serverStores.length === 0
+              ? "No verified server stores are available right now."
+              : "No server items are available in this category."}
+          </p>
         </Card>
       ) : null}
       {serverStorePurchases.length ? (
@@ -1322,7 +1392,7 @@ export function SparksShopPage() {
       ) : null}
         </>
       ) : null}
-      {marketView === "NORTIX" ? (
+      {marketView === "NORTIX" && nortixSection === "SPONSORED" ? (
         <>
       <PageHeading
         eyebrow="NORTIX SPONSORED"
@@ -1340,8 +1410,27 @@ export function SparksShopPage() {
           </p>
         </div>
       </Card>
+      <div className="shop-tabs" aria-label="Nortix-sponsored item categories">
+        <button
+          type="button"
+          className={sponsoredCategory === "ALL" ? "active" : ""}
+          onClick={() => setSponsoredCategory("ALL")}
+        >
+          All
+        </button>
+        {sponsoredCategories.map((value) => (
+          <button
+            type="button"
+            key={value}
+            className={sponsoredCategory === value ? "active" : ""}
+            onClick={() => setSponsoredCategory(value)}
+          >
+            {storeItemCategoryLabels[value]}
+          </button>
+        ))}
+      </div>
       <div className="sponsored-store-list">
-        {sponsoredStores.map((store) => (
+        {visibleSponsoredStores.map((store) => (
           <section className="sponsored-store" key={store.id}>
             <div className="sponsored-store__heading">
               {store.logoUrl ? <img src={store.logoUrl} alt="" /> : <Gift />}
@@ -1356,7 +1445,9 @@ export function SparksShopPage() {
                 <Card className="sponsored-item-card" key={item.id}>
                   {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Gift />}
                   <div>
-                    <small>{store.name}</small>
+                    <small>
+                      {store.name} · {storeItemCategoryLabels[item.category]}
+                    </small>
                     <h3>{item.name}</h3>
                     <p>{item.description}</p>
                     <span>{item.fulfillmentSummary}</span>
@@ -1379,9 +1470,13 @@ export function SparksShopPage() {
           </section>
         ))}
       </div>
-      {sponsoredStores.length === 0 ? (
+      {visibleSponsoredStores.length === 0 ? (
         <Card className="sparks-shop-empty-state">
-          <p>No Nortix-sponsored gifts are available right now.</p>
+          <p>
+            {sponsoredStores.length === 0
+              ? "No Nortix-sponsored gifts are available right now."
+              : "No Nortix-sponsored gifts are available in this category."}
+          </p>
         </Card>
       ) : null}
       {sponsoredPurchases.length ? (

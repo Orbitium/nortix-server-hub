@@ -153,6 +153,17 @@ enum ServerStoreItemStatus {
   UNPUBLISHED
 }
 
+enum StoreItemCategory {
+  RANKS
+  COINS
+  CRATES
+  COSMETICS
+  BOOSTERS
+  SUBSCRIPTIONS
+  BUNDLES
+  OTHER
+}
+
 enum SponsoredPurchaseStatus {
   REQUESTED
   PROCESSING
@@ -1058,6 +1069,7 @@ model SponsoredItem {
   slug                  String
   name                  String
   description           String
+  category              StoreItemCategory            @default(OTHER)
   sparksPrice           Int
   imageUrl              String?
   fulfillmentSummary    String
@@ -1069,7 +1081,7 @@ model SponsoredItem {
   updatedAt             DateTime                     @updatedAt
 
   @@unique([storeId, slug])
-  @@index([storeId, available, sortOrder])
+  @@index([storeId, available, category, sortOrder])
 }
 
 model SponsoredPurchase {
@@ -1125,6 +1137,7 @@ model ServerStoreItem {
   slug               String
   name               String
   description        String
+  category           StoreItemCategory     @default(OTHER)
   sparksPrice        Int
   imageUrls          String[]
   stockQuantity      Int?
@@ -1137,7 +1150,7 @@ model ServerStoreItem {
   updatedAt          DateTime              @updatedAt
 
   @@unique([storeId, slug])
-  @@index([storeId, status, sortOrder])
+  @@index([storeId, status, category, sortOrder])
 }
 
 model ServerStoreMediaAsset {

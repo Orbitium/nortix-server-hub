@@ -1,13 +1,30 @@
-import { ArrowRight, BadgeCheck, Compass, Gamepad2, Search, Sparkles, Users } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Compass,
+  Gamepad2,
+  Search,
+  Server,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { artIndexFor, usePublicCampaigns } from "../features/api-data";
+import { artIndexFor, usePublicCampaigns, usePublicServers } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
+import { ServerCard } from "./ServerCard";
 
 export function ReferenceDashboardHome() {
   const { t, formatNumber } = useI18n();
   const { data, isLoading, isError, refetch } = usePublicCampaigns();
+  const {
+    data: serverData,
+    isLoading: serversLoading,
+    isError: serversError,
+    refetch: refetchServers,
+  } = usePublicServers();
   const campaigns = data?.items ?? [];
+  const featuredServers = serverData?.items.slice(0, 8) ?? [];
   const categories = ["__all__", ...new Set(campaigns.map((item) => item.category))];
   const versions = ["__all__", ...new Set(campaigns.flatMap((item) => item.versionRequirements))];
   const sorts = ["recommended", "sparks", "active"] as const;
@@ -54,6 +71,31 @@ export function ReferenceDashboardHome() {
               <Compass /> {t("nav.howItWorks")}
             </Link>
           </div>
+        </div>
+      </section>
+
+      <section className="home-section">
+        <div className="home-section__heading">
+          <div>
+            <h2>
+              <Server /> Featured servers
+            </h2>
+            <p>Popular Minecraft servers available to explore on Nortix.</p>
+          </div>
+          <Link to="/servers">
+            {t("home.viewAll")} <ArrowRight />
+          </Link>
+        </div>
+        <div className="featured-servers-row">
+          {featuredServers.map((server) => (
+            <ServerCard server={server} key={server.id} />
+          ))}
+          {serversLoading ? <p>Loading featured servers…</p> : null}
+          {serversError ? (
+            <button type="button" onClick={() => void refetchServers()}>
+              {t("home.retry")}
+            </button>
+          ) : null}
         </div>
       </section>
 

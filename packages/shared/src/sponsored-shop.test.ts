@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AdminSponsoredItemInputSchema,
+  AdminSponsoredItemUpdateSchema,
   AdminSponsoredPurchaseActionSchema,
   AdminSponsoredStoreInputSchema,
   SponsoredPurchaseInputSchema,
@@ -42,6 +44,30 @@ describe("sponsored Sparks shop contracts", () => {
         status: "DELIVERED",
       }).success,
     ).toBe(false);
+  });
+
+  it("uses the shared category allowlist and keeps partial updates partial", () => {
+    const item = {
+      slug: "monthly-nitro",
+      name: "Monthly Nitro gift",
+      description: "An independently supplied subscription gift from Nortix Labs.",
+      category: "SUBSCRIPTIONS",
+      sparksPrice: 5_000,
+      fulfillmentSummary: "Delivered privately after review.",
+      fulfillmentFields: ["DISCORD_USERNAME"],
+      available: true,
+      sortOrder: 0,
+    };
+    expect(AdminSponsoredItemInputSchema.safeParse(item).success).toBe(true);
+    expect(AdminSponsoredItemInputSchema.parse({ ...item, category: undefined }).category).toBe(
+      "OTHER",
+    );
+    expect(AdminSponsoredItemInputSchema.safeParse({ ...item, category: "CASH" }).success).toBe(
+      false,
+    );
+    expect(AdminSponsoredItemUpdateSchema.parse({ available: false })).toEqual({
+      available: false,
+    });
   });
 
   it("accepts bounded quantities and defaults legacy requests to one", () => {

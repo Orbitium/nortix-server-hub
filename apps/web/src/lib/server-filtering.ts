@@ -53,3 +53,13 @@ export function filterServers<T extends FilterableServer>(
     );
   });
 }
+
+export function sortServersByCategory<T extends FilterableServer>(servers: readonly T[]) {
+  return [...servers].sort((left, right) => {
+    const categoryOrder = optionCollator.compare(
+      left.categories[0] ?? "Other",
+      right.categories[0] ?? "Other",
+    );
+    return categoryOrder || optionCollator.compare(left.name, right.name);
+  });
+}

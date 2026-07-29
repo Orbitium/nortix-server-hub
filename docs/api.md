@@ -99,6 +99,9 @@ Delivery is allowed only while the recipient's exact premium or server-scoped Mi
 remains active. Stock and Sparks debits are updated atomically. Commands are snapshotted at
 purchase time, remain private to authorized owners and the server's signed plugin, and a terminal
 fulfillment failure may automatically restore stock and Sparks.
+Nortix-sponsored and server-owned items share a backend-validated category allowlist: ranks, coins,
+crates, cosmetics, boosters, subscriptions, bundles, and `OTHER`. Existing and uncategorized items
+use `OTHER`; clients cannot create arbitrary category names.
 
 ## Owner operations
 
@@ -132,6 +135,10 @@ complete independent ownership verification becomes its only owner. The claim tr
 all other pending registrations and challenges for that endpoint. Once claimed, new competing
 registrations are rejected.
 
+Server registration and public discovery currently accept Minecraft: Java Edition only. The API
+rejects Bedrock registration and address-validation payloads, and legacy Bedrock records are
+excluded from public server, campaign, share, and sitemap responses.
+
 Server-owned items use explicit `DRAFT`, `PUBLISHED`, and `UNPUBLISHED` states. Only `PUBLISHED`
 items from available stores are returned by the player catalog or accepted by the purchase
 service. Owner permissions are required to edit or preview the other states. Image uploads are
@@ -140,6 +147,18 @@ file-signature checked, server-scoped, and returned under generated opaque same-
 ## Moderation
 
 - `GET /admin/overview`
+- `GET /admin/sparks?search=` — admin-only player balances, Sparks activity, rankings, and spend
+  analytics
+- `POST /admin/sparks/adjustments` — admin-only transactional credit or debit with a required
+  description and idempotency key
+- `GET /admin/users/:userId` — admin-only allowlisted account, identity, participation, Sparks,
+  relationship, and moderation report
+- `POST /admin/users/:userId/status` — activate, freeze, review, suspend, or ban a player account
+  with an exact ID confirmation and required reason
+- `GET /admin/servers/:serverId` — admin-only allowlisted registration, ownership, verification,
+  campaign, integration-metadata, and activity report
+- `POST /admin/servers/:serverId/status` — approve, flag, hide, reject, or restore a server with an
+  exact ID confirmation and required reason
 - `GET /admin/campaigns`
 - `GET /admin/campaign-servers` — admin-only sponsored-campaign targets
 - `GET /admin/campaigns/ongoing` — admin-only termination candidates
@@ -163,8 +182,25 @@ file-signature checked, server-scoped, and returned under generated opaque same-
 Moderator and administrator permissions are checked server-side. Internal economics, risk signals,
 and ledgers are never serialized from public campaign endpoints.
 
+Sparks administration requires the admin-only `sparks:manage` permission. Adjustments append a
+`MANUAL_ADJUSTMENT` ledger entry, reject debits that would make the player's balance negative,
+notify the affected player, and write the actor, reason, and before/after balance to the immutable
+audit log.
+
+User access actions require `user:suspend`; server moderation actions require the separate
+admin-only `server:moderate` permission and are never granted by a server-team role. Frozen
+accounts remain able to read their account notice but cannot perform API mutations. Suspended and
+banned accounts cannot access authenticated routes. Status actions notify the affected account or
+server owner and append the actor, reason, and before/after state to the audit log. Detail reports
+exclude Firebase identifiers, verification challenges/evidence, signing key material, player
+hashes, private messages, and fulfillment details.
+
 Sponsored campaigns use the normal campaign and milestone contract, but have an explicit
 `NORTIX_SPONSORED` funding source and never debit the server owner's Campaign Credits ledger.
+Creation requires a `target` containing a verified Nortix `serverId`, a public `address`
+(`hostname`, `port`, and `edition`), or both. Address-only targets are resolved by the API to an
+approved, publicly listed, claimed, verified Nortix server. When both target forms are provided,
+they must resolve to the same server.
 Termination requires an exact campaign-ID confirmation and records an immutable termination
 snapshot. `REFUND_ALL`, `REFUND_UNUSED`, and `NO_REFUND` affect only the owner's Campaign Credits
 reservation. Already verified player Sparks are not reversed.

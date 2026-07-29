@@ -168,7 +168,7 @@ const en = {
   "listing.serverEyebrow": "SERVER DISCOVERY",
   "listing.serverTitle": "Discover Minecraft servers worth playing.",
   "listing.serverDescription":
-    "Browse verified communities across Java and Bedrock, with or without an active playtest.",
+    "Browse verified Java Edition communities, with or without an active playtest.",
   "listing.searchServers": "Search servers or categories",
   "listing.allEditions": "All editions",
   "listing.serverCount": "{{count}} servers",
@@ -425,7 +425,7 @@ const tr: Messages = {
   "listing.serverEyebrow": "SUNUCU KEŞFİ",
   "listing.serverTitle": "Oynamaya değer Minecraft sunucularını keşfet.",
   "listing.serverDescription":
-    "Etkin oyun testi olsun veya olmasın, Java ve Bedrock’taki doğrulanmış topluluklara göz at.",
+    "Etkin oyun testi olsun veya olmasın, doğrulanmış Java Edition topluluklarına göz at.",
   "listing.searchServers": "Sunucu veya kategori ara",
   "listing.allEditions": "Tüm sürümler",
   "listing.serverCount": "{{count}} sunucu",
@@ -613,7 +613,7 @@ const es: Messages = {
   "listing.serverEyebrow": "DESCUBRIMIENTO DE SERVIDORES",
   "listing.serverTitle": "Descubre servidores de Minecraft que vale la pena jugar.",
   "listing.serverDescription":
-    "Explora comunidades verificadas de Java y Bedrock, con o sin una prueba activa.",
+    "Explora comunidades verificadas de Java Edition, con o sin una prueba activa.",
   "listing.searchServers": "Buscar servidores o categorías",
   "listing.allEditions": "Todas las ediciones",
   "listing.serverCount": "{{count}} servidores",
@@ -801,7 +801,7 @@ const de: Messages = {
   "listing.serverEyebrow": "SERVER-ENTDECKUNG",
   "listing.serverTitle": "Entdecke Minecraft-Server, die sich zu spielen lohnen.",
   "listing.serverDescription":
-    "Durchsuche verifizierte Java- und Bedrock-Communitys, mit oder ohne aktiven Spieltest.",
+    "Durchsuche verifizierte Java-Edition-Communitys, mit oder ohne aktiven Spieltest.",
   "listing.searchServers": "Server oder Kategorien suchen",
   "listing.allEditions": "Alle Editionen",
   "listing.serverCount": "{{count}} Server",
@@ -989,7 +989,7 @@ const pt: Messages = {
   "listing.serverEyebrow": "DESCOBERTA DE SERVIDORES",
   "listing.serverTitle": "Descubra servidores de Minecraft que valem a pena.",
   "listing.serverDescription":
-    "Explore comunidades verificadas de Java e Bedrock, com ou sem teste ativo.",
+    "Explore comunidades verificadas de Java Edition, com ou sem teste ativo.",
   "listing.searchServers": "Buscar servidores ou categorias",
   "listing.allEditions": "Todas as edições",
   "listing.serverCount": "{{count}} servidores",

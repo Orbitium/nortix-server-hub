@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { StoreItemCategory } from "@nortix/shared";
 import { api } from "../lib/api";
 
 export type PublicMilestone = {
@@ -167,6 +168,7 @@ export type SponsoredItem = {
   slug: string;
   name: string;
   description: string;
+  category: StoreItemCategory;
   sparksPrice: number;
   imageUrl?: string | null;
   fulfillmentSummary: string;
@@ -244,6 +246,7 @@ export type ServerStoreItem = {
   slug: string;
   name: string;
   description: string;
+  category: StoreItemCategory;
   sparksPrice: number;
   imageUrls: string[];
   stockQuantity: number | null;
@@ -399,6 +402,8 @@ export type AdminCampaignServer = {
   id: string;
   name: string;
   slug: string;
+  hostname: string;
+  port: number;
   edition: "JAVA" | "BEDROCK";
   versions: string[];
   categories: string[];
@@ -611,6 +616,53 @@ export type AdminMessageRecord = {
   deliveries: Array<{ id: string }>;
 };
 
+export type AdminSparksPlayer = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  status: string;
+  lastActiveAt: string;
+  balance: number;
+  spent: number;
+};
+
+export type AdminSparksDashboard = {
+  summary: {
+    activePlayers: number;
+    playersWithSparks: number;
+    totalAvailable: number;
+    totalCredited: number;
+    totalSpent: number;
+    ledgerEntries: number;
+  };
+  topBalances: Array<Omit<AdminSparksPlayer, "spent">>;
+  topSpenders: Array<Omit<AdminSparksPlayer, "balance">>;
+  spending: Array<{
+    transactionType: string;
+    amount: number;
+    transactions: number;
+  }>;
+  trend: Array<{
+    date: string;
+    credited: number;
+    spent: number;
+    entries: number;
+  }>;
+  users: AdminSparksPlayer[];
+  recentActivity: Array<{
+    id: string;
+    direction: "CREDIT" | "DEBIT";
+    amount: number;
+    transactionType: string;
+    referenceType: string;
+    internalNote?: string | null;
+    createdAt: string;
+    user: Pick<AdminSparksPlayer, "id" | "username" | "displayName" | "avatarUrl" | "status" | "lastActiveAt">;
+    createdBy?: { id: string; username: string; displayName: string } | null;
+  }>;
+};
+
 export const artIndexFor = (id: string) => {
   let hash = 0;
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
@@ -697,6 +749,15 @@ export const useAdminSponsoredPurchases = (status = "") =>
     queryFn: () =>
       api<AdminSponsoredPurchase[]>(
         `/admin/sponsored-purchases${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+      ),
+  });
+
+export const useAdminSparks = (search = "") =>
+  useQuery({
+    queryKey: ["admin-sparks", search],
+    queryFn: () =>
+      api<AdminSparksDashboard>(
+        `/admin/sparks${search ? `?search=${encodeURIComponent(search)}` : ""}`,
       ),
   });
 

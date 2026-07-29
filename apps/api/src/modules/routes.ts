@@ -4,6 +4,7 @@ import {
   AdminCampaignTerminationInputSchema,
   AdminEnrollmentInputSchema,
   AdminMessageInputSchema,
+  AdminSparksAdjustmentInputSchema,
   AdminSponsoredItemInputSchema,
   AdminSponsoredItemUpdateSchema,
   AdminSponsoredPurchaseActionSchema,
@@ -32,6 +33,8 @@ import {
   ServerStorePurchaseInputSchema,
   AdminServerStorePayoutActionSchema,
   AdminServerStorePayoutProfileInputSchema,
+  AdminServerStatusActionSchema,
+  AdminUserStatusActionSchema,
   ServerRewardedVotingSettingSchema,
   ServerVoteInputSchema,
   SponsoredPurchaseInputSchema,
@@ -95,10 +98,12 @@ import {
   ServerStoreMediaService,
 } from "./server-store/media.js";
 import { AdminEnrollmentService } from "./admin-enrollment/service.js";
+import { AdminSparksService } from "./admin-sparks/service.js";
 import { presentOwnerPluginState } from "./owner-servers/presenter.js";
 import { buildCampaignShareHtml } from "./campaign-sharing/html.js";
 import { normalizeServerHostname } from "./server-registration/policy.js";
 import { ServerRegistrationService } from "./server-registration/service.js";
+import { AdminEntityService } from "./admin-entities/service.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
@@ -112,7 +117,9 @@ const votingService = new VotingService();
 const gameplayService = new GameplayService();
 const sponsoredShopService = new SponsoredShopService();
 const adminEnrollmentService = new AdminEnrollmentService();
+const adminSparksService = new AdminSparksService();
 const serverRegistrationService = new ServerRegistrationService();
+const adminEntityService = new AdminEntityService();
 const REWARDED_VOTE_SESSION_TTL_MS = 10 * 60_000;
 const hashRewardedVoteToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -333,7 +340,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       where: {
         id,
         status: { in: ["ACTIVE", "SCHEDULED"] },
-        server: { publicListing: true, moderationStatus: "APPROVED" },
+        server: { publicListing: true, moderationStatus: "APPROVED", edition: "JAVA" },
       },
       select: {
         id: true,
@@ -383,7 +390,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const now = new Date();
     const [servers, campaigns, discoveredServers] = await prisma.$transaction([
       prisma.server.findMany({
-        where: { publicListing: true, moderationStatus: "APPROVED" },
+        where: { publicListing: true, moderationStatus: "APPROVED", edition: "JAVA" },
         select: { slug: true, updatedAt: true },
         orderBy: { updatedAt: "desc" },
       }),
@@ -392,13 +399,13 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           status: "ACTIVE",
           startsAt: { lte: now },
           endsAt: { gt: now },
-          server: { publicListing: true, moderationStatus: "APPROVED" },
+          server: { publicListing: true, moderationStatus: "APPROVED", edition: "JAVA" },
         },
         select: { id: true, updatedAt: true },
         orderBy: { updatedAt: "desc" },
       }),
       prisma.discoveredServer.findMany({
-        where: { enabled: true },
+        where: { enabled: true, edition: "JAVA" },
         select: { slug: true, updatedAt: true },
         orderBy: { updatedAt: "desc" },
       }),
@@ -741,6 +748,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     const where = {
       publicListing: true,
       moderationStatus: "APPROVED" as const,
+      edition: "JAVA" as const,
       ...(search
         ? {
             OR: [
@@ -819,7 +827,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   app.get("/v1/servers/:slug", async (request, reply) => {
     const { slug } = request.params as { slug: string };
     const server = await prisma.server.findFirst({
-      where: { slug, publicListing: true, moderationStatus: "APPROVED" },
+      where: { slug, publicListing: true, moderationStatus: "APPROVED", edition: "JAVA" },
       select: {
         ...publicServerSelect,
         _count: {
@@ -1907,7 +1915,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       status: "ACTIVE" as const,
       startsAt: { lte: new Date() },
       endsAt: { gt: new Date() },
-      server: { publicListing: true, moderationStatus: "APPROVED" as const },
+      server: {
+        publicListing: true,
+        moderationStatus: "APPROVED" as const,
+        edition: "JAVA" as const,
+      },
     };
     const [items, total] = await prisma.$transaction([
       prisma.campaign.findMany({
@@ -1948,7 +1960,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       where: {
         id,
         status: { in: ["ACTIVE", "SCHEDULED", "COMPLETED"] },
-        server: { publicListing: true, moderationStatus: "APPROVED" },
+        server: { publicListing: true, moderationStatus: "APPROVED", edition: "JAVA" },
       },
       select: {
         id: true,
@@ -2795,6 +2807,29 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     },
   );
   app.get(
+    "/v1/admin/sparks",
+    { preHandler: app.requirePermission("sparks:manage") },
+    async (request) => {
+      const query = z
+        .object({ search: z.string().trim().max(80).default("") })
+        .parse(request.query);
+      return adminSparksService.dashboard(query.search);
+    },
+  );
+  app.post(
+    "/v1/admin/sparks/adjustments",
+    {
+      preHandler: app.requirePermission("sparks:manage"),
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const input = AdminSparksAdjustmentInputSchema.parse(request.body);
+      return reply
+        .code(201)
+        .send(await adminSparksService.adjust(request.user!.id, input, request.id));
+    },
+  );
+  app.get(
     "/v1/admin/sponsored-stores",
     { preHandler: app.requirePermission("sponsored_shop:manage") },
     () => sponsoredShopService.adminCatalog(),
@@ -2910,6 +2945,61 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     },
   );
   app.get(
+    "/v1/admin/users/:userId",
+    { preHandler: app.requirePermission("user:suspend") },
+    async (request, reply) => {
+      const { userId } = request.params as { userId: string };
+      const report = await adminEntityService.userReport(userId);
+      return (
+        report ??
+        reply.code(404).send({ code: "NOT_FOUND", message: "User account not found." })
+      );
+    },
+  );
+  app.post(
+    "/v1/admin/users/:userId/status",
+    {
+      preHandler: app.requirePermission("user:suspend"),
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { userId } = request.params as { userId: string };
+      const input = AdminUserStatusActionSchema.parse(request.body);
+      return adminEntityService.updateUserStatus(
+        request.user!.id,
+        userId,
+        input,
+        request.id,
+      );
+    },
+  );
+  app.get(
+    "/v1/admin/servers/:serverId",
+    { preHandler: app.requirePermission("server:moderate") },
+    async (request, reply) => {
+      const { serverId } = request.params as { serverId: string };
+      const report = await adminEntityService.serverReport(serverId);
+      return report ?? reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." });
+    },
+  );
+  app.post(
+    "/v1/admin/servers/:serverId/status",
+    {
+      preHandler: app.requirePermission("server:moderate"),
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { serverId } = request.params as { serverId: string };
+      const input = AdminServerStatusActionSchema.parse(request.body);
+      return adminEntityService.updateServerStatus(
+        request.user!.id,
+        serverId,
+        input,
+        request.id,
+      );
+    },
+  );
+  app.get(
     "/v1/admin/entities",
     { preHandler: app.requirePermission("campaign:review") },
     async (request) => {
@@ -2975,11 +3065,15 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           publicListing: true,
           moderationStatus: "APPROVED",
           verificationStatus: "VERIFIED",
+          claimed: true,
+          edition: "JAVA",
         },
         select: {
           id: true,
           name: true,
           slug: true,
+          hostname: true,
+          port: true,
           edition: true,
           versions: true,
           categories: true,

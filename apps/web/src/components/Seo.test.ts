@@ -14,6 +14,7 @@ describe("route SEO metadata", () => {
     expect(resolveRouteSeo("/owner/store")?.title).toBe("Manage Server Store");
     expect(resolveRouteSeo("/owner/store-sales")?.title).toBe("Store Sales and Proceeds");
     expect(resolveRouteSeo("/admin")?.title).toBe("Nortix Administration");
+    expect(resolveRouteSeo("/admin/sparks")?.title).toBe("Sparks Administration");
     expect(resolveRouteSeo("/admin/enroll")?.title).toBe("Nortix Admin Enrollment");
   });
 

@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { Button, Card } from "@nortix/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
@@ -40,6 +40,7 @@ import {
   type AdminCampaignServer,
   type AdminOngoingCampaign,
   type AdminReviewCampaign,
+  type AdminSparksPlayer,
   type AdminSponsoredPurchase,
   type AdminSponsoredStore,
   useAdminCampaignServers,
@@ -49,10 +50,15 @@ import {
   useAdminSponsoredStores,
   useAdminMessages,
   useAdminReviewCampaigns,
+  useAdminSparks,
   useAuditLogs,
   useCurrentUser,
 } from "../features/api-data";
 import { api } from "../lib/api";
+import {
+  storeItemCategories,
+  storeItemCategoryLabels,
+} from "@nortix/shared";
 
 const sections = [
   ["Overview", "/admin", Gauge],
@@ -61,6 +67,7 @@ const sections = [
   ["Campaign moderation", "/admin/campaigns", ClipboardCheck],
   ["Reports & cases", "/admin/reports", ShieldAlert],
   ["Admin messages", "/admin/messages", MessageSquare],
+  ["Sparks administration", "/admin/sparks", Sparkles],
   ["Sponsored Sparks catalog", "/admin/sponsored-shop", Store],
   ["Sponsored purchases", "/admin/sponsored-purchases", Truck],
   ["Store proceeds requests", "/admin/store-payouts", CreditCard],
@@ -79,7 +86,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const visibleSections = sections.filter(
     ([label, href]) =>
       label.toLowerCase().includes(sectionSearch.toLowerCase()) &&
-      (!["/admin/messages", "/admin/sponsored-shop", "/admin/sponsored-purchases", "/admin/store-payouts"].includes(href) ||
+      (!["/admin/messages", "/admin/sparks", "/admin/sponsored-shop", "/admin/sponsored-purchases", "/admin/store-payouts"].includes(href) ||
         currentUser?.roles.includes("ADMIN")),
   );
   const hasAdminAccess = currentUser?.roles.some(
@@ -346,6 +353,9 @@ const createSponsoredCampaignDraft = () => {
   const endsAt = new Date(Date.now() + 7 * 24 * 60 * 60_000);
   return {
     serverId: "",
+    targetHostname: "",
+    targetPort: "25565",
+    targetEdition: "JAVA" as const,
     title: "",
     description:
       "Help this Minecraft server evaluate a focused player experience and provide useful feedback.",
@@ -409,27 +419,33 @@ export function CampaignReviewPage() {
   };
 
   const openSponsoredCampaign = () => {
-    const draft = createSponsoredCampaignDraft();
-    const firstServer = campaignServers[0];
-    setCampaignDraft({
-      ...draft,
-      serverId: firstServer?.id ?? "",
-      versions: firstServer?.versions.join(", ") ?? "",
-      category: firstServer?.categories[0] ?? draft.category,
-    });
+    setCampaignDraft(createSponsoredCampaignDraft());
     setCreateMessage("");
     setCreateOpen(true);
   };
 
   const createSponsoredCampaign = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!campaignDraft.serverId && !campaignDraft.targetHostname.trim()) {
+      setCreateMessage("Select a verified Nortix server or enter its public server address.");
+      return;
+    }
     setCreateBusy(true);
     setCreateMessage("");
     try {
       await api("/admin/campaigns/sponsored", {
         method: "POST",
         body: JSON.stringify({
-          serverId: campaignDraft.serverId,
+          target: {
+            serverId: campaignDraft.serverId || undefined,
+            address: campaignDraft.targetHostname.trim()
+              ? {
+                  hostname: campaignDraft.targetHostname.trim(),
+                  port: Number(campaignDraft.targetPort),
+                  edition: campaignDraft.targetEdition,
+                }
+              : undefined,
+          },
           title: campaignDraft.title,
           description: campaignDraft.description,
           category: campaignDraft.category,
@@ -724,28 +740,71 @@ export function CampaignReviewPage() {
               </p>
               <div className="form-grid form-grid--two">
                 <label className="span-two">
-                  Server
+                  Nortix-verified server
                   <select
-                    required
                     value={campaignDraft.serverId}
                     onChange={(event) => {
                       const server = campaignServers.find((item) => item.id === event.target.value);
                       setCampaignDraft({
                         ...campaignDraft,
                         serverId: event.target.value,
+                        targetHostname: server?.hostname ?? campaignDraft.targetHostname,
+                        targetPort: server ? String(server.port) : campaignDraft.targetPort,
+                        targetEdition: "JAVA",
                         versions: server?.versions.join(", ") ?? "",
                         category: server?.categories[0] ?? campaignDraft.category,
                       });
                     }}
                   >
-                    <option value="">Select an approved, verified server</option>
+                    <option value="">Enter an address instead</option>
                     {campaignServers.map((server: AdminCampaignServer) => (
                       <option value={server.id} key={server.id}>
-                        {server.name} · @{server.owner.username}
+                        {server.name} · {server.hostname}:{server.port} · @{server.owner.username}
                       </option>
                     ))}
                   </select>
+                  <small>Optional when a matching verified server address is entered below.</small>
                 </label>
+                <fieldset className="span-two admin-campaign-target-address">
+                  <legend>Target server address</legend>
+                  <label>
+                    Server IP or hostname
+                    <input
+                      value={campaignDraft.targetHostname}
+                      minLength={3}
+                      maxLength={255}
+                      placeholder="play.example.net"
+                      onChange={(event) =>
+                        setCampaignDraft({
+                          ...campaignDraft,
+                          targetHostname: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Port
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={campaignDraft.targetPort}
+                      onChange={(event) =>
+                        setCampaignDraft({ ...campaignDraft, targetPort: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Edition
+                    <select value={campaignDraft.targetEdition} disabled>
+                      <option value="JAVA">Java</option>
+                    </select>
+                  </label>
+                  <p>
+                    The API resolves this address to an approved, publicly listed, verified Nortix
+                    server. When both targets are supplied, they must identify the same server.
+                  </p>
+                </fieldset>
                 <label>
                   Campaign title
                   <input
@@ -886,7 +945,13 @@ export function CampaignReviewPage() {
               <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createBusy || campaignServers.length === 0}>
+              <Button
+                type="submit"
+                disabled={
+                  createBusy ||
+                  (!campaignDraft.serverId && !campaignDraft.targetHostname.trim())
+                }
+              >
                 {createBusy ? "Creating…" : "Create sponsored campaign"}
               </Button>
             </div>
@@ -967,50 +1032,184 @@ export function CampaignReviewPage() {
 }
 
 export function SparksAdjustmentReviewPage() {
-  const [editing, setEditing] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<AdminSparksPlayer | null>(null);
+  const [direction, setDirection] = useState<"CREDIT" | "DEBIT">("CREDIT");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const { data, isLoading, isError, refetch } = useAdminSparks(search);
+  const maxTrend = Math.max(
+    1,
+    ...(data?.trend.map((day) => Math.max(day.credited, day.spent)) ?? [1]),
+  );
+
+  const openAdjustment = (player: AdminSparksPlayer) => {
+    setSelected(player);
+    setDirection("CREDIT");
+    setMessage("");
+  };
+
   return (
     <>
       <AdminHeading
-        title="Sparks adjustment review"
-        description="Review manual Sparks corrections, reversals, limits, and policy exceptions."
+        title="Sparks administration"
+        description="Monitor player balances and platform activity, understand where Sparks are spent, and make audited balance corrections."
+        action={
+          <Button onClick={() => void refetch()}>
+            <RotateCcw /> Refresh activity
+          </Button>
+        }
       />
+
+      {isLoading ? <Card><p>Loading Sparks activity…</p></Card> : null}
+      {isError ? (
+        <Card>
+          <p>Sparks administration data could not be loaded.</p>
+          <Button onClick={() => void refetch()}>Retry</Button>
+        </Card>
+      ) : null}
+
+      <div className="admin-kpi-grid admin-sparks-kpis">
+        {[
+          ["Active players", data?.summary.activePlayers, "Active player accounts"],
+          ["Players with Sparks", data?.summary.playersWithSparks, "Positive ledger balance"],
+          ["Sparks available", data?.summary.totalAvailable, "Across player accounts"],
+          ["Sparks spent", data?.summary.totalSpent, "All recorded debits"],
+          ["Sparks credited", data?.summary.totalCredited, "All recorded credits"],
+        ].map(([label, value, note]) => (
+          <Card key={String(label)}>
+            <Sparkles />
+            <small>{label}</small>
+            <strong>{typeof value === "number" ? value.toLocaleString() : "—"}</strong>
+            <span>{note}</span>
+          </Card>
+        ))}
+      </div>
+
+      <div className="admin-sparks-insights">
+        <Card>
+          <div className="data-card__header">
+            <div>
+              <h2>30-day Sparks activity</h2>
+              <p>Daily credits and spending from the append-only ledger.</p>
+            </div>
+          </div>
+          <div className="admin-sparks-trend" aria-label="Thirty-day Sparks activity chart">
+            {data?.trend.map((day) => (
+              <div key={day.date} title={`${day.date}: ${day.credited} credited, ${day.spent} spent`}>
+                <i
+                  className="admin-sparks-trend__credit"
+                  style={{ height: `${Math.max(2, (day.credited / maxTrend) * 100)}%` }}
+                />
+                <i
+                  className="admin-sparks-trend__debit"
+                  style={{ height: `${Math.max(2, (day.spent / maxTrend) * 100)}%` }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="admin-sparks-legend">
+            <span><i className="admin-sparks-trend__credit" /> Credited</span>
+            <span><i className="admin-sparks-trend__debit" /> Spent</span>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="data-card__header">
+            <div>
+              <h2>Where Sparks are spent</h2>
+              <p>Debit totals grouped by their recorded purpose.</p>
+            </div>
+          </div>
+          <div className="admin-sparks-spending">
+            {data?.spending.map((entry) => (
+              <div key={entry.transactionType}>
+                <span>
+                  <strong>{entry.transactionType.replaceAll("_", " ")}</strong>
+                  <small>{entry.transactions.toLocaleString()} transactions</small>
+                </span>
+                <b>{entry.amount.toLocaleString()}</b>
+              </div>
+            ))}
+            {data?.spending.length === 0 ? <p>No Sparks spending has been recorded.</p> : null}
+          </div>
+        </Card>
+      </div>
+
+      <div className="admin-sparks-rankings">
+        <Card>
+          <h2>Most Sparks available</h2>
+          {data?.topBalances.map((player, index) => (
+            <button key={player.id} type="button" onClick={() => openAdjustment({ ...player, spent: 0 })}>
+              <span>{index + 1}</span>
+              <span><strong>@{player.username}</strong><small>{player.displayName}</small></span>
+              <b>{player.balance.toLocaleString()}</b>
+            </button>
+          ))}
+        </Card>
+        <Card>
+          <h2>Most Sparks spent</h2>
+          {data?.topSpenders.map((player, index) => (
+            <div key={player.id}>
+              <span>{index + 1}</span>
+              <span><strong>@{player.username}</strong><small>{player.displayName}</small></span>
+              <b>{player.spent.toLocaleString()}</b>
+            </div>
+          ))}
+        </Card>
+      </div>
+
       <Card className="data-card">
         <div className="data-card__header">
           <div>
-            <h2>Pending adjustments</h2>
-            <p>Adjustments may be approved, changed, or rejected with an audit reason.</p>
+            <h2>Player balances</h2>
+            <p>Search the player base and open a controlled balance adjustment.</p>
           </div>
+          <form
+            className="table-search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSearch(searchInput.trim());
+            }}
+          >
+            <Search />
+            <input
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Username or display name"
+            />
+            <Button type="submit" variant="secondary">Search</Button>
+          </form>
         </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>User</th>
-                <th>Requested change</th>
-                <th>Reason</th>
-                <th>Risk</th>
+                <th>Available</th>
+                <th>Total spent</th>
                 <th>Status</th>
+                <th>Last active</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {[
-                ["QuartzTester", "+25 Sparks", "Quest verification correction", "Low"],
-                ["OakStorm", "-40 Sparks", "Duplicate campaign activity", "Review"],
-              ].map((row, index) => (
-                <tr key={row[0]}>
+              {data?.users.map((player) => (
+                <tr key={player.id}>
                   <td>
-                    <strong>{row[0]}</strong>
+                    <strong>{player.displayName}</strong>
+                    <small className="admin-table-subtext">@{player.username}</small>
                   </td>
-                  <td>{row[1]}</td>
-                  <td>{row[2]}</td>
-                  <td>{row[3]}</td>
+                  <td>{player.balance.toLocaleString()} Sparks</td>
+                  <td>{player.spent.toLocaleString()} Sparks</td>
                   <td>
-                    <span className="admin-status">PENDING</span>
+                    <span className="admin-status">{player.status}</span>
                   </td>
+                  <td>{new Date(player.lastActiveAt).toLocaleString()}</td>
                   <td>
-                    <Button variant="secondary" onClick={() => index === 0 && setEditing(true)}>
-                      Review
+                    <Button variant="secondary" onClick={() => openAdjustment(player)}>
+                      Adjust
                     </Button>
                   </td>
                 </tr>
@@ -1019,29 +1218,111 @@ export function SparksAdjustmentReviewPage() {
           </table>
         </div>
       </Card>
-      {editing && (
-        <Modal title="Review Sparks adjustment" onClose={() => setEditing(false)}>
-          <div className="modal__body admin-editor">
+
+      <Card className="data-card">
+        <div className="data-card__header">
+          <div>
+            <h2>Recent Sparks activity</h2>
+            <p>Latest ledger changes, including the responsible administrator for manual corrections.</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Player</th><th>Change</th><th>Type</th><th>Description</th><th>Recorded</th></tr>
+            </thead>
+            <tbody>
+              {data?.recentActivity.map((entry) => (
+                <tr key={entry.id}>
+                  <td><strong>@{entry.user.username}</strong></td>
+                  <td className={entry.direction === "CREDIT" ? "sparks-credit" : "sparks-debit"}>
+                    {entry.direction === "CREDIT" ? "+" : "−"}{entry.amount.toLocaleString()}
+                  </td>
+                  <td>{entry.transactionType.replaceAll("_", " ")}</td>
+                  <td>{entry.internalNote ?? entry.referenceType.replaceAll("_", " ")}</td>
+                  <td>
+                    {new Date(entry.createdAt).toLocaleString()}
+                    {entry.createdBy ? <small className="admin-table-subtext">by @{entry.createdBy.username}</small> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {selected ? (
+        <Modal title={`Adjust @${selected.username}'s Sparks`} onClose={() => setSelected(null)}>
+          <form
+            className="modal__body admin-editor"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              setMessage("");
+              const form = new FormData(event.currentTarget);
+              try {
+                await api("/admin/sparks/adjustments", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    userId: selected.id,
+                    direction,
+                    amount: Number(form.get("amount")),
+                    description: String(form.get("description") ?? ""),
+                    idempotencyKey: crypto.randomUUID(),
+                  }),
+                });
+                setSelected(null);
+                await refetch();
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : "The Sparks adjustment failed.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <div className="admin-adjustment-balance">
+              <small>Current available balance</small>
+              <strong>{selected.balance.toLocaleString()} Sparks</strong>
+            </div>
             <label>
-              Adjustment
-              <input defaultValue="+25" />
+              Adjustment type
+              <select
+                value={direction}
+                onChange={(event) => setDirection(event.target.value as "CREDIT" | "DEBIT")}
+              >
+                <option value="CREDIT">Add Sparks</option>
+                <option value="DEBIT">Remove Sparks</option>
+              </select>
             </label>
             <label>
-              Internal reason
-              <textarea rows={3} defaultValue="Quest verification correction" />
+              Amount
+              <input name="amount" type="number" min="1" max="1000000" required />
+            </label>
+            <label>
+              Description
+              <textarea
+                name="description"
+                rows={3}
+                minLength={5}
+                maxLength={500}
+                required
+                placeholder="Explain the correction. This description is recorded with the ledger entry."
+              />
+              <small>The affected player can see this description in their Sparks activity.</small>
             </label>
             <p className="form-note">
-              <LockKeyhole /> Saving would create an immutable audit event.
+              <LockKeyhole /> The change is transactional, cannot create a negative balance, and creates an immutable audit event.
             </p>
-          </div>
-          <div className="modal__footer">
-            <Button variant="danger" onClick={() => setEditing(false)}>
-              Reject
-            </Button>
-            <Button onClick={() => setEditing(false)}>Approve adjustment</Button>
-          </div>
+            {message ? <p role="alert">{message}</p> : null}
+            <div className="modal__footer">
+              <Button type="button" variant="ghost" onClick={() => setSelected(null)}>Cancel</Button>
+              <Button type="submit" variant={direction === "DEBIT" ? "danger" : "primary"} disabled={busy}>
+                {busy ? "Applying…" : direction === "CREDIT" ? "Add Sparks" : "Remove Sparks"}
+              </Button>
+            </div>
+          </form>
         </Modal>
-      )}
+      ) : null}
     </>
   );
 }
@@ -1064,8 +1345,15 @@ export function AdminSponsoredShopPage() {
   const { data: stores = [], isLoading, refetch } = useAdminSponsoredStores();
   const [storeOpen, setStoreOpen] = useState(false);
   const [itemStore, setItemStore] = useState<AdminSponsoredStore | null>(null);
+  const [editingItem, setEditingItem] = useState<AdminSponsoredStore["items"][number] | null>(
+    null,
+  );
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
+  const closeItemEditor = () => {
+    setItemStore(null);
+    setEditingItem(null);
+  };
 
   const toggleStore = async (store: AdminSponsoredStore) => {
     setBusy(store.id);
@@ -1141,7 +1429,12 @@ export function AdminSponsoredShopPage() {
               >
                 {store.available ? "Hide store" : "Publish store"}
               </Button>
-              <Button onClick={() => setItemStore(store)}>
+              <Button
+                onClick={() => {
+                  setEditingItem(null);
+                  setItemStore(store);
+                }}
+              >
                 <Plus /> Add item
               </Button>
             </div>
@@ -1151,6 +1444,7 @@ export function AdminSponsoredShopPage() {
                   <span>
                     <strong>{item.name}</strong>
                     <small>
+                      {storeItemCategoryLabels[item.category]} ·{" "}
                       {item.sparksPrice.toLocaleString()} Sparks · {item._count.purchases} purchases
                     </small>
                   </span>
@@ -1162,6 +1456,15 @@ export function AdminSponsoredShopPage() {
                   >
                     {item.available ? "Available" : "Hidden"}
                   </button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingItem(item);
+                      setItemStore(store);
+                    }}
+                  >
+                    Edit
+                  </Button>
                 </div>
               ))}
               {store.items.length === 0 ? <p>No items have been created for this store.</p> : null}
@@ -1214,7 +1517,10 @@ export function AdminSponsoredShopPage() {
         </Modal>
       ) : null}
       {itemStore ? (
-        <Modal title={`Add item to ${itemStore.name}`} onClose={() => setItemStore(null)}>
+        <Modal
+          title={editingItem ? `Edit ${editingItem.name}` : `Add item to ${itemStore.name}`}
+          onClose={closeItemEditor}
+        >
           <form
             className="modal__body form-grid"
             onSubmit={async (event) => {
@@ -1223,21 +1529,26 @@ export function AdminSponsoredShopPage() {
               setMessage("");
               const form = new FormData(event.currentTarget);
               try {
-                await api(`/admin/sponsored-stores/${itemStore.id}/items`, {
-                  method: "POST",
+                await api(
+                  editingItem
+                    ? `/admin/sponsored-items/${editingItem.id}`
+                    : `/admin/sponsored-stores/${itemStore.id}/items`,
+                  {
+                  method: editingItem ? "PATCH" : "POST",
                   body: JSON.stringify({
                     slug: String(form.get("slug") ?? ""),
                     name: String(form.get("name") ?? ""),
                     description: String(form.get("description") ?? ""),
+                    category: String(form.get("category") ?? "OTHER"),
                     sparksPrice: Number(form.get("sparksPrice")),
                     imageUrl: optionalFormString(form, "imageUrl"),
                     fulfillmentSummary: String(form.get("fulfillmentSummary") ?? ""),
                     fulfillmentFields: form.getAll("fulfillmentFields"),
-                    available: true,
+                    available: editingItem?.available ?? true,
                     sortOrder: Number(form.get("sortOrder") ?? 0),
                   }),
                 });
-                setItemStore(null);
+                closeItemEditor();
                 await refetch();
               } catch (error) {
                 setMessage(error instanceof Error ? error.message : "The item could not be created.");
@@ -1246,22 +1557,34 @@ export function AdminSponsoredShopPage() {
               }
             }}
           >
-            <label>Item slug<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" /></label>
-            <label>Item name<input name="name" required minLength={2} maxLength={100} /></label>
-            <label>Description<textarea name="description" required minLength={10} maxLength={1000} /></label>
-            <label>Sparks price<input name="sparksPrice" type="number" required min="1" /></label>
-            <label>Image URL<input name="imageUrl" type="url" /></label>
-            <label>Delivery summary<input name="fulfillmentSummary" required minLength={5} maxLength={300} placeholder="Delivered as a private gift link" /></label>
+            <label>Item ID<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" defaultValue={editingItem?.slug} /></label>
+            <label>Item name<input name="name" required minLength={2} maxLength={100} defaultValue={editingItem?.name} /></label>
+            <label>
+              Category
+              <select name="category" defaultValue={editingItem?.category ?? "OTHER"}>
+                {storeItemCategories.map((value) => (
+                  <option key={value} value={value}>
+                    {storeItemCategoryLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>Description<textarea name="description" required minLength={10} maxLength={1000} defaultValue={editingItem?.description} /></label>
+            <label>Sparks price<input name="sparksPrice" type="number" required min="1" defaultValue={editingItem?.sparksPrice} /></label>
+            <label>Image URL<input name="imageUrl" type="url" defaultValue={editingItem?.imageUrl ?? ""} /></label>
+            <label>Delivery summary<input name="fulfillmentSummary" required minLength={5} maxLength={300} placeholder="Delivered as a private gift link" defaultValue={editingItem?.fulfillmentSummary} /></label>
             <fieldset>
               <legend>Required player details</legend>
-              <label><input type="checkbox" name="fulfillmentFields" value="MINECRAFT_USERNAME" /> Minecraft username</label>
-              <label><input type="checkbox" name="fulfillmentFields" value="DISCORD_USERNAME" /> Discord username</label>
-              <label><input type="checkbox" name="fulfillmentFields" value="EMAIL" /> Email</label>
+              <label><input type="checkbox" name="fulfillmentFields" value="MINECRAFT_USERNAME" defaultChecked={editingItem?.fulfillmentFields.includes("MINECRAFT_USERNAME")} /> Minecraft username</label>
+              <label><input type="checkbox" name="fulfillmentFields" value="DISCORD_USERNAME" defaultChecked={editingItem?.fulfillmentFields.includes("DISCORD_USERNAME")} /> Discord username</label>
+              <label><input type="checkbox" name="fulfillmentFields" value="EMAIL" defaultChecked={editingItem?.fulfillmentFields.includes("EMAIL")} /> Email</label>
             </fieldset>
-            <label>Sort order<input name="sortOrder" type="number" defaultValue="0" /></label>
+            <label>Sort order<input name="sortOrder" type="number" defaultValue={editingItem?.sortOrder ?? 0} /></label>
             <div className="modal__footer">
-              <Button type="button" variant="ghost" onClick={() => setItemStore(null)}>Cancel</Button>
-              <Button disabled={busy === "create-item"} type="submit">Create item</Button>
+              <Button type="button" variant="ghost" onClick={closeItemEditor}>Cancel</Button>
+              <Button disabled={busy === "create-item"} type="submit">
+                {editingItem ? "Save item" : "Create item"}
+              </Button>
             </div>
           </form>
         </Modal>
@@ -1580,6 +1903,7 @@ function EntityManagementPage({
   description: string;
   type: string;
 }) {
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const supportedType = type === "users" || type === "servers" ? type : null;
   const { data: entityData = [], isLoading } = useQuery({
@@ -1677,9 +2001,15 @@ function EntityManagementPage({
                   <td>
                     <button
                       className="icon-button"
-                      disabled
-                      title="Persisted editing endpoint not enabled"
-                      aria-label={`Editing ${row.name} is unavailable`}
+                      title={`Open ${row.name} report`}
+                      aria-label={`Open ${row.name} report`}
+                      onClick={() =>
+                        navigate(
+                          type === "users"
+                            ? `/admin/users/${encodeURIComponent(row.id)}`
+                            : `/admin/servers/${encodeURIComponent(row.id)}`,
+                        )
+                      }
                     >
                       <ChevronRight />
                     </button>
@@ -1700,6 +2030,418 @@ function EntityManagementPage({
           <p>This tool has no persisted data endpoint yet. No example records are shown.</p>
         </Card>
       )}
+    </>
+  );
+}
+
+type AdminAuditRecord = {
+  id: string;
+  action: string;
+  reason?: string | null;
+  createdAt: string;
+  actor?: { username: string; displayName?: string | null } | null;
+};
+
+type AdminUserReport = {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string;
+  avatarUrl?: string | null;
+  roles: string[];
+  status: string;
+  countryCode?: string | null;
+  preferredCurrency: string;
+  publicProfile: unknown;
+  moderationState: unknown;
+  reputationScore: number;
+  reputationTier: string;
+  testerLevel: number;
+  testerExperience: number;
+  sparksBalance: number;
+  createdAt: string;
+  lastActiveAt: string;
+  minecraftIdentities: Array<Record<string, unknown>>;
+  crackedAccountLinks: Array<Record<string, unknown> & { server?: { name: string } }>;
+  ownedServers: Array<{
+    id: string;
+    name: string;
+    moderationStatus: string;
+    verificationStatus: string;
+    publicListing: boolean;
+  }>;
+  serverMemberships: Array<Record<string, unknown> & { server: { name: string } }>;
+  participations: Array<
+    Record<string, unknown> & { campaign: { title: string; server: { name: string } } }
+  >;
+  sparksLedger: Array<Record<string, unknown>>;
+  minecraftIdentityActivity: Array<Record<string, unknown>>;
+  _count: Record<string, number>;
+  audit: AdminAuditRecord[];
+};
+
+type AdminServerReport = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  hostname: string;
+  port: number;
+  versions: string[];
+  edition: string;
+  categories: string[];
+  tags: string[];
+  logoUrl?: string | null;
+  bannerUrl?: string | null;
+  screenshotUrls: string[];
+  discordUrl?: string | null;
+  websiteUrl?: string | null;
+  verificationStatus: string;
+  verificationScope: string;
+  verificationParentId?: string | null;
+  moderationStatus: string;
+  claimed: boolean;
+  online: boolean;
+  publicListing: boolean;
+  rewardedVotingEnabled: boolean;
+  playerCount?: number | null;
+  maxPlayers?: number | null;
+  pluginCapabilities: unknown;
+  pluginLastSeenAt?: string | null;
+  playerHistorySyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  owner: {
+    id: string;
+    username: string;
+    displayName: string;
+    email: string;
+    status: string;
+  };
+  verificationParent?: { id: string; name: string } | null;
+  networkServers: Array<Record<string, unknown>>;
+  verifications: Array<Record<string, unknown>>;
+  teamMembers: Array<
+    Record<string, unknown> & {
+      user: { id: string; username: string; displayName: string; status: string };
+    }
+  >;
+  campaigns: Array<Record<string, unknown> & { title: string }>;
+  activitySamples: Array<Record<string, unknown>>;
+  integrationKeys: Array<Record<string, unknown>>;
+  store?: (Record<string, unknown> & { name: string }) | null;
+  _count: Record<string, number>;
+  audit: AdminAuditRecord[];
+};
+
+const adminValue = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return "Not set";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "None";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+};
+
+function AdminRecordGrid({ values }: { values: Array<[string, unknown]> }) {
+  return (
+    <dl className="admin-report-grid">
+      {values.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd className={typeof value === "object" && value !== null ? "admin-report-json" : ""}>
+            {adminValue(value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function AdminAuditTrail({ audit }: { audit: AdminAuditRecord[] }) {
+  return (
+    <Card className="data-card">
+      <div className="data-card__header">
+        <div>
+          <h2>Administrative history</h2>
+          <p>Append-only actions recorded for this subject.</p>
+        </div>
+      </div>
+      <div className="admin-report-list">
+        {audit.map((entry) => (
+          <article key={entry.id}>
+            <div>
+              <strong>{entry.action.replaceAll("_", " ")}</strong>
+              <small>
+                {entry.actor?.displayName ?? entry.actor?.username ?? "System"} ·{" "}
+                {new Date(entry.createdAt).toLocaleString()}
+              </small>
+            </div>
+            <p>{entry.reason || "No reason recorded."}</p>
+          </article>
+        ))}
+        {audit.length === 0 ? <p>No administrative history has been recorded.</p> : null}
+      </div>
+    </Card>
+  );
+}
+
+export function AdminUserDetailPage() {
+  const { userId } = useParams();
+  const navigate = useNavigate();
+  const [actionOpen, setActionOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { data: user, isLoading, isError, refetch } = useQuery({
+    queryKey: ["admin-user-report", userId],
+    queryFn: () => api<AdminUserReport>(`/admin/users/${encodeURIComponent(userId!)}`),
+    enabled: Boolean(userId),
+  });
+
+  if (isLoading) return <Card><p>Loading the user report…</p></Card>;
+  if (isError || !user) {
+    return (
+      <Card>
+        <h2>User report unavailable</h2>
+        <p>The account may not exist or your role may not inspect private account records.</p>
+        <Button variant="secondary" onClick={() => navigate("/admin/users")}>Back to users</Button>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <AdminHeading
+        title={user.displayName}
+        description={`Detailed account report for @${user.username}. Authentication-provider identifiers and secrets are intentionally excluded.`}
+        action={
+          <Button variant="danger" onClick={() => setActionOpen(true)}>
+            <ShieldAlert /> Change account access
+          </Button>
+        }
+      />
+      <div className="admin-report-summary">
+        <Card><small>Status</small><strong>{user.status}</strong></Card>
+        <Card><small>Sparks available</small><strong>{user.sparksBalance.toLocaleString()}</strong></Card>
+        <Card><small>Campaigns joined</small><strong>{user._count.participations ?? 0}</strong></Card>
+        <Card><small>Risk records</small><strong>{(user._count.fraudFlags ?? 0) + (user._count.moderationCases ?? 0)}</strong></Card>
+      </div>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Account and profile</h2><p>Identity, access, progression, and visibility state.</p></div></div>
+        <AdminRecordGrid
+          values={[
+            ["Nortix ID", user.id],
+            ["Username", `@${user.username}`],
+            ["Display name", user.displayName],
+            ["Email", user.email],
+            ["Roles", user.roles],
+            ["Country", user.countryCode],
+            ["Preferred currency", user.preferredCurrency],
+            ["Reputation", `${user.reputationScore} · ${user.reputationTier}`],
+            ["Tester progression", `Level ${user.testerLevel} · ${user.testerExperience} XP`],
+            ["Created", new Date(user.createdAt).toLocaleString()],
+            ["Last active", new Date(user.lastActiveAt).toLocaleString()],
+            ["Public profile settings", user.publicProfile],
+            ["Moderation state", user.moderationState],
+          ]}
+        />
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Account relationships</h2><p>Servers, participation, and platform activity totals.</p></div></div>
+        <AdminRecordGrid values={Object.entries(user._count).map(([key, value]) => [key.replaceAll(/([A-Z])/g, " $1"), value])} />
+        <div className="admin-report-list">
+          {user.ownedServers.map((server) => (
+            <article key={server.id}>
+              <div><strong>{server.name}</strong><small>{server.verificationStatus} · {server.moderationStatus}</small></div>
+              <Button variant="secondary" onClick={() => navigate(`/admin/servers/${server.id}`)}>Open server</Button>
+            </article>
+          ))}
+          {user.ownedServers.length === 0 ? <p>This account owns no server registrations.</p> : null}
+        </div>
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Minecraft identities</h2><p>Verified premium identities and server-scoped account links.</p></div></div>
+        <div className="admin-report-list">
+          {[...user.minecraftIdentities, ...user.crackedAccountLinks].map((identity, index) => (
+            <article key={String(identity.id ?? index)}>
+              <div><strong>{String(identity.lastKnownUsername ?? identity.minecraftUsername ?? identity.username ?? "Identity")}</strong><small>{String(identity.verificationMethod ?? identity.status ?? "Linked")}</small></div>
+              <code>
+                {String(
+                  identity.uuid ??
+                    (identity.server as { name?: string } | undefined)?.name ??
+                    "",
+                )}
+              </code>
+            </article>
+          ))}
+          {user.minecraftIdentities.length + user.crackedAccountLinks.length === 0 ? <p>No Minecraft identities are linked.</p> : null}
+        </div>
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Recent campaign participation</h2><p>Latest account-scoped campaign records.</p></div></div>
+        <div className="admin-report-list">
+          {user.participations.map((participation) => (
+            <article key={String(participation.id)}>
+              <div><strong>{participation.campaign.title}</strong><small>{participation.campaign.server.name} · {String(participation.status)}</small></div>
+              <span>{new Date(String(participation.lastActivityAt)).toLocaleString()}</span>
+            </article>
+          ))}
+          {user.participations.length === 0 ? <p>No campaign participation records.</p> : null}
+        </div>
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Recent Sparks activity</h2><p>Latest ledger entries; the ledger remains the source of truth.</p></div></div>
+        <div className="admin-report-list">
+          {user.sparksLedger.map((entry) => (
+            <article key={String(entry.id)}>
+              <div><strong>{String(entry.transactionType).replaceAll("_", " ")}</strong><small>{new Date(String(entry.createdAt)).toLocaleString()} · {String(entry.internalNote ?? "No description")}</small></div>
+              <b>{entry.direction === "CREDIT" ? "+" : "-"}{Number(entry.amount).toLocaleString()}</b>
+            </article>
+          ))}
+        </div>
+      </Card>
+      <AdminAuditTrail audit={user.audit} />
+      {actionOpen ? (
+        <Modal title={`Change access for @${user.username}`} onClose={() => setActionOpen(false)}>
+          <form
+            className="modal__body form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              setMessage("");
+              const form = new FormData(event.currentTarget);
+              try {
+                await api(`/admin/users/${user.id}/status`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    action: form.get("action"),
+                    reason: form.get("reason"),
+                    confirmation: form.get("confirmation"),
+                  }),
+                });
+                await refetch();
+                setActionOpen(false);
+              } catch (error) {
+                setMessage(error instanceof Error ? error.message : "The account could not be updated.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>Access action<select name="action" required defaultValue="UNDER_REVIEW"><option value="ACTIVATE">Restore active access</option><option value="FREEZE">Freeze account features</option><option value="UNDER_REVIEW">Place under review</option><option value="SUSPEND">Suspend sign-in</option><option value="BAN">Ban account</option></select></label>
+            <label>Reason shown to the user<textarea name="reason" required minLength={5} maxLength={1000} rows={4} /></label>
+            <label>Type the account ID to confirm <code>{user.id}</code><input name="confirmation" required autoComplete="off" /></label>
+            <p className="form-note"><LockKeyhole /> Staff accounts cannot be restricted here. Every change creates an immutable audit record.</p>
+            {message ? <p role="alert">{message}</p> : null}
+            <div className="modal__footer"><Button type="button" variant="ghost" onClick={() => setActionOpen(false)}>Cancel</Button><Button type="submit" variant="danger" disabled={busy}>{busy ? "Saving…" : "Confirm access change"}</Button></div>
+          </form>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+export function AdminServerDetailPage() {
+  const { serverId } = useParams();
+  const navigate = useNavigate();
+  const [actionOpen, setActionOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { data: server, isLoading, isError, refetch } = useQuery({
+    queryKey: ["admin-server-report", serverId],
+    queryFn: () => api<AdminServerReport>(`/admin/servers/${encodeURIComponent(serverId!)}`),
+    enabled: Boolean(serverId),
+  });
+
+  if (isLoading) return <Card><p>Loading the server report…</p></Card>;
+  if (isError || !server) {
+    return (
+      <Card><h2>Server report unavailable</h2><p>The server may not exist or your role may not inspect it.</p><Button variant="secondary" onClick={() => navigate("/admin/servers")}>Back to servers</Button></Card>
+    );
+  }
+
+  return (
+    <>
+      <AdminHeading
+        title={server.name}
+        description="Detailed server registration, ownership, verification, campaign, integration, and activity report. Signing secrets and player hashes are excluded."
+        action={<Button variant="danger" onClick={() => setActionOpen(true)}><ShieldAlert /> Change server access</Button>}
+      />
+      <div className="admin-report-summary">
+        <Card><small>Moderation</small><strong>{server.moderationStatus}</strong></Card>
+        <Card><small>Verification</small><strong>{server.verificationStatus}</strong></Card>
+        <Card><small>Players online</small><strong>{server.playerCount ?? 0}/{server.maxPlayers ?? "—"}</strong></Card>
+        <Card><small>Campaigns</small><strong>{server._count.campaigns ?? 0}</strong></Card>
+      </div>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Registration and configuration</h2><p>Current persisted server settings.</p></div></div>
+        <AdminRecordGrid values={[
+          ["Nortix ID", server.id], ["Slug", server.slug], ["Public address", `${server.hostname}:${server.port}`],
+          ["Edition", server.edition], ["Versions", server.versions], ["Categories", server.categories], ["Tags", server.tags],
+          ["Description", server.description], ["Public listing", server.publicListing], ["Claimed", server.claimed],
+          ["Online", server.online], ["Rewarded voting", server.rewardedVotingEnabled], ["Verification scope", server.verificationScope],
+          ["Proxy parent ID", server.verificationParentId], ["Plugin last seen", server.pluginLastSeenAt ? new Date(server.pluginLastSeenAt).toLocaleString() : null],
+          ["History synced", server.playerHistorySyncedAt ? new Date(server.playerHistorySyncedAt).toLocaleString() : null],
+          ["Plugin capabilities", server.pluginCapabilities], ["Created", new Date(server.createdAt).toLocaleString()], ["Updated", new Date(server.updatedAt).toLocaleString()],
+        ]} />
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Owner and team</h2><p>Accounts currently authorized to manage this server.</p></div></div>
+        <div className="admin-report-list">
+          <article><div><strong>{server.owner.displayName}</strong><small>@{server.owner.username} · {server.owner.email} · {server.owner.status}</small></div><Button variant="secondary" onClick={() => navigate(`/admin/users/${server.owner.id}`)}>Open owner</Button></article>
+          {server.teamMembers.map((member) => (
+            <article key={String(member.id)}><div><strong>{member.user.displayName}</strong><small>@{member.user.username} · {String(member.role)} · {member.user.status}</small></div><Button variant="secondary" onClick={() => navigate(`/admin/users/${member.user.id}`)}>Open user</Button></article>
+          ))}
+        </div>
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Verification and integrations</h2><p>Review history and credential metadata. Private/public key material is never returned.</p></div></div>
+        <div className="admin-report-list">
+          {server.verifications.map((verification) => <article key={String(verification.id)}><div><strong>{String(verification.provider)}</strong><small>{String(verification.status)} · {new Date(String(verification.createdAt)).toLocaleString()}</small></div><span>{String(verification.reviewNote ?? "No review note")}</span></article>)}
+          {server.integrationKeys.map((key) => <article key={String(key.id)}><div><strong>{String(key.name)}</strong><small>{String(key.algorithm)} · ending {String(key.lastFour)} · {key.revokedAt ? "Revoked" : "Active"}</small></div><span>{Array.isArray(key.scopes) ? key.scopes.join(", ") : ""}</span></article>)}
+          {server.verifications.length + server.integrationKeys.length === 0 ? <p>No verification or integration records.</p> : null}
+        </div>
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Campaigns</h2><p>Recent campaigns and participation counts.</p></div></div>
+        <div className="admin-report-list">
+          {server.campaigns.map((campaign) => <article key={String(campaign.id)}><div><strong>{campaign.title}</strong><small>{String(campaign.status)} · up to {Number(campaign.maximumSparksReward).toLocaleString()} Sparks</small></div><span>{String((campaign._count as { participations?: number })?.participations ?? 0)} participants</span></article>)}
+          {server.campaigns.length === 0 ? <p>No campaigns are registered.</p> : null}
+        </div>
+      </Card>
+      <Card className="data-card">
+        <div className="data-card__header"><div><h2>Recent signed activity</h2><p>Latest bounded server samples. Player hashes are excluded.</p></div></div>
+        <div className="admin-report-list">
+          {server.activitySamples.map((sample) => <article key={String(sample.id)}><div><strong>{Number(sample.onlinePlayers).toLocaleString()} players</strong><small>{String(sample.platform)} · plugin {String(sample.pluginVersion)} · {new Date(String(sample.observedAt)).toLocaleString()}</small></div><span>{String(sample.serverVersion ?? "Unknown version")}</span></article>)}
+          {server.activitySamples.length === 0 ? <p>No signed activity samples are available.</p> : null}
+        </div>
+      </Card>
+      <AdminAuditTrail audit={server.audit} />
+      {actionOpen ? (
+        <Modal title={`Change access for ${server.name}`} onClose={() => setActionOpen(false)}>
+          <form className="modal__body form-grid" onSubmit={async (event) => {
+            event.preventDefault();
+            setBusy(true);
+            setMessage("");
+            const form = new FormData(event.currentTarget);
+            try {
+              await api(`/admin/servers/${server.id}/status`, { method: "POST", body: JSON.stringify({ action: form.get("action"), reason: form.get("reason"), confirmation: form.get("confirmation") }) });
+              await refetch();
+              setActionOpen(false);
+            } catch (error) {
+              setMessage(error instanceof Error ? error.message : "The server could not be updated.");
+            } finally {
+              setBusy(false);
+            }
+          }}>
+            <label>Moderation action<select name="action" required defaultValue="FLAG"><option value="APPROVE">Approve listing</option><option value="RESTORE">Restore listing approval</option><option value="FLAG">Flag for review</option><option value="HIDE">Freeze and hide listing</option><option value="REJECT">Reject server registration</option></select></label>
+            <label>Reason shown to the owner<textarea name="reason" required minLength={5} maxLength={1000} rows={4} /></label>
+            <label>Type the server ID to confirm <code>{server.id}</code><input name="confirmation" required autoComplete="off" /></label>
+            <p className="form-note"><LockKeyhole /> Hiding or rejecting removes the listing from discovery. Every change is audited.</p>
+            {message ? <p role="alert">{message}</p> : null}
+            <div className="modal__footer"><Button type="button" variant="ghost" onClick={() => setActionOpen(false)}>Cancel</Button><Button type="submit" variant="danger" disabled={busy}>{busy ? "Saving…" : "Confirm server change"}</Button></div>
+          </form>
+        </Modal>
+      ) : null}
     </>
   );
 }

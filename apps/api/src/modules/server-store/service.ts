@@ -56,6 +56,7 @@ const catalogSelect = {
       slug: true,
       name: true,
       description: true,
+      category: true,
       sparksPrice: true,
       imageUrls: true,
       stockQuantity: true,
@@ -84,6 +85,7 @@ const purchaseSelect = {
     select: {
       id: true,
       name: true,
+      category: true,
       imageUrls: true,
       store: {
         select: {
@@ -176,6 +178,7 @@ export class ServerStoreService {
             slug: true,
             name: true,
             description: true,
+            category: true,
             sparksPrice: true,
             imageUrls: true,
             stockQuantity: true,
@@ -279,6 +282,7 @@ export class ServerStoreService {
           afterSnapshot: {
             serverId,
             slug: item.slug,
+            category: item.category,
             sparksPrice: item.sparksPrice,
             stockQuantity: item.stockQuantity,
             commandCount: item.commandTemplates.length,
@@ -319,11 +323,13 @@ export class ServerStoreService {
           requestId,
           beforeSnapshot: {
             sparksPrice: before.sparksPrice,
+            category: before.category,
             stockQuantity: before.stockQuantity,
             status: before.status,
           },
           afterSnapshot: {
             sparksPrice: item.sparksPrice,
+            category: item.category,
             stockQuantity: item.stockQuantity,
             status: item.status,
           },

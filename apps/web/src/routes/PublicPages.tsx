@@ -26,6 +26,7 @@ import { Badge, Button, Card, Sparks, VerifiedBadge } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
+import { ServerCategoryFilter } from "../components/ServerCategoryFilter";
 import { CampaignDetailRedesign } from "../components/CampaignDetailRedesign";
 import { Seo } from "../components/Seo";
 import {
@@ -40,6 +41,11 @@ import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
 import { minecraftMajorVersions, normalizeMinecraftVersions, serverTypes } from "@nortix/shared";
 import { accountCreationUrl } from "../lib/auth-session";
+import {
+  filterServers,
+  getServerFilterOptions,
+  sortServersByCategory,
+} from "../lib/server-filtering";
 
 const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
 
@@ -415,24 +421,17 @@ export function HomePage() {
 export function BrowseServersPage() {
   const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
-  const [edition, setEdition] = useState("ALL");
   const [version, setVersion] = useState("ALL");
   const [serverType, setServerType] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicServers();
   const servers = data?.items ?? [];
+  const filterOptions = useMemo(() => getServerFilterOptions(servers), [servers]);
   const visible = useMemo(
     () =>
-      servers.filter(
-        (server) =>
-          (edition === "ALL" || server.edition === edition) &&
-          (version === "ALL" ||
-            server.versions.some((item) => item === version || item.startsWith(`${version}.`))) &&
-          (serverType === "ALL" || server.categories.includes(serverType)) &&
-          `${server.name} ${server.description} ${server.categories.join(" ")}`
-            .toLowerCase()
-            .includes(search.toLowerCase()),
+      sortServersByCategory(
+        filterServers(servers, { search, category: serverType, version }),
       ),
-    [search, edition, version, serverType],
+    [servers, search, version, serverType],
   );
   return (
     <div className="listing-page">
@@ -450,17 +449,6 @@ export function BrowseServersPage() {
             placeholder={t("listing.searchServers")}
           />
         </label>
-        <div className="segmented">
-          {["ALL", "JAVA", "BEDROCK"].map((item) => (
-            <button
-              className={edition === item ? "active" : ""}
-              onClick={() => setEdition(item)}
-              key={item}
-            >
-              {item === "ALL" ? t("listing.allEditions") : item}
-            </button>
-          ))}
-        </div>
         <select
           className="filter-select"
           value={version}
@@ -468,20 +456,7 @@ export function BrowseServersPage() {
           aria-label="Minecraft version"
         >
           <option value="ALL">All versions</option>
-          {minecraftMajorVersions.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-        <select
-          className="filter-select"
-          value={serverType}
-          onChange={(event) => setServerType(event.target.value)}
-          aria-label="Server type"
-        >
-          <option value="ALL">All server types</option>
-          {serverTypes.map((item) => (
+          {filterOptions.versions.map((item) => (
             <option key={item} value={item}>
               {item}
             </option>
@@ -489,6 +464,11 @@ export function BrowseServersPage() {
         </select>
         <span>{t("listing.serverCount", { count: formatNumber(visible.length) })}</span>
       </div>
+      <ServerCategoryFilter
+        categories={filterOptions.categories}
+        value={serverType}
+        onChange={setServerType}
+      />
       <div className="server-grid">
         {isLoading ? (
           <Card>
@@ -852,6 +832,12 @@ export function ServerDetailPage() {
             <i /> {server.online ? "Online" : "Offline"} ·{" "}
             {(server.playerCount ?? 0).toLocaleString()} players
           </span>
+          {serverAddress ? (
+            <div className="server-connect__address">
+              <small>SERVER ADDRESS</small>
+              <code>{serverAddress}</code>
+            </div>
+          ) : null}
           <button
             className="button button--primary"
             disabled={!serverAddress}

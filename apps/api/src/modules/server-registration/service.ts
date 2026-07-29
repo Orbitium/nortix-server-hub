@@ -12,6 +12,9 @@ type RegistrationOptions = {
 
 export class ServerRegistrationService {
   async create(options: RegistrationOptions) {
+    if (String(options.input.edition) !== "JAVA") {
+      throw new Error("Only Minecraft: Java Edition servers can be registered.");
+    }
     const normalizedHostname = normalizeServerHostname(options.input.hostname);
     try {
       return await prisma.$transaction(

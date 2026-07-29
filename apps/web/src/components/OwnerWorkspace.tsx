@@ -5,7 +5,13 @@ import { Button } from "@nortix/ui";
 import { api } from "../lib/api";
 import { Modal } from "./Modal";
 import { useNotificationPreferences, useOwnerAnalytics } from "../features/api-data";
-import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
+import {
+  minecraftMajorVersions,
+  serverTypes,
+  storeItemCategories,
+  storeItemCategoryLabels,
+  type StoreItemCategory,
+} from "@nortix/shared";
 
 type ServerRecord = {
   id: string;
@@ -856,7 +862,7 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
             <tbody>
               {[
                 ["Java · Nortix discovery", "1,842", "68.2%", "52m", "56.4%", "42.8%", "24.1%", "4.7"],
-                ["Bedrock · Nortix discovery", "1,104", "54.7%", "39m", "47.1%", "31.6%", "17.8%", "4.2"],
+                ["Java · Search discovery", "1,104", "54.7%", "39m", "47.1%", "31.6%", "17.8%", "4.2"],
                 ["Java · Friend referral", "918", "72.1%", "58m", "61.8%", "48.3%", "29.4%", "4.8"],
                 ["Returning after 30d+", "642", "63.9%", "49m", "52.2%", "39.7%", "22.6%", "4.5"],
               ].map((row) => (
@@ -1290,6 +1296,7 @@ type OwnerServerStoreRecord = {
     slug: string;
     name: string;
     description: string;
+    category: StoreItemCategory;
     sparksPrice: number;
     imageUrls: string[];
     stockQuantity: number | null;
@@ -1301,21 +1308,11 @@ type OwnerServerStoreRecord = {
   }>;
 };
 
-type OwnerServerStorePurchase = {
-  id: string;
-  status: string;
-  quantity: number;
-  priceSparks: number;
-  recipientMinecraftUsername: string;
-  createdAt: string;
-  item: { name: string };
-  delivery?: { status: string; attemptCount: number; lastError?: string | null } | null;
-};
-
 const emptyStoreItemDraft = {
   slug: "",
   name: "",
   description: "",
+  category: "OTHER" as StoreItemCategory,
   sparksPrice: "100",
   imageUrls: "",
   stockQuantity: "",
@@ -1580,8 +1577,7 @@ function OwnerStoreManager({
   setServer: (server: ServerRecord) => void;
 }) {
   const [store, setStore] = useState<OwnerServerStoreRecord | null>(null);
-  const [purchases, setPurchases] = useState<OwnerServerStorePurchase[]>([]);
-  const [section, setSection] = useState<"items" | "storefront" | "orders">("items");
+  const [section, setSection] = useState<"items" | "storefront">("items");
   const [storeDraft, setStoreDraft] = useState({
     name: `${server.name} Store`,
     description: `Official in-game items delivered on ${server.name}.`,
@@ -1593,6 +1589,7 @@ function OwnerStoreManager({
   const [previewItem, setPreviewItem] = useState<{
     name: string;
     description: string;
+    category: StoreItemCategory;
     sparksPrice: number;
     imageUrls: string[];
     stockQuantity: number | null;
@@ -1608,14 +1605,10 @@ function OwnerStoreManager({
     server.pluginConnected;
 
   const load = async () => {
-    const [storeResult, purchaseResult] = await Promise.all([
-      api<OwnerServerStoreRecord | null>(`/owner/servers/${server.id}/store`),
-      api<OwnerServerStorePurchase[]>(`/owner/servers/${server.id}/store/purchases`).catch(
-        () => [],
-      ),
-    ]);
+    const storeResult = await api<OwnerServerStoreRecord | null>(
+      `/owner/servers/${server.id}/store`,
+    );
     setStore(storeResult);
-    setPurchases(purchaseResult);
     setStoreDraft(
       storeResult
         ? {
@@ -1684,6 +1677,7 @@ function OwnerStoreManager({
       slug: itemDraft.slug.trim(),
       name: itemDraft.name.trim(),
       description: itemDraft.description.trim(),
+      category: itemDraft.category,
       sparksPrice: Number(itemDraft.sparksPrice),
       imageUrls: draftImageUrls,
       stockQuantity:
@@ -1731,6 +1725,7 @@ function OwnerStoreManager({
       slug: item.slug,
       name: item.name,
       description: item.description,
+      category: item.category,
       sparksPrice: String(item.sparksPrice),
       imageUrls: item.imageUrls.join("\n"),
       stockQuantity: item.stockQuantity === null ? "" : String(item.stockQuantity),
@@ -1792,6 +1787,7 @@ function OwnerStoreManager({
     setPreviewItem({
       name: itemDraft.name.trim() || "Untitled store item",
       description: itemDraft.description.trim() || "Add a description to preview this item.",
+      category: itemDraft.category,
       sparksPrice: Number(itemDraft.sparksPrice) || 0,
       imageUrls: draftImageUrls,
       stockQuantity:
@@ -1838,9 +1834,6 @@ function OwnerStoreManager({
           onClick={() => setSection("storefront")}
         >
           <Store /> Storefront settings
-        </button>
-        <button className={section === "orders" ? "active" : ""} onClick={() => setSection("orders")}>
-          <Clock3 /> Recent orders
         </button>
       </nav>
 
@@ -1933,7 +1926,7 @@ function OwnerStoreManager({
               />
             </label>
             <label>
-              Slug
+              Item ID <small>Lowercase letters, numbers, and hyphens.</small>
               <input
                 required
                 pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
@@ -1943,6 +1936,24 @@ function OwnerStoreManager({
               />
             </label>
           </div>
+          <label>
+            Category
+            <select
+              value={itemDraft.category}
+              onChange={(event) =>
+                setItemDraft({
+                  ...itemDraft,
+                  category: event.target.value as StoreItemCategory,
+                })
+              }
+            >
+              {storeItemCategories.map((value) => (
+                <option key={value} value={value}>
+                  {storeItemCategoryLabels[value]}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Description
             <textarea
@@ -2117,11 +2128,20 @@ function OwnerStoreManager({
                 <div>
                   <small>{item.status === "PUBLISHED" ? "Published" : item.status === "DRAFT" ? "Draft" : "Unpublished"} · {item._count.purchases} purchases</small>
                   <strong>{item.name}</strong>
+                  <small>
+                    {storeItemCategoryLabels[item.category]} · Item ID: {item.slug}
+                  </small>
                   <p>{item.sparksPrice.toLocaleString()} Sparks · {item.stockQuantity === null ? "Unlimited stock" : `${item.stockQuantity} remaining`}</p>
                 </div>
                 <div className="owner-store-item-actions">
                   <Button variant="ghost" onClick={() => setPreviewItem(item)}><Eye /> Preview</Button>
-                  <Button variant="ghost" onClick={() => editItem(item)}>Edit</Button>
+                  <Button
+                    variant="ghost"
+                    aria-label={`Edit ${item.name}`}
+                    onClick={() => editItem(item)}
+                  >
+                    Edit
+                  </Button>
                   {item.status === "PUBLISHED" ? (
                     <Button variant="ghost" disabled={busy} onClick={() => void updateItemStatus(item, "UNPUBLISHED")}>Unpublish</Button>
                   ) : (
@@ -2138,47 +2158,6 @@ function OwnerStoreManager({
       </>
       ) : null}
 
-      {section === "orders" ? (
-        <section className="card owner-store-purchases">
-        <SettingsHeading
-          icon={Sparkles}
-          title="Recent purchases"
-          description="Recipients choose when to redeem. The signed Paper plugin then handles pending delivery."
-        />
-        {purchases.length ? (
-          <div className="owner-store-purchase-list">
-            {purchases.map((purchase) => {
-              const stage =
-                purchase.status === "PURCHASED"
-                  ? "Purchased"
-                  : purchase.status === "PENDING_DELIVERY"
-                    ? "Pending Delivery"
-                    : purchase.status === "DELIVERED"
-                      ? "Delivered"
-                      : purchase.status === "REFUNDED"
-                        ? "Reversed"
-                        : "Delivery attention needed";
-              return (
-                <article key={purchase.id}>
-                  <div>
-                    <strong>{purchase.item.name}</strong>
-                    <small>
-                      Minecraft: {purchase.recipientMinecraftUsername} · quantity {purchase.quantity}
-                    </small>
-                  </div>
-                  <span>{purchase.priceSparks.toLocaleString()} Sparks</span>
-                  <b>{stage}</b>
-                  {purchase.delivery?.lastError ? <small>{purchase.delivery.lastError}</small> : null}
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <p>No purchases for this server yet.</p>
-        )}
-      </section>
-      ) : null}
-
       {previewItem ? (
         <Modal title="Store item preview" className="owner-store-preview-modal" onClose={() => setPreviewItem(null)}>
           <div className="modal__body">
@@ -2192,7 +2171,8 @@ function OwnerStoreManager({
               )}
             </div>
             <small className="owner-store-preview-status">
-              Owner preview · {previewItem.status === "PUBLISHED" ? "Published" : previewItem.status === "DRAFT" ? "Draft" : "Unpublished"}
+              Owner preview · {storeItemCategoryLabels[previewItem.category]} ·{" "}
+              {previewItem.status === "PUBLISHED" ? "Published" : previewItem.status === "DRAFT" ? "Draft" : "Unpublished"}
             </small>
             <h3>{previewItem.name}</h3>
             <p>{previewItem.description}</p>
@@ -3776,7 +3756,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                     <select value="JAVA" disabled>
                       <option value="JAVA">Minecraft: Java Edition</option>
                     </select>
-                    <small>Bedrock registration is not available yet.</small>
+                    <small>Nortix currently supports Java Edition server registration.</small>
                   </label>
                   <label>
                     Maximum players

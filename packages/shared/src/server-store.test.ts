@@ -3,6 +3,7 @@ import {
   AdminServerStorePayoutActionSchema,
   OwnerServerStorePayoutInputSchema,
   OwnerServerStoreItemInputSchema,
+  OwnerServerStoreItemUpdateSchema,
   ServerStorePurchaseInputSchema,
 } from "./index.js";
 
@@ -10,6 +11,7 @@ const item = {
   slug: "vip-rank",
   name: "VIP rank",
   description: "A permanent VIP rank delivered on the selected server.",
+  category: "RANKS",
   sparksPrice: 500,
   imageUrls: ["https://cdn.example.com/vip.png"],
   stockQuantity: 20,
@@ -25,6 +27,17 @@ const item = {
 describe("server store contracts", () => {
   it("accepts allowlisted fulfillment placeholders", () => {
     expect(OwnerServerStoreItemInputSchema.safeParse(item).success).toBe(true);
+  });
+
+  it("defaults uncategorized items to Other and rejects arbitrary categories", () => {
+    const { category: _category, ...uncategorized } = item;
+    expect(OwnerServerStoreItemInputSchema.parse(uncategorized).category).toBe("OTHER");
+    expect(
+      OwnerServerStoreItemInputSchema.safeParse({ ...item, category: "MONEY" }).success,
+    ).toBe(false);
+    expect(OwnerServerStoreItemUpdateSchema.parse({ category: "COINS" })).toEqual({
+      category: "COINS",
+    });
   });
 
   it("rejects unknown placeholders and multiline commands", () => {

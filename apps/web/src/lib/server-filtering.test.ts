@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { filterServers, getServerFilterOptions, type FilterableServer } from "./server-filtering";
+import {
+  filterServers,
+  getServerFilterOptions,
+  sortServersByCategory,
+  type FilterableServer,
+} from "./server-filtering";
 
 const servers: FilterableServer[] = [
   {
@@ -11,12 +16,12 @@ const servers: FilterableServer[] = [
     tags: ["Friendly"],
   },
   {
-    name: "Bedrock Realm",
-    description: "Cross-device survival",
-    edition: "BEDROCK",
+    name: "Java Survival",
+    description: "Community survival",
+    edition: "JAVA",
     categories: ["Survival"],
     versions: ["1.21"],
-    tags: ["Mobile"],
+    tags: ["Friendly"],
   },
 ];
 
@@ -46,5 +51,15 @@ describe("server filtering", () => {
     expect(
       filterServers(servers, { search: "", category: "Survival", version: "1.20.4" }),
     ).toEqual([]);
+  });
+
+  it("orders servers by primary category and then by name", () => {
+    expect(
+      sortServersByCategory([
+        servers[1]!,
+        { ...servers[0]!, name: "Alpha Skyblock" },
+        servers[0]!,
+      ]).map((server) => server.name),
+    ).toEqual(["Alpha Skyblock", "Skyblock X", "Java Survival"]);
   });
 });

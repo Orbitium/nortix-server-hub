@@ -80,6 +80,7 @@ export class ServerDiscoveryService {
     const servers = await prisma.discoveredServer.findMany({
       where: {
         enabled: true,
+        edition: "JAVA",
         ...(search
           ? {
               OR: [
@@ -109,7 +110,7 @@ export class ServerDiscoveryService {
 
   async getBySlug(slug: string) {
     const server = await prisma.discoveredServer.findFirst({
-      where: { slug, enabled: true },
+      where: { slug, enabled: true, edition: "JAVA" },
       select: {
         id: true,
         slug: true,
@@ -164,7 +165,7 @@ export class ServerDiscoveryService {
     try {
       const now = new Date();
       const candidate = await prisma.discoveredServer.findFirst({
-        where: { enabled: true, nextCheckAt: { lte: now } },
+        where: { enabled: true, edition: "JAVA", nextCheckAt: { lte: now } },
         orderBy: [{ nextCheckAt: "asc" }, { id: "asc" }],
       });
       if (!candidate) return;

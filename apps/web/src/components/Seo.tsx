@@ -102,14 +102,14 @@ export function Seo({
 
 const routeMetadata: Record<string, Omit<SeoProps, "path">> = {
   "/servers": {
-    title: "Best Minecraft Servers for Java and Bedrock",
+    title: "Best Minecraft Java Edition Servers",
     description:
-      "Discover verified Minecraft servers across Java and Bedrock. Search Skyblock, Survival, PvP, Lifesteal, Prison, RPG, and other communities.",
+      "Discover verified Minecraft Java Edition servers. Search Skyblock, Survival, PvP, Lifesteal, Prison, RPG, and other communities.",
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
       name: "Minecraft server discovery",
-      description: "A searchable directory of verified Minecraft Java and Bedrock servers.",
+      description: "A searchable directory of verified Minecraft Java Edition servers.",
       url: `${SITE_ORIGIN}/servers`,
       isPartOf: { "@id": `${SITE_ORIGIN}/#website` },
     },
@@ -209,6 +209,12 @@ const privateRouteMetadata: Record<string, Omit<SeoProps, "path">> = {
   "/admin": {
     title: "Nortix Administration",
     description: "Restricted Nortix administration and moderation workspace.",
+    noIndex: true,
+    image: null,
+  },
+  "/admin/sparks": {
+    title: "Sparks Administration",
+    description: "Monitor and administer player Sparks activity through Nortix's internal tools.",
     noIndex: true,
     image: null,
   },

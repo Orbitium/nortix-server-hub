@@ -98,6 +98,10 @@ export const buildApp = async (env: Env) => {
       "already",
       "expired",
       "server owner",
+      "user account",
+      "staff account",
+      "own admin account",
+      "server confirmation",
       "signed server plugin",
       "plugin signing key",
       "milestone tracking",
@@ -143,18 +147,25 @@ export const buildApp = async (env: Env) => {
       "server votes",
       "voted",
       "admin enrollment token",
+      "Sparks adjustment",
+      "player account",
     ];
     const expose = safeMessages.some((phrase) =>
       message.toLowerCase().includes(phrase.toLowerCase()),
     );
     const statusCode =
-      explicitStatus && explicitStatus >= 400 && explicitStatus < 500
+      explicitStatus && explicitStatus >= 400 && explicitStatus < 600
         ? explicitStatus
         : expose
           ? 400
           : 500;
     return reply.code(statusCode).send({
-      code: statusCode === 500 ? "INTERNAL_ERROR" : "DOMAIN_ERROR",
+      code:
+        statusCode === 503
+          ? "SERVICE_UNAVAILABLE"
+          : statusCode >= 500
+            ? "INTERNAL_ERROR"
+            : "DOMAIN_ERROR",
       message: expose ? message : "The request could not be completed.",
       requestId: request.id,
     });

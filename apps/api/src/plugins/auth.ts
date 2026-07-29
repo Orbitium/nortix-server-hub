@@ -104,6 +104,18 @@ export const authPlugin = fp(async (app: FastifyInstance, options: { env: Env })
         message: "This account cannot access Nortix.",
       });
       request.user = null;
+      return;
+    }
+    if (
+      request.user.status === "LIMITED" &&
+      !["GET", "HEAD", "OPTIONS"].includes(request.method)
+    ) {
+      await reply.code(403).send({
+        code: "ACCOUNT_FROZEN",
+        message:
+          "This account is temporarily read-only. Review the account notice for more information.",
+      });
+      request.user = null;
     }
   });
 

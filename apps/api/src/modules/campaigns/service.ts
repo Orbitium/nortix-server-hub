@@ -17,6 +17,7 @@ import {
 } from "./policy.js";
 import { createNotification } from "../notifications/service.js";
 import { addVerifiedTesterExperience, VERIFIED_MILESTONE_XP } from "../cosmetics/progression.js";
+import { normalizeServerHostname } from "../server-registration/policy.js";
 
 export class CampaignService {
   async create(ownerId: string, input: CampaignInput) {
@@ -135,18 +136,59 @@ export class CampaignService {
 
     return prisma.$transaction(
       async (tx) => {
-        const server = await tx.server.findFirst({
-          where: {
-            id: input.serverId,
-            publicListing: true,
-            moderationStatus: "APPROVED",
-            verificationStatus: "VERIFIED",
-          },
-          select: { id: true, ownerId: true, playerCount: true, name: true },
-        });
+        const eligibleTarget = {
+          publicListing: true,
+          moderationStatus: "APPROVED" as const,
+          verificationStatus: "VERIFIED" as const,
+          claimed: true,
+        };
+        const targetSelect = {
+          id: true,
+          ownerId: true,
+          playerCount: true,
+          name: true,
+          normalizedHostname: true,
+          port: true,
+          edition: true,
+        } satisfies Prisma.ServerSelect;
+        const [selectedServer, addressedServer] = await Promise.all([
+          input.target.serverId
+            ? tx.server.findFirst({
+                where: { id: input.target.serverId, ...eligibleTarget },
+                select: targetSelect,
+              })
+            : null,
+          input.target.address
+            ? tx.server.findFirst({
+                where: {
+                  ...eligibleTarget,
+                  normalizedHostname: normalizeServerHostname(input.target.address.hostname),
+                  port: input.target.address.port,
+                  edition: input.target.address.edition,
+                },
+                select: targetSelect,
+              })
+            : null,
+        ]);
+        if (input.target.serverId && !selectedServer) {
+          throw new Error(
+            "The selected sponsored campaign target is not an approved, publicly listed, verified Nortix server.",
+          );
+        }
+        if (input.target.address && !addressedServer) {
+          throw new Error(
+            "The sponsored campaign target address does not match an approved, publicly listed, verified Nortix server.",
+          );
+        }
+        if (selectedServer && addressedServer && selectedServer.id !== addressedServer.id) {
+          throw new Error(
+            "The selected Nortix server and target address identify different servers.",
+          );
+        }
+        const server = selectedServer ?? addressedServer;
         if (!server) {
           throw new Error(
-            "Sponsored campaigns require an approved, publicly listed, verified server.",
+            "Sponsored campaigns require a target server address or a verified Nortix server.",
           );
         }
         const activitySince = new Date(Date.now() - CAMPAIGN_ACTIVITY_WINDOW_DAYS * 86_400_000);
@@ -243,6 +285,8 @@ export class CampaignService {
               status: campaign.status,
               fundingSource: campaign.fundingSource,
               serverId: campaign.serverId,
+              targetAddress: `${server.normalizedHostname}:${server.port}`,
+              targetEdition: server.edition,
               sponsorshipCredits: campaign.campaignBudgetCredits,
             },
             reason:

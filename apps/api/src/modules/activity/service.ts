@@ -1,8 +1,27 @@
-import { prisma, type Prisma } from "@nortix/database";
+import { prisma, Prisma } from "@nortix/database";
 import { calculateActivityStreak, utcActivityDay } from "./policy.js";
 
 type ActivityTransaction = Prisma.TransactionClient;
 type ActivityStore = Pick<ActivityTransaction, "userDailyActivity">;
+
+export class ActivityPersistenceUnavailableError extends Error {
+  readonly statusCode = 503;
+
+  constructor() {
+    super("Streak tracking is temporarily unavailable while activity storage is updated.");
+    this.name = "ActivityPersistenceUnavailableError";
+  }
+}
+
+const rethrowActivityPersistenceError = (error: unknown): never => {
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2021" || error.code === "P2022")
+  ) {
+    throw new ActivityPersistenceUnavailableError();
+  }
+  throw error;
+};
 
 async function recordInTransaction(
   tx: ActivityTransaction,
@@ -65,13 +84,15 @@ export class ActivityService {
   }
 
   async streak(userId: string) {
-    return readStreak(prisma, userId);
+    return readStreak(prisma, userId).catch(rethrowActivityPersistenceError);
   }
 
   async checkInAndStreak(userId: string, date = new Date()) {
-    return prisma.$transaction(async (tx) => {
-      await recordInTransaction(tx, userId, "WEB_OPEN", date);
-      return readStreak(tx, userId, date);
-    });
+    return prisma
+      .$transaction(async (tx) => {
+        await recordInTransaction(tx, userId, "WEB_OPEN", date);
+        return readStreak(tx, userId, date);
+      })
+      .catch(rethrowActivityPersistenceError);
   }
 }
