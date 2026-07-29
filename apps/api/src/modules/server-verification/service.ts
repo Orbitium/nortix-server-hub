@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { prisma, type Prisma, type ServerVerification } from "@nortix/database";
+import { prisma, Prisma, type ServerVerification } from "@nortix/database";
 import { pingMinecraftServer, type MinecraftStatus } from "./minecraft-status.js";
 
 export type VerificationPlatform = "PAPER" | "VELOCITY";
@@ -36,6 +36,26 @@ export class ServerVerificationService {
   async create(serverId: string, ownerId: string, platform: VerificationPlatform) {
     const server = await prisma.server.findFirst({ where: { id: serverId, ownerId } });
     if (!server) throw new Error("Server not found.");
+    if (server.claimed || server.verificationStatus === "VERIFIED") {
+      throw new Error("This server registration is already verified.");
+    }
+    if (server.verificationStatus === "EXPIRED") {
+      throw new Error("This server registration has expired and cannot be claimed.");
+    }
+    const competingClaim = await prisma.server.findFirst({
+      where: {
+        id: { not: server.id },
+        edition: server.edition,
+        normalizedHostname: server.normalizedHostname,
+        port: server.port,
+        claimed: true,
+      },
+      select: { id: true },
+    });
+    if (competingClaim) {
+      await this.expireRegistration(server.id, ownerId, "A different account claimed this endpoint first.");
+      throw new Error("This server address has already been claimed.");
+    }
     const code = createVerificationCode();
     const expiresAt = new Date(Date.now() + 15 * 60_000);
     const networkScope = platform === "VELOCITY" ? "PROXY_NETWORK" : "SERVER";
@@ -112,7 +132,7 @@ export class ServerVerificationService {
     };
   }
 
-  async verify(serverId: string, ownerId: string) {
+  async verify(serverId: string, ownerId: string, requestId?: string) {
     const verification = await prisma.serverVerification.findFirst({
       where: { serverId, server: { ownerId }, status: "PENDING" },
       include: { server: true },
@@ -158,22 +178,152 @@ export class ServerVerificationService {
       ...(priorEvidence ? { pluginHandshake: priorEvidence } : {}),
     };
     const challenge = challengeOf(verification);
-    await prisma.$transaction([
-      prisma.serverVerification.update({
-        where: { id: verification.id },
-        data: { status: "VERIFIED", evidence },
-      }),
-      prisma.server.update({
-        where: { id: serverId },
-        data: {
-          claimed: true,
-          verificationStatus: "VERIFIED",
-          online: true,
-          playerCount: status.onlinePlayers,
-          maxPlayers: status.maxPlayers,
+    try {
+      const outcome = await prisma.$transaction(
+        async (tx) => {
+          const current = await tx.server.findFirst({
+            where: { id: serverId, ownerId },
+            select: {
+              id: true,
+              edition: true,
+              normalizedHostname: true,
+              port: true,
+              claimed: true,
+              verificationStatus: true,
+            },
+          });
+          if (!current || current.verificationStatus === "EXPIRED") {
+            return { conflict: true as const };
+          }
+          const competingClaim = await tx.server.findFirst({
+            where: {
+              id: { not: current.id },
+              edition: current.edition,
+              normalizedHostname: current.normalizedHostname,
+              port: current.port,
+              claimed: true,
+            },
+            select: { id: true },
+          });
+          if (competingClaim) {
+            await tx.serverVerification.updateMany({
+              where: { serverId, status: "PENDING" },
+              data: { status: "EXPIRED" },
+            });
+            await tx.server.update({
+              where: { id: serverId },
+              data: { claimed: false, verificationStatus: "EXPIRED", publicListing: false },
+            });
+            await tx.auditLog.create({
+              data: {
+                actorId: ownerId,
+                action: "server.registration.expired_by_claim",
+                entityType: "Server",
+                entityId: serverId,
+                requestId,
+                reason: "A different account completed ownership verification first.",
+              },
+            });
+            return { conflict: true as const };
+          }
+
+          const verified = await tx.serverVerification.updateMany({
+            where: { id: verification.id, status: "PENDING" },
+            data: { status: "VERIFIED", evidence },
+          });
+          if (verified.count !== 1) return { conflict: true as const };
+          await tx.server.update({
+            where: { id: serverId },
+            data: {
+              claimed: true,
+              verificationStatus: "VERIFIED",
+              online: true,
+              playerCount: status.onlinePlayers,
+              maxPlayers: status.maxPlayers,
+            },
+          });
+
+          const competitors = await tx.server.findMany({
+            where: {
+              id: { not: serverId },
+              edition: current.edition,
+              normalizedHostname: current.normalizedHostname,
+              port: current.port,
+              claimed: false,
+              verificationStatus: { in: ["UNVERIFIED", "PENDING"] },
+            },
+            select: { id: true },
+          });
+          const competitorIds = competitors.map((item) => item.id);
+          if (competitorIds.length > 0) {
+            await Promise.all([
+              tx.server.updateMany({
+                where: { id: { in: competitorIds }, claimed: false },
+                data: {
+                  verificationStatus: "EXPIRED",
+                  publicListing: false,
+                },
+              }),
+              tx.serverVerification.updateMany({
+                where: { serverId: { in: competitorIds }, status: "PENDING" },
+                data: { status: "EXPIRED" },
+              }),
+              tx.integrationApiKey.updateMany({
+                where: { serverId: { in: competitorIds }, revokedAt: null },
+                data: { revokedAt: new Date() },
+              }),
+              ...competitorIds.map((id) =>
+                tx.auditLog.create({
+                  data: {
+                    actorId: ownerId,
+                    action: "server.registration.expired_by_claim",
+                    entityType: "Server",
+                    entityId: id,
+                    requestId,
+                    reason: "Another account verified ownership of the same public endpoint.",
+                    afterSnapshot: { verificationStatus: "EXPIRED", claimed: false },
+                  },
+                }),
+              ),
+            ]);
+          }
+          await tx.auditLog.create({
+            data: {
+              actorId: ownerId,
+              action: "server.registration.claimed",
+              entityType: "Server",
+              entityId: serverId,
+              requestId,
+              afterSnapshot: {
+                verificationStatus: "VERIFIED",
+                claimed: true,
+                expiredCompetingRegistrations: competitorIds.length,
+              },
+            },
+          });
+          return { conflict: false as const };
         },
-      }),
-    ]);
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+      if (outcome.conflict) {
+        throw new Error("This server address has already been claimed.");
+      }
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2002" || error.code === "P2034")
+      ) {
+        const expired = await this.expireRegistration(
+          serverId,
+          ownerId,
+          "A concurrent ownership verification completed first.",
+          requestId,
+        );
+        if (expired) throw new Error("This server address has already been claimed.");
+        throw new Error("Server verification is already being processed. Try again.");
+      }
+      throw error;
+    }
     return {
       status: "VERIFIED" as const,
       serverId,
@@ -181,6 +331,58 @@ export class ServerVerificationService {
       downstreamVerificationRequired: challenge.platform !== "VELOCITY",
       verifiedAt: evidence.checkedAt,
     };
+  }
+
+  private async expireRegistration(
+    serverId: string,
+    ownerId: string,
+    reason: string,
+    requestId?: string,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const server = await tx.server.findFirst({
+        where: { id: serverId, ownerId, claimed: false },
+        select: { id: true, edition: true, normalizedHostname: true, port: true },
+      });
+      if (!server) return false;
+      const competingClaim = await tx.server.findFirst({
+        where: {
+          id: { not: serverId },
+          edition: server.edition,
+          normalizedHostname: server.normalizedHostname,
+          port: server.port,
+          claimed: true,
+        },
+        select: { id: true },
+      });
+      if (!competingClaim) return false;
+      await Promise.all([
+        tx.serverVerification.updateMany({
+          where: { serverId, status: "PENDING" },
+          data: { status: "EXPIRED" },
+        }),
+        tx.server.updateMany({
+          where: { id: serverId, ownerId, claimed: false },
+          data: { verificationStatus: "EXPIRED", publicListing: false },
+        }),
+        tx.integrationApiKey.updateMany({
+          where: { serverId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        }),
+        tx.auditLog.create({
+          data: {
+            actorId: ownerId,
+            action: "server.registration.expired_by_claim",
+            entityType: "Server",
+            entityId: serverId,
+            requestId,
+            reason,
+            afterSnapshot: { verificationStatus: "EXPIRED", claimed: false },
+          },
+        }),
+      ]);
+      return true;
+    });
   }
 
   async pluginHandshake(input: {

@@ -251,9 +251,19 @@ export const serverStoreCommandPlaceholders = [
 
 const ServerStoreImageUrlSchema = z
   .string()
-  .url()
   .max(2_000)
-  .refine((value) => new URL(value).protocol === "https:", "Store images must use HTTPS.");
+  .refine((value) => {
+    if (/^\/api\/v1\/media\/store-items\/[0-9a-f-]{36}\.(?:png|jpe?g|webp)$/i.test(value)) {
+      return true;
+    }
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Store images must be an uploaded Nortix asset or use HTTPS.");
+
+export const ServerStoreItemStatusSchema = z.enum(["DRAFT", "PUBLISHED", "UNPUBLISHED"]);
 
 const ServerStoreCommandTemplateSchema = z
   .string()
@@ -292,13 +302,12 @@ export const OwnerServerStoreItemInputSchema = z
     sparksPrice: z.number().int().min(1).max(1_000_000),
     imageUrls: z
       .array(ServerStoreImageUrlSchema)
-      .min(1)
       .max(6)
       .refine((urls) => new Set(urls).size === urls.length, "Item images must be unique."),
     stockQuantity: z.number().int().min(0).max(10_000_000).nullable().default(null),
     maxPerPurchase: z.number().int().min(1).max(100).default(1),
     commandTemplates: z.array(ServerStoreCommandTemplateSchema).min(1).max(10),
-    available: z.boolean().default(false),
+    status: ServerStoreItemStatusSchema.default("DRAFT"),
     sortOrder: z.number().int().min(-10_000).max(10_000).default(0),
   })
   .strict();
@@ -322,6 +331,46 @@ export const ServerStorePurchaseInputSchema = z
     giftMessage: z.string().trim().max(300).optional(),
   })
   .strict();
+
+export const ServerStorePurchaseMutationSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+  })
+  .strict();
+
+export const OwnerServerStorePayoutInputSchema = z
+  .object({
+    amountCents: z.number().int().min(1_000).max(100_000_000),
+    idempotencyKey: z.string().uuid(),
+  })
+  .strict();
+
+export const AdminServerStorePayoutProfileInputSchema = z
+  .object({
+    ownerUsername: z.string().trim().min(3).max(32).regex(/^[A-Za-z0-9_]+$/),
+    provider: z.string().trim().min(2).max(40),
+    providerAccountReference: z.string().trim().min(4).max(500),
+    displayLabel: z.string().trim().min(2).max(80),
+    verified: z.boolean(),
+  })
+  .strict();
+
+export const AdminServerStorePayoutActionSchema = z
+  .object({
+    action: z.enum(["UNDER_REVIEW", "APPROVE", "MARK_PROCESSING", "MARK_PAID", "REJECT", "FAIL"]),
+    reason: z.string().trim().min(5).max(1_000),
+    providerReference: z.string().trim().min(4).max(500).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.action === "MARK_PAID" && !value.providerReference) {
+      context.addIssue({
+        code: "custom",
+        path: ["providerReference"],
+        message: "A provider reference is required before marking a request paid.",
+      });
+    }
+  });
 
 export const milestoneTypes = [
   "JOIN_SERVER",
@@ -404,6 +453,13 @@ export const ServerAddressValidationSchema = z.object({
   port: z.number().int().min(1).max(65535).default(25565),
   edition: z.enum(["JAVA", "BEDROCK"]).default("JAVA"),
 });
+
+export const DeleteServerRegistrationSchema = z
+  .object({
+    confirmationName: z.string().trim().min(1).max(80),
+    reason: z.string().trim().min(5).max(500),
+  })
+  .strict();
 
 export const serverTeamRoles = ["ADMIN", "MANAGER", "OPERATOR", "ANALYST"] as const;
 export const ServerTeamRoleSchema = z.enum(serverTeamRoles);
@@ -606,10 +662,20 @@ export type AdminSponsoredItemUpdate = z.infer<typeof AdminSponsoredItemUpdateSc
 export type SponsoredPurchaseInput = z.infer<typeof SponsoredPurchaseInputSchema>;
 export type AdminSponsoredPurchaseAction = z.infer<typeof AdminSponsoredPurchaseActionSchema>;
 export type OwnerServerStoreInput = z.infer<typeof OwnerServerStoreInputSchema>;
+export type ServerStoreItemStatus = z.infer<typeof ServerStoreItemStatusSchema>;
 export type OwnerServerStoreItemInput = z.infer<typeof OwnerServerStoreItemInputSchema>;
 export type OwnerServerStoreItemUpdate = z.infer<typeof OwnerServerStoreItemUpdateSchema>;
 export type ServerStorePurchaseInput = z.infer<typeof ServerStorePurchaseInputSchema>;
+export type ServerStorePurchaseMutation = z.infer<typeof ServerStorePurchaseMutationSchema>;
+export type OwnerServerStorePayoutInput = z.infer<typeof OwnerServerStorePayoutInputSchema>;
+export type AdminServerStorePayoutProfileInput = z.infer<
+  typeof AdminServerStorePayoutProfileInputSchema
+>;
+export type AdminServerStorePayoutAction = z.infer<
+  typeof AdminServerStorePayoutActionSchema
+>;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
+export type DeleteServerRegistrationInput = z.infer<typeof DeleteServerRegistrationSchema>;
 export type ApiError = {
   code: string;
   message: string;

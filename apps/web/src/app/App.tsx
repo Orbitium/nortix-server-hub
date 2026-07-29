@@ -28,6 +28,7 @@ import {
   AdminOverviewPage,
   AdminSponsoredPurchasesPage,
   AdminSponsoredShopPage,
+  AdminStorePayoutsPage,
   CampaignReviewPage,
   SparksAdjustmentReviewPage,
 } from "../routes/AdminPages";
@@ -126,6 +127,7 @@ function AdminRoutes() {
         <Route path="sparks-adjustments" element={<SparksAdjustmentReviewPage />} />
         <Route path="sponsored-shop" element={<AdminSponsoredShopPage />} />
         <Route path="sponsored-purchases" element={<AdminSponsoredPurchasesPage />} />
+        <Route path="store-payouts" element={<AdminStorePayoutsPage />} />
         <Route
           path="messages"
           element={
@@ -350,6 +352,14 @@ export function App() {
           />
           <Route
             path="owner/store"
+            element={
+              <RequireSignIn>
+                <OwnerPlatform />
+              </RequireSignIn>
+            }
+          />
+          <Route
+            path="owner/store-sales"
             element={
               <RequireSignIn>
                 <OwnerPlatform />

@@ -3131,6 +3131,73 @@ td > small {
 .balance-pill svg {
   width: 17px;
 }
+
+.sparks-market-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+
+.sparks-market-switch button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 13px 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text-muted);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sparks-market-switch button:hover,
+.sparks-market-switch button:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.sparks-market-switch button.active {
+  border-color: color-mix(in srgb, var(--sparks-purple, #8b5cf6) 45%, var(--border));
+  color: var(--text-primary);
+  background: var(--sparks-purple-soft);
+}
+
+.sparks-market-switch svg {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  color: #b89cff;
+}
+
+.sparks-market-switch span {
+  display: grid;
+  gap: 3px;
+}
+
+.sparks-market-switch strong {
+  font-size: 14px;
+}
+
+.sparks-market-switch small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.sparks-shop-empty-state {
+  min-height: 92px;
+  padding: 24px 26px;
+}
+
+.sparks-shop-empty-state p {
+  margin: 0;
+}
+
 .cosmetic-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -3385,6 +3452,10 @@ td > small {
 }
 
 @media (max-width: 720px) {
+  .sparks-market-switch {
+    grid-template-columns: 1fr;
+  }
+
   .voting-page {
     gap: 14px;
   }
@@ -8751,6 +8822,164 @@ td > small {
   }
 }
 
+.owner-store-sales-heading {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+}
+
+.owner-store-sales-heading small {
+  color: var(--nortix-green);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.owner-store-sales-heading h1,
+.owner-store-sales-heading p {
+  margin: 0;
+}
+
+.owner-store-sales-heading p {
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.owner-store-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.owner-store-stage-grid > section {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 20px;
+}
+
+.owner-store-stage-grid > section > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nortix-green) 14%, transparent);
+  color: var(--nortix-green);
+  font-weight: 800;
+}
+
+.owner-store-stage-grid div,
+.owner-store-stage-grid p {
+  margin: 0;
+}
+
+.owner-store-stage-grid div {
+  display: grid;
+  gap: 5px;
+}
+
+.owner-store-stage-grid strong {
+  font-size: 28px;
+}
+
+.owner-store-stage-grid p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.owner-store-sales-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 18px;
+}
+
+.owner-store-sales-grid > .card {
+  padding: 24px;
+}
+
+.owner-store-proceeds-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.owner-store-proceeds-stats > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.owner-store-proceeds-stats small {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.owner-store-proceeds-stats strong {
+  font-size: 21px;
+}
+
+.owner-store-bar-chart {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  min-height: 220px;
+  margin-top: 18px;
+  padding: 16px 10px 0;
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(to bottom, transparent 49%, var(--border) 50%, transparent 51%);
+}
+
+.owner-store-bar-chart span {
+  flex: 1;
+  min-width: 4px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(to top, var(--nortix-green), #8dfc72);
+}
+
+.owner-store-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.admin-sensitive-reference {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.admin-sensitive-reference code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+
+@media (max-width: 980px) {
+  .owner-store-sales-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .owner-store-stage-grid,
+  .owner-store-proceeds-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
 .unified-info-page article {
   display: flex;
   min-width: 0;
@@ -10657,6 +10886,32 @@ td > small {
 .owner-registry-actions button.active {
   color: var(--accent);
   border-color: rgba(116, 241, 62, 0.4);
+}
+
+.owner-registry-actions button.owner-registry-delete {
+  color: #ff9b9b;
+  border-color: rgba(239, 91, 91, 0.34);
+}
+
+.owner-registry-actions button.owner-registry-delete:hover {
+  color: #ffc2c2;
+  background: rgba(130, 35, 35, 0.2);
+}
+
+.owner-delete-registration {
+  display: grid;
+  gap: 16px;
+}
+
+.owner-delete-registration > p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.owner-delete-registration label {
+  display: grid;
+  gap: 8px;
 }
 
 .owner-registry-empty {
@@ -14837,6 +15092,57 @@ td > small {
 }
 
 /* Server-owned Sparks stores */
+.owner-store-section-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 6px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.owner-store-section-tabs button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 15px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.owner-store-section-tabs button svg {
+  width: 17px;
+}
+
+.owner-store-section-tabs button.active {
+  color: var(--text);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.owner-storefront-settings,
+.owner-store-item-editor,
+.owner-store-setup-callout {
+  max-width: 980px;
+  padding: 24px;
+}
+
+.owner-store-setup-callout {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
 .owner-store-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
@@ -14857,6 +15163,96 @@ td > small {
 
 .owner-command-editor {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.owner-store-upload {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.owner-store-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.owner-store-upload > span {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.owner-store-upload > span svg {
+  width: 16px;
+}
+
+.owner-store-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.owner-store-image-grid figure {
+  position: relative;
+  margin: 0;
+}
+
+.owner-store-image-grid img {
+  width: 100%;
+  aspect-ratio: 1.35;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.owner-store-image-grid button {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: white;
+  background: rgba(4, 10, 14, 0.82);
+  cursor: pointer;
+}
+
+.owner-store-image-grid button svg {
+  width: 15px;
+}
+
+.owner-store-external-images {
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.owner-store-external-images summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.owner-store-external-images label {
+  margin-top: 14px;
 }
 
 .owner-placeholder-list {
@@ -14924,6 +15320,76 @@ td > small {
   gap: 4px;
 }
 
+.owner-store-item-actions {
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.owner-store-item-actions .button {
+  min-height: 36px;
+}
+
+.owner-store-preview-modal {
+  width: min(680px, calc(100vw - 30px));
+}
+
+.owner-store-preview-modal .modal__body {
+  display: grid;
+  gap: 14px;
+}
+
+.owner-store-preview-gallery {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(210px, 1fr);
+  gap: 9px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+}
+
+.owner-store-preview-gallery img,
+.owner-store-preview-gallery > div {
+  width: 100%;
+  aspect-ratio: 1.55;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  object-fit: cover;
+  scroll-snap-align: start;
+}
+
+.owner-store-preview-gallery > div {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.owner-store-preview-status {
+  width: fit-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--nortix-green);
+  background: color-mix(in srgb, var(--nortix-green) 12%, transparent);
+  font-weight: 750;
+}
+
+.owner-store-preview-modal h3,
+.owner-store-preview-modal p {
+  margin: 0;
+}
+
+.owner-store-preview-purchase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
 .owner-store-item-list p,
 .owner-store-item-list small,
 .owner-store-purchase-list small {
@@ -14969,6 +15435,14 @@ td > small {
 
   .owner-store-item-list article,
   .owner-store-purchase-list article {
+    grid-template-columns: 1fr;
+  }
+
+  .owner-store-item-actions {
+    justify-content: flex-start;
+  }
+
+  .owner-store-preview-purchase {
     grid-template-columns: 1fr;
   }
 }

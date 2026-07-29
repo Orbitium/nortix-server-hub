@@ -69,6 +69,8 @@ promise.
 - `GET /sparks/server-stores`
 - `GET /sparks/server-store-purchases`
 - `POST /sparks/server-store-purchases`
+- `POST /sparks/server-store-purchases/:purchaseId/redeem`
+- `POST /sparks/server-store-purchases/:purchaseId/refund`
 - `GET /profile/cosmetics`
 - `PUT /profile/cosmetics/equipped`
 - `DELETE /profile/cosmetics/equipped`
@@ -86,26 +88,54 @@ tester level. Equipped selections are constrained to one item per typed slot.
 Sponsored gift requests use a separate catalog and fulfillment domain. Prices, required delivery
 fields, availability, status, debits, and refunds are backend-controlled. Player purchase queries
 are always scoped to the authenticated account.
-Verified servers can also publish their own Sparks catalogs. A purchase may target the buyer or a
-gift recipient's Nortix username, but delivery is allowed only through that recipient's verified
-premium identity or active identity link for the exact server. Stock and Sparks debits are updated
-atomically. Commands are snapshotted at purchase time, remain private to authorized owners and the
-server's signed plugin, and a terminal delivery failure automatically restores stock and Sparks.
+Server owners can create and edit a private Sparks storefront before verification. Publishing it
+to Server Market requires a claimed, verified, publicly discoverable server with a recent
+capability-bearing plugin connection and an active server-bound signing key. A purchase may target
+the buyer or a gift recipient's Nortix username. It starts in `PURCHASED`; only the recipient can
+move it to `PENDING_DELIVERY`, and the signed plugin moves it to `DELIVERED`. A self-purchase can
+be refunded for 14 days only while it remains unredeemed. Gifts are not eligible for a
+discretionary refund.
+Delivery is allowed only while the recipient's exact premium or server-scoped Minecraft identity
+remains active. Stock and Sparks debits are updated atomically. Commands are snapshotted at
+purchase time, remain private to authorized owners and the server's signed plugin, and a terminal
+fulfillment failure may automatically restore stock and Sparks.
 
 ## Owner operations
 
 - `GET /owner/servers`
+- `DELETE /owner/servers/:serverId/registration` — owner-only removal of an unclaimed direct
+  registration; requires the exact server name and a reason
 - `GET /owner/campaigns`
 - `GET /owner/campaign-balance`
 - `POST /owner/campaign-balance/checkout`
 - `GET /owner/analytics`
 - `GET|PUT /owner/servers/:id/store`
+- `POST /owner/servers/:id/store/media` (raw PNG, JPEG, or WebP; maximum 2 MB)
 - `POST /owner/servers/:id/store/items`
 - `PATCH /owner/servers/:id/store/items/:itemId`
 - `GET /owner/servers/:id/store/purchases`
+- `GET /owner/store-sales`
+- `POST /owner/store-payouts`
 
 The checkout endpoint returns a mock session locally. `POST /payments/webhooks/mock` verifies an
 HMAC signature, stores a unique provider event, and creates one idempotent purchased-credit entry.
+
+Store sales reporting is owner-only and never appears in player responses. Delivery creates an
+append-only private proceeds entry whose eligibility date is seven days after purchase. A proceeds
+request transactionally reserves only currently eligible entries. Requests remain unavailable
+unless an operator has explicitly enabled the workflow and a Nortix administrator has attached a
+reviewed provider account reference.
+
+An account can have only one active registration for the same normalized edition, hostname, and
+port. Separate accounts may register the same unclaimed public endpoint, but the first account to
+complete independent ownership verification becomes its only owner. The claim transaction expires
+all other pending registrations and challenges for that endpoint. Once claimed, new competing
+registrations are rejected.
+
+Server-owned items use explicit `DRAFT`, `PUBLISHED`, and `UNPUBLISHED` states. Only `PUBLISHED`
+items from available stores are returned by the player catalog or accepted by the purchase
+service. Owner permissions are required to edit or preview the other states. Image uploads are
+file-signature checked, server-scoped, and returned under generated opaque same-origin URLs.
 
 ## Moderation
 
@@ -122,6 +152,9 @@ HMAC signature, stores a unique provider event, and creates one idempotent purch
 - `PATCH /admin/sponsored-items/:itemId`
 - `GET /admin/sponsored-purchases`
 - `POST /admin/sponsored-purchases/:purchaseId/actions`
+- `GET /admin/server-store-payouts`
+- `PUT /admin/server-store-payout-profile`
+- `POST /admin/server-store-payouts/:payoutId/actions`
 - `POST /admin/completions/:id/review`
 - `GET /admin/payment-events`
 - `GET /admin/ledger`

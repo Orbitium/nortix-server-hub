@@ -64,12 +64,17 @@ Supported source values are `WEB`, `MANUAL`, `SERVER_PLUGIN`, `CLIENT_MOD`, and 
 - assist server ownership verification;
 - retry events with stable idempotency keys.
 
+Multiple Nortix accounts may prepare unverified registrations for the same public endpoint, but
+only the first account that passes the independent MOTD check can claim it. Completing that claim
+expires every other pending challenge for the normalized edition, hostname, and port.
+
 ## Server-store delivery
 
-The Paper plugin polls `GET /plugin/store-deliveries/next?serverId=...` with the same per-server
-P-256 request signature. The API returns at most one claimed delivery for that exact server. It
-contains an opaque purchase ID and already-rendered console commands; it never exposes a player's
-Sparks balance or another server's queue.
+After the recipient explicitly redeems a purchase, the Paper plugin polls
+`GET /plugin/store-deliveries/next?serverId=...` with the same per-server P-256 request signature.
+The API returns at most one claimed delivery for that exact server. It contains an opaque purchase
+ID and already-rendered console commands; it never exposes a player's Sparks balance, private
+owner proceeds, or another server's queue.
 
 Owners can use `%player%`, `%amount%`, `%quantity%`, `%purchase_id%`, `%item_id%`, `%buyer%`, and
 `%recipient%` in command templates. Newlines, control characters, and unknown placeholders are

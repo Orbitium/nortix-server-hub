@@ -49,6 +49,7 @@ import {
   type SponsoredStore,
   type ServerStore,
   type ServerStoreItem,
+  type ServerStorePurchase,
   useCurrentUser,
   useDailyQuests,
   useLeaderboard,
@@ -931,6 +932,7 @@ export function QuestsPage() {
 }
 
 export function SparksShopPage() {
+  const { data: currentUser } = useCurrentUser();
   const {
     data: cosmeticCollection,
     isLoading,
@@ -953,6 +955,7 @@ export function SparksShopPage() {
   const balance = sparksSummary?.balance ?? 0;
   const [selected, setSelected] = useState<ProfileCosmeticItem | null>(null);
   const [cosmeticBusy, setCosmeticBusy] = useState(false);
+  const [marketView, setMarketView] = useState<"NORTIX" | "SERVER">("NORTIX");
   const [category, setCategory] = useState("ALL");
   const [purchaseMessage, setPurchaseMessage] = useState("");
   const [selectedSponsored, setSelectedSponsored] = useState<{
@@ -974,6 +977,8 @@ export function SparksShopPage() {
   const [serverStoreAttemptKey, setServerStoreAttemptKey] = useState("");
   const [serverStoreMessage, setServerStoreMessage] = useState("");
   const [serverStoreBusy, setServerStoreBusy] = useState(false);
+  const [serverPurchaseActionBusy, setServerPurchaseActionBusy] = useState("");
+  const [serverPurchaseActionMessage, setServerPurchaseActionMessage] = useState("");
   const [insufficientPurchase, setInsufficientPurchase] = useState<{
     itemName: string;
     required: number;
@@ -994,17 +999,74 @@ export function SparksShopPage() {
   const selectedServerStoreTotal = selectedServerItem
     ? sparksPurchaseTotal(selectedServerItem.item.sparksPrice, serverStoreQuantity)
     : 0;
+  const updateServerPurchase = async (
+    purchase: ServerStorePurchase,
+    action: "redeem" | "refund",
+  ) => {
+    setServerPurchaseActionBusy(`${purchase.id}:${action}`);
+    setServerPurchaseActionMessage("");
+    try {
+      await api(`/sparks/server-store-purchases/${purchase.id}/${action}`, {
+        method: "POST",
+        body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+      });
+      await Promise.all([refetchServerStorePurchases(), refetchServerStores(), refetchSparks()]);
+      setServerPurchaseActionMessage(
+        action === "redeem"
+          ? "Delivery is now pending with the server."
+          : "The eligible purchase was refunded.",
+      );
+    } catch (error) {
+      setServerPurchaseActionMessage(
+        error instanceof Error ? error.message : "The purchase could not be updated.",
+      );
+    } finally {
+      setServerPurchaseActionBusy("");
+    }
+  };
   return (
     <div className="dashboard-page">
+      <nav className="sparks-market-switch" aria-label="Sparks Shop markets">
+        <button
+          type="button"
+          className={marketView === "NORTIX" ? "active" : ""}
+          aria-pressed={marketView === "NORTIX"}
+          onClick={() => setMarketView("NORTIX")}
+        >
+          <Sparkles />
+          <span>
+            <strong>Nortix Market</strong>
+            <small>Sponsored gifts and cosmetics</small>
+          </span>
+        </button>
+        <button
+          type="button"
+          className={marketView === "SERVER" ? "active" : ""}
+          aria-pressed={marketView === "SERVER"}
+          onClick={() => setMarketView("SERVER")}
+        >
+          <ServerCog />
+          <span>
+            <strong>Server Market</strong>
+            <small>Browse verified server stores</small>
+          </span>
+        </button>
+      </nav>
       <PageHeading
         title="Sparks Shop"
-        description="Spend non-withdrawable Sparks on cosmetic and non-financial profile upgrades."
+        description={
+          marketView === "NORTIX"
+            ? "Browse Nortix-sponsored gifts and cosmetic profile upgrades."
+            : "Browse in-game items offered by verified Minecraft servers."
+        }
         action={
           <div className="balance-pill">
             <Sparkles /> <strong>{balance.toLocaleString()}</strong> Sparks
           </div>
         }
       />
+      {marketView === "NORTIX" ? (
+        <>
       <Card className="sparks-disclaimer">
         <Sparkles />
         <div>
@@ -1089,6 +1151,10 @@ export function SparksShopPage() {
             </Card>
           ))}
       </div>
+        </>
+      ) : null}
+      {marketView === "SERVER" ? (
+        <>
       <PageHeading
         eyebrow="SERVER STORES"
         title="Items delivered in-game"
@@ -1157,7 +1223,7 @@ export function SparksShopPage() {
         ))}
       </div>
       {serverStores.length === 0 ? (
-        <Card>
+        <Card className="sparks-shop-empty-state">
           <p>No verified server stores are available right now.</p>
         </Card>
       ) : null}
@@ -1168,34 +1234,96 @@ export function SparksShopPage() {
             title="Your server-store purchases and gifts"
             description="Purchases you sent or received appear here without exposing private account details."
           />
+          {serverPurchaseActionMessage ? (
+            <p className="status-note" role="status">{serverPurchaseActionMessage}</p>
+          ) : null}
           <div className="sponsored-purchase-list">
-            {serverStorePurchases.map((purchase) => (
-              <Card key={purchase.id}>
-                <div>
-                  <small>{purchase.item.store.server.name}</small>
-                  <h3>{purchase.item.name}</h3>
-                  <p>
-                    Quantity {purchase.quantity} · for @{purchase.recipient.username} ·{" "}
-                    {new Date(purchase.createdAt).toLocaleString()}
-                  </p>
-                </div>
-                <Badge
-                  tone={
-                    purchase.status === "DELIVERED"
-                      ? "success"
-                      : purchase.status === "REFUNDED" || purchase.status === "FAILED"
-                        ? "neutral"
-                        : "warning"
-                  }
-                >
-                  {purchase.status}
-                </Badge>
-                {purchase.giftMessage ? <small>Gift message: {purchase.giftMessage}</small> : null}
-              </Card>
-            ))}
+            {serverStorePurchases.map((purchase) => {
+              const isRecipient =
+                currentUser?.username.toLowerCase() === purchase.recipient.username.toLowerCase();
+              const isGift =
+                purchase.buyer.username.toLowerCase() !== purchase.recipient.username.toLowerCase();
+              const canRedeem = isRecipient && purchase.status === "PURCHASED";
+              const canRefund =
+                !isGift &&
+                purchase.status === "PURCHASED" &&
+                new Date(purchase.refundEligibleUntil) >= new Date();
+              const stage =
+                purchase.status === "PURCHASED"
+                  ? "Purchased"
+                  : purchase.status === "PENDING_DELIVERY"
+                    ? "Pending Delivery"
+                    : purchase.status === "DELIVERED"
+                      ? "Delivered"
+                      : purchase.status === "REFUNDED"
+                        ? "Reversed"
+                        : "Delivery attention needed";
+              return (
+                <Card key={purchase.id}>
+                  <div>
+                    <small>{purchase.item.store.server.name}</small>
+                    <h3>{purchase.item.name}</h3>
+                    <p>
+                      Quantity {purchase.quantity} · for @{purchase.recipient.username} ·{" "}
+                      {new Date(purchase.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <Badge
+                    tone={
+                      purchase.status === "DELIVERED"
+                        ? "success"
+                        : purchase.status === "REFUNDED" || purchase.status === "FAILED"
+                          ? "neutral"
+                          : "warning"
+                    }
+                  >
+                    {stage}
+                  </Badge>
+                  {purchase.giftMessage ? <small>Gift message: {purchase.giftMessage}</small> : null}
+                  {purchase.status === "PURCHASED" ? (
+                    <small>
+                      {isGift
+                        ? "Gift purchases are not eligible for discretionary refunds."
+                        : `Refundable before redemption through ${new Date(
+                            purchase.refundEligibleUntil,
+                          ).toLocaleDateString()}.`}
+                    </small>
+                  ) : null}
+                  {canRedeem || canRefund ? (
+                    <div className="form-actions">
+                      {canRefund ? (
+                        <Button
+                          variant="ghost"
+                          disabled={Boolean(serverPurchaseActionBusy)}
+                          onClick={() => void updateServerPurchase(purchase, "refund")}
+                        >
+                          {serverPurchaseActionBusy === `${purchase.id}:refund`
+                            ? "Refunding…"
+                            : "Refund purchase"}
+                        </Button>
+                      ) : null}
+                      {canRedeem ? (
+                        <Button
+                          disabled={Boolean(serverPurchaseActionBusy)}
+                          onClick={() => void updateServerPurchase(purchase, "redeem")}
+                        >
+                          {serverPurchaseActionBusy === `${purchase.id}:redeem`
+                            ? "Starting delivery…"
+                            : "Redeem item"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </Card>
+              );
+            })}
           </div>
         </>
       ) : null}
+        </>
+      ) : null}
+      {marketView === "NORTIX" ? (
+        <>
       <PageHeading
         eyebrow="NORTIX SPONSORED"
         title="Gifts from Nortix Labs"
@@ -1252,7 +1380,7 @@ export function SparksShopPage() {
         ))}
       </div>
       {sponsoredStores.length === 0 ? (
-        <Card>
+        <Card className="sparks-shop-empty-state">
           <p>No Nortix-sponsored gifts are available right now.</p>
         </Card>
       ) : null}
@@ -1295,6 +1423,8 @@ export function SparksShopPage() {
               </Card>
             ))}
           </div>
+        </>
+      ) : null}
         </>
       ) : null}
       {selected && (
@@ -1476,8 +1606,8 @@ export function SparksShopPage() {
               <Badge tone="neutral">{selectedServerItem.store.server.name}</Badge>
               <p>{selectedServerItem.item.description}</p>
               <small>
-                Delivered to the recipient&apos;s linked Minecraft identity by the server&apos;s
-                signed Paper plugin.
+                The purchase is saved first. The recipient starts delivery later with the Redeem
+                button, and the server&apos;s signed Paper plugin completes it.
               </small>
             </div>
             <label className="sparks-purchase-dialog__quantity">
@@ -1542,8 +1672,9 @@ export function SparksShopPage() {
               </span>
             </div>
             <small>
-              The recipient must have a Minecraft identity linked to Nortix. Failed plugin
-              delivery automatically returns the buyer&apos;s Sparks.
+              The recipient must have a Minecraft identity linked to Nortix. A self-purchase may
+              be refunded within 14 days while it remains unredeemed. Gifts are not eligible for
+              discretionary refunds. Failed fulfillment may still be automatically reversed.
             </small>
             {serverStoreMessage ? <p role="status">{serverStoreMessage}</p> : null}
             <div className="modal__footer">

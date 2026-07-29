@@ -358,6 +358,7 @@ async function main() {
         slug,
         description,
         hostname: `play.${slug}.example`,
+        normalizedHostname: `play.${slug}.example`,
         port: edition === "BEDROCK" ? 19132 : 25565,
         versions: [...versions],
         edition: edition === "JAVA" ? ServerEdition.JAVA : ServerEdition.BEDROCK,

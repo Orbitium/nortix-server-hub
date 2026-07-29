@@ -15,6 +15,7 @@ import {
   MilestoneSubmissionSchema,
   NotificationPreferenceInputSchema,
   ServerAddressValidationSchema,
+  DeleteServerRegistrationSchema,
   ServerInputSchema,
   ServerTeamInviteInputSchema,
   TeamInviteResponseSchema,
@@ -26,7 +27,11 @@ import {
   OwnerServerStoreInputSchema,
   OwnerServerStoreItemInputSchema,
   OwnerServerStoreItemUpdateSchema,
+  OwnerServerStorePayoutInputSchema,
+  ServerStorePurchaseMutationSchema,
   ServerStorePurchaseInputSchema,
+  AdminServerStorePayoutActionSchema,
+  AdminServerStorePayoutProfileInputSchema,
   ServerRewardedVotingSettingSchema,
   ServerVoteInputSchema,
   SponsoredPurchaseInputSchema,
@@ -85,9 +90,15 @@ import { verifyVoteTurnstile } from "./voting/turnstile.js";
 import { GameplayService } from "./gameplay/service.js";
 import { SponsoredShopService } from "./sponsored-shop/service.js";
 import { ServerStoreService } from "./server-store/service.js";
+import {
+  MAX_STORE_IMAGE_BYTES,
+  ServerStoreMediaService,
+} from "./server-store/media.js";
 import { AdminEnrollmentService } from "./admin-enrollment/service.js";
 import { presentOwnerPluginState } from "./owner-servers/presenter.js";
 import { buildCampaignShareHtml } from "./campaign-sharing/html.js";
+import { normalizeServerHostname } from "./server-registration/policy.js";
+import { ServerRegistrationService } from "./server-registration/service.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
@@ -100,8 +111,8 @@ const referralService = new ReferralService();
 const votingService = new VotingService();
 const gameplayService = new GameplayService();
 const sponsoredShopService = new SponsoredShopService();
-const serverStoreService = new ServerStoreService();
 const adminEnrollmentService = new AdminEnrollmentService();
+const serverRegistrationService = new ServerRegistrationService();
 const REWARDED_VOTE_SESSION_TTL_MS = 10 * 60_000;
 const hashRewardedVoteToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -120,8 +131,6 @@ const utcMonthStart = (date = new Date()) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 
 const SERVER_VALIDATION_TTL_MS = 10 * 60_000;
-const normalizeServerHostname = (hostname: string) =>
-  hostname.trim().toLowerCase().replace(/\.$/, "");
 const validationPayload = (
   ownerId: string,
   hostname: string,
@@ -279,6 +288,12 @@ const parsePagination = (query: Record<string, unknown>) => ({
 export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   const mcStatusClient = new McsrvstatClient(env.MCSRVSTAT_USER_AGENT);
   const paymentProvider = new MockPaymentProvider(env.PAYMENT_WEBHOOK_SECRET);
+  const serverStoreService = new ServerStoreService(
+    env.STORE_PROCEEDS_CENTS_PER_1000_SPARKS,
+    env.STORE_PAYOUT_REQUESTS_ENABLED,
+    env.STORE_MIN_PAYOUT_CENTS,
+  );
+  const serverStoreMediaService = new ServerStoreMediaService(env.STORE_MEDIA_DIRECTORY);
   const identityCleanupTimer = setInterval(
     () =>
       minecraftIdentityService
@@ -294,6 +309,24 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     serverDiscoveryService.stop();
   });
   app.get("/health", async () => ({ status: "ok", service: "nortix-api" }));
+  app.get("/v1/media/store-items/:assetName", async (request, reply) => {
+    const { assetName } = request.params as { assetName: string };
+    const asset = await serverStoreMediaService.open(assetName);
+    if (!asset) {
+      return reply.code(404).send({
+        code: "NOT_FOUND",
+        message: "The store image was not found.",
+        requestId: request.id,
+      });
+    }
+    return reply
+      .type(asset.contentType)
+      .header("Content-Length", String(asset.byteSize))
+      .header("Cache-Control", "public, max-age=31536000, immutable")
+      .header("Cross-Origin-Resource-Policy", "same-origin")
+      .header("X-Content-Type-Options", "nosniff")
+      .send(asset.body);
+  });
   app.get("/share/campaigns/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     const campaign = await prisma.campaign.findFirst({
@@ -1019,57 +1052,45 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         // Ownership validation already succeeded; an unavailable icon should not block registration.
       }
     }
-    const roles = Array.from(new Set([...request.user!.roles, "SERVER_OWNER" as const]));
-    const server = await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: request.user!.id }, data: { roles } });
-      const created = await tx.server.create({
-        data: {
-          ownerId: request.user!.id,
-          name: input.name,
-          slug,
-          description: input.description,
-          hostname: input.hostname,
-          port: input.port,
-          edition: input.edition,
-          versions: input.versions,
-          categories: input.categories,
-          tags: input.tags,
-          maxPlayers: input.maxPlayers,
-          bannerUrl: input.bannerUrl,
-          verificationParentId: verificationParent?.id,
-          verificationScope: verificationParent ? "PROXY_CHILD" : "SERVER",
-          verificationStatus: verificationParent ? "VERIFIED" : "UNVERIFIED",
-          claimed: Boolean(verificationParent),
-          websiteUrl: input.websiteUrl,
-          discordUrl: input.discordUrl,
-          logoUrl: serverIcon,
-          screenshotUrls: [],
-        },
-      });
-      if (verificationParent) {
-        await tx.serverVerification.create({
-          data: {
-            serverId: created.id,
-            provider: "PROXY_INHERITED",
-            status: "VERIFIED",
-            challenge: {
-              parentProxyId: verificationParent.id,
-              networkScope: "PROXY_CHILD",
-            },
-            evidence: {
-              inheritedAt: new Date().toISOString(),
-              parentProxyId: verificationParent.id,
-            },
-          },
-        });
-      }
-      return created;
+    const server = await serverRegistrationService.create({
+      ownerId: request.user!.id,
+      input: { ...input, hostname: normalizeServerHostname(input.hostname) },
+      slug,
+      serverIcon,
+      verificationParent,
     });
     return reply.code(201).send(server);
   });
   app.post("/v1/servers/validate-address", { preHandler: app.authenticate }, async (request) => {
     const input = ServerAddressValidationSchema.parse(request.body);
     const hostname = normalizeServerHostname(input.hostname);
+    const [sameOwnerRegistration, claimedRegistration] = await Promise.all([
+      prisma.server.findFirst({
+        where: {
+          ownerId: request.user!.id,
+          edition: input.edition,
+          normalizedHostname: hostname,
+          port: input.port,
+          verificationStatus: { not: "EXPIRED" },
+        },
+        select: { id: true },
+      }),
+      prisma.server.findFirst({
+        where: {
+          edition: input.edition,
+          normalizedHostname: hostname,
+          port: input.port,
+          claimed: true,
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (sameOwnerRegistration) {
+      throw new Error("This server address is already registered on your Nortix account.");
+    }
+    if (claimedRegistration) {
+      throw new Error("This server address has already been claimed.");
+    }
     let status;
     try {
       status = await mcStatusClient.getStatus({
@@ -1131,7 +1152,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.authenticate },
     async (request) => {
       const { id } = request.params as { id: string };
-      return serverVerificationService.verify(id, request.user!.id);
+      return serverVerificationService.verify(id, request.user!.id, request.id);
     },
   );
   app.post("/v1/plugin/verifications/handshake", async (request) => {
@@ -1246,6 +1267,34 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     },
   );
 
+  app.post(
+    "/v1/owner/servers/:id/store/media",
+    {
+      preHandler: app.authenticate,
+      bodyLimit: MAX_STORE_IMAGE_BYTES,
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      await requireServerPermission(id, request.user!.id, "store");
+      if (!Buffer.isBuffer(request.body)) {
+        throw new Error("A PNG, JPEG, or WebP store image is required.");
+      }
+      const contentType = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
+      return reply
+        .code(201)
+        .send(
+          await serverStoreMediaService.upload(
+            id,
+            request.user!.id,
+            request.body,
+            contentType,
+            request.id,
+          ),
+        );
+    },
+  );
+
   app.patch(
     "/v1/owner/servers/:id/store/items/:itemId",
     { preHandler: app.authenticate },
@@ -1264,6 +1313,30 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       const { id } = request.params as { id: string };
       await requireServerPermission(id, request.user!.id, "analytics");
       return serverStoreService.ownerPurchases(id);
+    },
+  );
+
+  app.get("/v1/owner/store-sales", { preHandler: app.authenticate }, (request) =>
+    serverStoreService.ownerSales(request.user!.id),
+  );
+
+  app.post(
+    "/v1/owner/store-payouts",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const input = OwnerServerStorePayoutInputSchema.parse(request.body);
+      return reply
+        .code(202)
+        .send(
+          await serverStoreService.requestPayout(
+            request.user!.id,
+            input,
+            request.id,
+          ),
+        );
     },
   );
 
@@ -2157,6 +2230,23 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       };
     });
   });
+  app.delete(
+    "/v1/owner/servers/:serverId/registration",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 10, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { serverId } = request.params as { serverId: string };
+      const input = DeleteServerRegistrationSchema.parse(request.body);
+      return serverRegistrationService.deleteRegistration(
+        request.user!.id,
+        serverId,
+        input,
+        request.id,
+      );
+    },
+  );
   app.put(
     "/v1/owner/servers/:serverId/rewarded-voting",
     { preHandler: app.authenticate },
@@ -2221,6 +2311,42 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       const purchase = await serverStoreService.purchase(request.user!.id, input, request.id);
       await questService.evaluateAndAward(request.user!.id);
       return reply.code(201).send(purchase);
+    },
+  );
+  app.post(
+    "/v1/sparks/server-store-purchases/:purchaseId/redeem",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 20, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { purchaseId } = request.params as { purchaseId: string };
+      const input = ServerStorePurchaseMutationSchema.parse(request.body);
+      return serverStoreService.redeem(
+        request.user!.id,
+        purchaseId,
+        input,
+        request.id,
+      );
+    },
+  );
+  app.post(
+    "/v1/sparks/server-store-purchases/:purchaseId/refund",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 10, timeWindow: "1 hour" } },
+    },
+    async (request) => {
+      const { purchaseId } = request.params as { purchaseId: string };
+      const input = ServerStorePurchaseMutationSchema.parse(request.body);
+      const purchase = await serverStoreService.refund(
+        request.user!.id,
+        purchaseId,
+        input,
+        request.id,
+      );
+      await questService.evaluateAndAward(request.user!.id);
+      return purchase;
     },
   );
   app.get("/v1/team/invites", { preHandler: app.authenticate }, async (request) => {
@@ -2672,6 +2798,40 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     "/v1/admin/sponsored-stores",
     { preHandler: app.requirePermission("sponsored_shop:manage") },
     () => sponsoredShopService.adminCatalog(),
+  );
+
+  app.get(
+    "/v1/admin/server-store-payouts",
+    { preHandler: app.requirePermission("ledger:view_internal") },
+    () => serverStoreService.adminPayoutRequests(),
+  );
+
+  app.put(
+    "/v1/admin/server-store-payout-profile",
+    { preHandler: app.requirePermission("ledger:view_internal") },
+    async (request) => {
+      const input = AdminServerStorePayoutProfileInputSchema.parse(request.body);
+      return serverStoreService.upsertPayoutProfile(
+        request.user!.id,
+        input,
+        request.id,
+      );
+    },
+  );
+
+  app.post(
+    "/v1/admin/server-store-payouts/:payoutId/actions",
+    { preHandler: app.requirePermission("ledger:view_internal") },
+    async (request) => {
+      const { payoutId } = request.params as { payoutId: string };
+      const input = AdminServerStorePayoutActionSchema.parse(request.body);
+      return serverStoreService.actOnPayout(
+        request.user!.id,
+        payoutId,
+        input,
+        request.id,
+      );
+    },
   );
   app.post(
     "/v1/admin/sponsored-stores",

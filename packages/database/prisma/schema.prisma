@@ -126,8 +126,8 @@ enum SparksTransactionType {
 }
 
 enum ServerStorePurchaseStatus {
-  QUEUED
-  PROCESSING
+  PURCHASED
+  PENDING_DELIVERY
   DELIVERED
   FAILED
   REFUNDED
@@ -138,6 +138,19 @@ enum ServerStoreDeliveryStatus {
   CLAIMED
   DELIVERED
   FAILED
+}
+
+enum ServerStoreProceedsType {
+  DELIVERY_CREDIT
+  WITHDRAWAL_RESERVATION
+  WITHDRAWAL_RELEASE
+  MANUAL_ADJUSTMENT
+}
+
+enum ServerStoreItemStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
 }
 
 enum SponsoredPurchaseStatus {
@@ -314,6 +327,11 @@ model User {
   createdSponsoredStores    SponsoredStore[]             @relation("SponsoredStoreCreator")
   serverStorePurchasesBought ServerStorePurchase[]        @relation("ServerStorePurchaseBuyer")
   serverStorePurchasesReceived ServerStorePurchase[]      @relation("ServerStorePurchaseRecipient")
+  serverStoreProceeds        ServerStoreProceedsEntry[]    @relation("ServerStoreProceedsOwner")
+  serverStorePayoutProfile   ServerStorePayoutProfile?
+  serverStorePayoutRequests  ServerStorePayoutRequest[]    @relation("ServerStorePayoutOwner")
+  reviewedServerStorePayouts ServerStorePayoutRequest[]    @relation("ServerStorePayoutReviewer")
+  uploadedServerStoreMedia   ServerStoreMediaAsset[]        @relation("ServerStoreMediaUploader")
   equippedCosmetics         EquippedCosmetic[]
   analyticsEvents           AnalyticsEvent[]
   fraudFlags                FraudFlag[]                 @relation("FraudSubjectUser")
@@ -479,6 +497,7 @@ model Server {
   slug                      String                      @unique
   description               String
   hostname                  String
+  normalizedHostname        String
   port                      Int                         @default(25565)
   versions                  String[]
   edition                   ServerEdition
@@ -523,8 +542,11 @@ model Server {
   gameplayDailyStats        PlayerGameplayDailyStat[]
   store                     ServerStore?
   storeDeliveries           ServerStoreDelivery[]
+  storeMediaAssets          ServerStoreMediaAsset[]
 
   @@index([ownerId])
+  @@index([ownerId, edition, normalizedHostname, port])
+  @@index([edition, normalizedHostname, port, claimed])
   @@index([verificationParentId])
   @@index([publicListing, moderationStatus])
 }
@@ -1091,6 +1113,7 @@ model ServerStore {
   logoUrl     String?
   available   Boolean           @default(false)
   items       ServerStoreItem[]
+  proceeds    ServerStoreProceedsEntry[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 }
@@ -1107,14 +1130,29 @@ model ServerStoreItem {
   stockQuantity      Int?
   maxPerPurchase     Int                   @default(1)
   commandTemplates   String[]
-  available          Boolean               @default(false)
+  status             ServerStoreItemStatus @default(DRAFT)
   sortOrder          Int                   @default(0)
   purchases          ServerStorePurchase[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
   @@unique([storeId, slug])
-  @@index([storeId, available, sortOrder])
+  @@index([storeId, status, sortOrder])
+}
+
+model ServerStoreMediaAsset {
+  id           String   @id @default(uuid()) @db.Uuid
+  serverId     String
+  server       Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation("ServerStoreMediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  storageKey   String   @unique
+  contentType  String
+  byteSize     Int
+  createdAt    DateTime @default(now())
+
+  @@index([serverId, createdAt])
+  @@index([uploadedById, createdAt])
 }
 
 model ServerStorePurchase {
@@ -1125,9 +1163,10 @@ model ServerStorePurchase {
   recipient                 User                      @relation("ServerStorePurchaseRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
   itemId                    String
   item                      ServerStoreItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  status                    ServerStorePurchaseStatus @default(QUEUED)
+  status                    ServerStorePurchaseStatus @default(PURCHASED)
   quantity                  Int
   priceSparks               Int
+  ownerProceedsCents        Int                       @default(0)
   recipientMinecraftUsername String
   giftMessage               String?
   commandSnapshot           String[]
@@ -1137,6 +1176,9 @@ model ServerStorePurchase {
   sparksRefundLedgerEntryId String?                   @unique
   sparksRefundLedgerEntry   SparksLedgerEntry?        @relation("ServerStorePurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
   delivery                  ServerStoreDelivery?
+  proceedsEntry             ServerStoreProceedsEntry?
+  refundEligibleUntil       DateTime
+  redeemedAt                DateTime?
   deliveredAt               DateTime?
   failedAt                  DateTime?
   refundedAt                DateTime?
@@ -1163,6 +1205,70 @@ model ServerStoreDelivery {
   updatedAt    DateTime                  @updatedAt
 
   @@index([serverId, status, createdAt])
+}
+
+model ServerStoreProceedsEntry {
+  id              String                     @id @default(cuid())
+  ownerId         String
+  owner           User                       @relation("ServerStoreProceedsOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  storeId         String?
+  store           ServerStore?               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  purchaseId      String?                    @unique
+  purchase        ServerStorePurchase?       @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  payoutRequestId String?
+  payoutRequest   ServerStorePayoutRequest?  @relation("ServerStorePayoutLedger", fields: [payoutRequestId], references: [id], onDelete: Restrict)
+  direction       LedgerDirection
+  amountCents     Int
+  currency        String                     @default("USD")
+  type            ServerStoreProceedsType
+  availableAt     DateTime
+  idempotencyKey  String                     @unique
+  internalNote    String?
+  createdAt       DateTime                   @default(now())
+
+  @@index([ownerId, currency, availableAt])
+  @@index([storeId, createdAt])
+  @@index([payoutRequestId])
+}
+
+model ServerStorePayoutProfile {
+  id                       String                     @id @default(cuid())
+  ownerId                  String                     @unique
+  owner                    User                       @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  provider                 String
+  providerAccountReference String
+  displayLabel             String
+  verifiedAt               DateTime?
+  disabledAt               DateTime?
+  requests                 ServerStorePayoutRequest[]
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  @@unique([provider, providerAccountReference])
+}
+
+model ServerStorePayoutRequest {
+  id                String                     @id @default(cuid())
+  ownerId           String
+  owner             User                       @relation("ServerStorePayoutOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  payoutProfileId   String
+  payoutProfile     ServerStorePayoutProfile   @relation(fields: [payoutProfileId], references: [id], onDelete: Restrict)
+  requestedCents    Int
+  currency          String                     @default("USD")
+  idempotencyKey    String                     @unique
+  status            WithdrawalStatus           @default(REQUESTED)
+  providerReference String?
+  reason            String?
+  reviewedById      String?
+  reviewedBy        User?                      @relation("ServerStorePayoutReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt        DateTime?
+  completedAt       DateTime?
+  ledgerEntries     ServerStoreProceedsEntry[] @relation("ServerStorePayoutLedger")
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([ownerId, createdAt])
+  @@index([status, createdAt])
 }
 
 model EquippedCosmetic {

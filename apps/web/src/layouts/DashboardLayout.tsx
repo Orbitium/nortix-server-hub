@@ -70,6 +70,7 @@ const ownerNav = [
   ["/owner/analytics", "nav.analytics", BarChart3],
   ["/owner/balance", "nav.credits", CreditCard],
   ["/owner/integrations", "nav.plugins", Gamepad2],
+  ["/owner/store-sales", "nav.storeSales", BarChart3],
   ["/owner/store", "nav.serverStore", Store],
   ["/owner/settings", "nav.settings", Settings],
 ] as const satisfies ReadonlyArray<readonly [string, TranslationKey, typeof Home]>;
@@ -246,7 +247,7 @@ export function DashboardLayout() {
               <NavLink
                 key={href}
                 to={href}
-                end={href === "/owner"}
+                end={href === "/owner" || href === "/owner/store"}
                 onClick={() => setMobileNavOpen(false)}
                 title={navCollapsed ? t(label) : undefined}
               >

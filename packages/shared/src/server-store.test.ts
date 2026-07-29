@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AdminServerStorePayoutActionSchema,
+  OwnerServerStorePayoutInputSchema,
   OwnerServerStoreItemInputSchema,
   ServerStorePurchaseInputSchema,
 } from "./index.js";
@@ -16,7 +18,7 @@ const item = {
     "lp user %player% parent add vip",
     "give %player% diamond %amount%",
   ],
-  available: true,
+  status: "PUBLISHED",
   sortOrder: 0,
 };
 
@@ -49,6 +51,19 @@ describe("server store contracts", () => {
     ).toBe(false);
   });
 
+  it("accepts an uploaded Nortix store image and explicit draft states", () => {
+    expect(
+      OwnerServerStoreItemInputSchema.safeParse({
+        ...item,
+        status: "DRAFT",
+        imageUrls: ["/api/v1/media/store-items/123e4567-e89b-42d3-a456-426614174000.webp"],
+      }).success,
+    ).toBe(true);
+    expect(
+      OwnerServerStoreItemInputSchema.safeParse({ ...item, status: "HIDDEN" }).success,
+    ).toBe(false);
+  });
+
   it("accepts a gift addressed to a Nortix username", () => {
     expect(
       ServerStorePurchaseInputSchema.safeParse({
@@ -59,5 +74,20 @@ describe("server store contracts", () => {
         giftMessage: "Enjoy!",
       }).success,
     ).toBe(true);
+  });
+
+  it("validates proceeds requests and requires confirmation for a paid action", () => {
+    expect(
+      OwnerServerStorePayoutInputSchema.safeParse({
+        amountCents: 1_000,
+        idempotencyKey: "123e4567-e89b-42d3-a456-426614174000",
+      }).success,
+    ).toBe(true);
+    expect(
+      AdminServerStorePayoutActionSchema.safeParse({
+        action: "MARK_PAID",
+        reason: "Provider completed the reviewed request.",
+      }).success,
+    ).toBe(false);
   });
 });

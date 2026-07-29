@@ -8,6 +8,7 @@ coverage
 playwright-report
 test-results
 packages/database/prisma/dev.db
+var/store-media/
 *.tsbuildinfo
 .DS_Store
 *.log

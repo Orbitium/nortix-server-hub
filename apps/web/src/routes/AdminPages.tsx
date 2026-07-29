@@ -4,6 +4,7 @@ import {
   Check,
   ChevronRight,
   ClipboardCheck,
+  CreditCard,
   Eye,
   Gauge,
   KeyRound,
@@ -62,6 +63,7 @@ const sections = [
   ["Admin messages", "/admin/messages", MessageSquare],
   ["Sponsored Sparks catalog", "/admin/sponsored-shop", Store],
   ["Sponsored purchases", "/admin/sponsored-purchases", Truck],
+  ["Store proceeds requests", "/admin/store-payouts", CreditCard],
   ["Nortix staff access", "/admin/access", KeyRound],
   ["Live activity monitor", "/admin/monitor", Radio],
   ["Product analytics", "/admin/analytics", BarChart3],
@@ -77,7 +79,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const visibleSections = sections.filter(
     ([label, href]) =>
       label.toLowerCase().includes(sectionSearch.toLowerCase()) &&
-      (!["/admin/messages", "/admin/sponsored-shop", "/admin/sponsored-purchases"].includes(href) ||
+      (!["/admin/messages", "/admin/sponsored-shop", "/admin/sponsored-purchases", "/admin/store-payouts"].includes(href) ||
         currentUser?.roles.includes("ADMIN")),
   );
   const hasAdminAccess = currentUser?.roles.some(
@@ -1397,6 +1399,156 @@ export function AdminSponsoredPurchasesPage() {
         </Modal>
       ) : null}
     </>
+  );
+}
+
+type AdminStorePayout = {
+  id: string;
+  requestedCents: number;
+  currency: string;
+  status: string;
+  reason?: string | null;
+  providerReference?: string | null;
+  createdAt: string;
+  owner: { id: string; username: string; displayName: string };
+  payoutProfile: {
+    provider: string;
+    displayLabel: string;
+    providerAccountReference: string;
+    verifiedAt?: string | null;
+  };
+};
+
+export function AdminStorePayoutsPage() {
+  const queryClient = useQueryClient();
+  const { data: requests = [], isLoading, isError } = useQuery({
+    queryKey: ["admin-store-payouts"],
+    queryFn: () => api<AdminStorePayout[]>("/admin/server-store-payouts"),
+  });
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState("");
+  const [selected, setSelected] = useState<AdminStorePayout | null>(null);
+  const [action, setAction] = useState<
+    "UNDER_REVIEW" | "APPROVE" | "MARK_PROCESSING" | "MARK_PAID" | "REJECT" | "FAIL"
+  >("UNDER_REVIEW");
+
+  const saveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy("profile");
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await api("/admin/server-store-payout-profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          ownerUsername: form.get("ownerUsername"),
+          provider: form.get("provider"),
+          providerAccountReference: form.get("providerAccountReference"),
+          displayLabel: form.get("displayLabel"),
+          verified: form.get("verified") === "on",
+        }),
+      });
+      event.currentTarget.reset();
+      setMessage("The reviewed payout profile was saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The payout profile could not be saved.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const submitAction = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected) return;
+    setBusy("action");
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await api(`/admin/server-store-payouts/${selected.id}/actions`, {
+        method: "POST",
+        body: JSON.stringify({
+          action,
+          reason: form.get("reason"),
+          providerReference: String(form.get("providerReference") ?? "").trim() || undefined,
+        }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["admin-store-payouts"] });
+      setSelected(null);
+      setMessage("The proceeds request status was updated and audited.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The request could not be updated.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <div className="admin-page">
+      <header className="admin-page-header">
+        <div><small>RESTRICTED FINANCIAL OPERATIONS</small><h1>Store proceeds requests</h1></div>
+        <p>Review verified provider references and owner requests. External transfers remain a human/provider operation.</p>
+      </header>
+      {message ? <p className="admin-inline-message" role="status">{message}</p> : null}
+      <Card>
+        <h2>Reviewed payout profile</h2>
+        <p>Store only an opaque account reference issued by the configured provider. Never paste bank credentials or secrets.</p>
+        <form className="form-grid form-grid--two" onSubmit={saveProfile}>
+          <label>Owner username<input name="ownerUsername" required /></label>
+          <label>Provider<input name="provider" required placeholder="Configured provider" /></label>
+          <label>Provider account reference<input name="providerAccountReference" required autoComplete="off" /></label>
+          <label>Owner-visible label<input name="displayLabel" required placeholder="Connected payout account" /></label>
+          <label className="toggle-row"><input name="verified" type="checkbox" /><span><strong>Reviewed and verified</strong><small>Required before the owner can submit a request.</small></span></label>
+          <Button disabled={busy === "profile"} type="submit">{busy === "profile" ? "Saving…" : "Save reviewed profile"}</Button>
+        </form>
+      </Card>
+      <Card>
+        <h2>Requests</h2>
+        {isLoading ? <p>Loading requests…</p> : isError ? <p>Requests could not be loaded.</p> : (
+          <div className="admin-table-list">
+            {requests.map((request) => (
+              <article key={request.id}>
+                <div><strong>@{request.owner.username}</strong><small>{request.payoutProfile.displayLabel} · {new Date(request.createdAt).toLocaleString()}</small></div>
+                <b>{new Intl.NumberFormat("en-US", { style: "currency", currency: request.currency }).format(request.requestedCents / 100)}</b>
+                <span>{request.status.replaceAll("_", " ")}</span>
+                {!["PAID", "REJECTED", "FAILED", "CANCELLED"].includes(request.status) ? (
+                  <Button variant="secondary" onClick={() => setSelected(request)}>Review</Button>
+                ) : null}
+              </article>
+            ))}
+            {requests.length === 0 ? <p>No store proceeds requests.</p> : null}
+          </div>
+        )}
+      </Card>
+      {selected ? (
+        <Modal title={`Review @${selected.owner.username}'s request`} onClose={() => setSelected(null)}>
+          <form className="modal__body form-grid" onSubmit={submitAction}>
+            <div className="admin-sensitive-reference">
+              <small>Verified provider account reference</small>
+              <code>{selected.payoutProfile.providerAccountReference}</code>
+            </div>
+            <label>
+              Status action
+              <select value={action} onChange={(event) => setAction(event.target.value as typeof action)}>
+                <option value="UNDER_REVIEW">Move under review</option>
+                <option value="APPROVE">Approve</option>
+                <option value="MARK_PROCESSING">Mark processing</option>
+                <option value="MARK_PAID">Mark paid after provider confirmation</option>
+                <option value="REJECT">Reject and release reservation</option>
+                <option value="FAIL">Mark failed and release reservation</option>
+              </select>
+            </label>
+            <label>Reason <small>Visible to the owner.</small><textarea name="reason" minLength={5} maxLength={1000} required /></label>
+            {action === "MARK_PAID" ? (
+              <label>Provider confirmation reference<input name="providerReference" required autoComplete="off" /></label>
+            ) : null}
+            <div className="modal__footer">
+              <Button type="button" variant="ghost" onClick={() => setSelected(null)}>Cancel</Button>
+              <Button disabled={busy === "action"} type="submit">{busy === "action" ? "Saving…" : "Confirm audited action"}</Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+    </div>
   );
 }
 

@@ -127,10 +127,10 @@ The TypeScript contracts in `@nortix/plugin-sdk` are canonical.
 
 ## Server-store fulfillment
 
-The Paper plugin checks the signed, server-bound store-delivery queue every ten seconds. Claimed
-deliveries contain console commands whose supported placeholders were rendered by the API from an
-immutable purchase snapshot. Paper executes those commands on the main server thread and signs the
-delivery result back to Nortix.
+After a recipient redeems a purchased item in Nortix, the Paper plugin checks the signed,
+server-bound store-delivery queue every ten seconds. Claimed deliveries contain console commands
+whose supported placeholders were rendered by the API from an immutable purchase snapshot. Paper
+executes those commands on the main server thread and signs the delivery result back to Nortix.
 
 Completed delivery IDs are retained in the plugin data folder to avoid running a command twice
 when an acknowledgement must be retried. Owners should still include `%purchase_id%` when

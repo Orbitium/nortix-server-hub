@@ -25,6 +25,11 @@ The backend never trusts:
 - Server registration requires a server-side mcsrvstat.us status preview and a short-lived,
   owner/address-bound HMAC validation signature; missing, expired, or mismatched signatures are
   rejected before a public server record is created.
+- Active registrations are unique per owner and normalized public endpoint. A database partial
+  unique index also permits only one claimed owner per edition, hostname, and port. Claim
+  completion and competing-registration expiration occur in one serializable transaction.
+- Registration deletion is owner-only, limited to unclaimed direct registrations, requires an
+  exact-name confirmation and reason, and writes an immutable audit record.
 - signed Minecraft event ingestion, five-minute replay window, and event-ID idempotency
 - explicit withdrawal states and reservation/cancellation ledger entries
 - admin action audit records
@@ -39,6 +44,11 @@ Payout destinations are represented by provider references and masked in normal 
 Server connection secrets are not part of the public `Server` model. Provider credentials and
 signing keys come from validated environment variables. Production deployments should store
 secrets in the hosting platform's encrypted secret manager and rotate them periodically.
+
+Server-store image uploads are permission-checked, server-scoped, rate-limited, limited to 2 MB,
+and validated from their file signatures. SVG and other active formats are rejected. Generated
+asset names are opaque and cannot be selected by the browser. Draft and unpublished store items
+are excluded from catalog and purchase queries at the database boundary.
 
 ## Fraud and privacy
 
@@ -63,4 +73,7 @@ and minimized rather than exposing raw identifiers broadly.
 - Add webhook IP/provider controls when supported.
 - Add per-key integration scopes and hashed rotating API keys to the request verifier.
 - Complete legal, privacy, payout-country, and compliance review before real money movement.
+- Keep `STORE_PAYOUT_REQUESTS_ENABLED=false` until a reviewed payout provider workflow, operator
+  policy, supported-country rules, and compliance review are complete. Provider account references
+  are admin-only and must be opaque provider identifiers, never bank credentials.
 - Run dependency, container, and migration security checks in CI.

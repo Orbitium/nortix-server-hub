@@ -1,8 +1,9 @@
-import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, Store, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
+import { ArrowUpRight, BarChart3, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, Store, Trash2, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@nortix/ui";
 import { api } from "../lib/api";
+import { Modal } from "./Modal";
 import { useNotificationPreferences, useOwnerAnalytics } from "../features/api-data";
 import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
 
@@ -15,7 +16,8 @@ type ServerRecord = {
   version: string;
   pluginConnected: boolean;
   pluginLastSeenAt: string | null;
-  verificationStatus: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
+  verificationStatus: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED";
+  verificationScope: "SERVER" | "PROXY_NETWORK" | "PROXY_CHILD";
   claimed: boolean;
   createdAt: string;
   discovery: boolean;
@@ -36,6 +38,7 @@ type AccessibleServer = {
   publicListing: boolean;
   rewardedVotingEnabled: boolean;
   verificationStatus: ServerRecord["verificationStatus"];
+  verificationScope: ServerRecord["verificationScope"];
   claimed: boolean;
   createdAt: string;
   plugin: {
@@ -161,6 +164,7 @@ const mapAccessibleServer = (server: AccessibleServer): ServerRecord => ({
   pluginConnected: server.plugin.connected,
   pluginLastSeenAt: server.plugin.lastSeenAt,
   verificationStatus: server.verificationStatus,
+  verificationScope: server.verificationScope,
   claimed: server.claimed,
   createdAt: server.createdAt,
   discovery: server.publicListing,
@@ -331,7 +335,7 @@ export function OwnerPlatform() {
     );
   }
 
-  const content = path.includes("campaigns/new") ? <CampaignBuilder server={server} setServer={setServer} /> : path.includes("servers/new") ? <RegisterServer server={server} setServer={setServer} /> : path.includes("analytics") ? <OwnerAnalytics server={server} setServer={setServer} /> : path.includes("integrations") ? <PluginServers server={server} setServer={setServer} /> : path.includes("store") ? <OwnerStoreManager server={server} setServer={setServer} /> : path.includes("balance") ? <OwnerCredits server={server} setServer={setServer} /> : path.includes("settings") ? <OwnerSettings server={server} setServer={setServer} /> : <OwnerDashboard server={server} setServer={setServer} />;
+  const content = path.includes("campaigns/new") ? <CampaignBuilder server={server} setServer={setServer} /> : path.includes("servers/new") ? <RegisterServer server={server} setServer={setServer} /> : path.includes("analytics") ? <OwnerAnalytics server={server} setServer={setServer} /> : path.includes("integrations") ? <PluginServers server={server} setServer={setServer} /> : path.includes("store-sales") ? <OwnerStoreSales /> : path.includes("store") ? <OwnerStoreManager server={server} setServer={setServer} /> : path.includes("balance") ? <OwnerCredits server={server} setServer={setServer} /> : path.includes("settings") ? <OwnerSettings server={server} setServer={setServer} /> : <OwnerDashboard server={server} setServer={setServer} />;
   return <OwnerServersContext.Provider value={{ servers, refreshServers }}>{content}</OwnerServersContext.Provider>;
 }
 
@@ -871,7 +875,7 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
 }
 
 function PluginServers({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
-  const { servers } = useContext(OwnerServersContext);
+  const { servers, refreshServers } = useContext(OwnerServersContext);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState("");
   const [connectionCredentials, setConnectionCredentials] = useState<{
@@ -883,6 +887,10 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
     shownOnce: true;
   } | null>(null);
   const [connectionMessage, setConnectionMessage] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ServerRecord | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [capabilities, setCapabilities] = useState<PluginCapabilityInfo[]>([]);
   const filtered = useMemo(
     () =>
@@ -917,6 +925,32 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
       setConnectionCredentials(result);
     } catch (error) {
       setConnectionMessage(error instanceof Error ? error.message : "Plugin signing keys could not be generated.");
+    }
+  };
+
+  const deleteRegistration = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setConnectionMessage("");
+    try {
+      await api(`/owner/servers/${deleteTarget.id}/registration`, {
+        method: "DELETE",
+        body: JSON.stringify({
+          confirmationName: deleteConfirmation,
+          reason: deleteReason,
+        }),
+      });
+      setDeleteTarget(null);
+      setDeleteConfirmation("");
+      setDeleteReason("");
+      await refreshServers();
+      setConnectionMessage("The unclaimed server registration was deleted.");
+    } catch (error) {
+      setConnectionMessage(
+        error instanceof Error ? error.message : "The server registration could not be deleted.",
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1004,7 +1038,13 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
             <div>
               <small>Verification</small>
               <strong>{item.verificationStatus.toLowerCase()}</strong>
-              <span>{item.claimed ? "Ownership confirmed" : "Ownership pending"}</span>
+              <span>
+                {item.claimed
+                  ? "Ownership confirmed"
+                  : item.verificationStatus === "EXPIRED"
+                    ? "Claim unavailable"
+                    : "Ownership pending"}
+              </span>
             </div>
             <div>
               <small>Plugin connection</small>
@@ -1024,6 +1064,20 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
               >
                 <Settings /> {item.id === server.id ? "Selected" : "Manage integration"}
               </button>
+              {item.accessType === "OWNER" &&
+              !item.claimed &&
+              item.verificationScope !== "PROXY_CHILD" ? (
+                <button
+                  className="owner-registry-delete"
+                  onClick={() => {
+                    setDeleteTarget(item);
+                    setDeleteConfirmation("");
+                    setDeleteReason("");
+                  }}
+                >
+                  <Trash2 /> Delete registration
+                </button>
+              ) : null}
             </div>
           </article>
         ))}
@@ -1040,6 +1094,55 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
           </div>
         )}
       </section>
+
+      {deleteTarget ? (
+        <Modal
+          title="Delete server registration"
+          onClose={() => !deleting && setDeleteTarget(null)}
+        >
+          <div className="modal__body owner-delete-registration">
+            <p>
+              This permanently removes the unclaimed registration for{" "}
+              <strong>{deleteTarget.address}</strong>, including its pending ownership
+              challenges. It does not affect the Minecraft server itself.
+            </p>
+            <label>
+              Reason
+              <textarea
+                minLength={5}
+                maxLength={500}
+                value={deleteReason}
+                onChange={(event) => setDeleteReason(event.target.value)}
+                placeholder="Why is this registration being removed?"
+              />
+            </label>
+            <label>
+              Type <strong>{deleteTarget.name}</strong> to confirm
+              <input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                autoComplete="off"
+              />
+            </label>
+          </div>
+          <div className="modal__footer">
+            <Button variant="ghost" disabled={deleting} onClick={() => setDeleteTarget(null)}>
+              Keep registration
+            </Button>
+            <Button
+              variant="danger"
+              disabled={
+                deleting ||
+                deleteConfirmation !== deleteTarget.name ||
+                deleteReason.trim().length < 5
+              }
+              onClick={() => void deleteRegistration()}
+            >
+              <Trash2 /> {deleting ? "Deleting…" : "Delete registration"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
 
       <section className="card owner-milestone-connect">
         <div className="owner-card-heading">
@@ -1192,7 +1295,7 @@ type OwnerServerStoreRecord = {
     stockQuantity: number | null;
     maxPerPurchase: number;
     commandTemplates: string[];
-    available: boolean;
+    status: "DRAFT" | "PUBLISHED" | "UNPUBLISHED";
     sortOrder: number;
     _count: { purchases: number };
   }>;
@@ -1218,9 +1321,256 @@ const emptyStoreItemDraft = {
   stockQuantity: "",
   maxPerPurchase: "1",
   commandTemplates: "give %player% diamond %amount%",
-  available: false,
+  status: "DRAFT" as "DRAFT" | "PUBLISHED" | "UNPUBLISHED",
   sortOrder: "0",
 };
+
+type OwnerStoreSalesData = {
+  currency: "USD";
+  language: { notice: string };
+  configuration: {
+    requestsEnabled: boolean;
+    minimumRequestCents: number;
+    payoutProfileReady: boolean;
+  };
+  summary: {
+    totalOrders: number;
+    purchased: number;
+    pendingDelivery: number;
+    delivered: number;
+    availableCents: number;
+    pendingCents: number;
+  };
+  chart: Array<{
+    date: string;
+    deliveredOrders: number;
+    estimatedProceedsCents: number;
+  }>;
+  sales: Array<{
+    id: string;
+    status: "PURCHASED" | "PENDING_DELIVERY" | "DELIVERED" | "FAILED" | "REFUNDED";
+    quantity: number;
+    priceSparks: number;
+    ownerProceedsCents: number;
+    createdAt: string;
+    deliveredAt?: string | null;
+    item: {
+      name: string;
+      store: { name: string; server: { id: string; name: string } };
+    };
+  }>;
+  payoutProfile?: {
+    id: string;
+    provider: string;
+    displayLabel: string;
+    verifiedAt?: string | null;
+    disabledAt?: string | null;
+  } | null;
+  payoutRequests: Array<{
+    id: string;
+    requestedCents: number;
+    currency: string;
+    status: string;
+    reason?: string | null;
+    createdAt: string;
+  }>;
+};
+
+const formatPrivateUsd = (cents: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+
+function OwnerStoreSales() {
+  const [data, setData] = useState<OwnerStoreSalesData | null>(null);
+  const [message, setMessage] = useState("");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    api<OwnerStoreSalesData>("/owner/store-sales").then((result) => {
+      setData(result);
+      return result;
+    });
+
+  useEffect(() => {
+    load().catch((error) =>
+      setMessage(error instanceof Error ? error.message : "Store sales could not be loaded."),
+    );
+  }, []);
+
+  const requestProceeds = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      await api("/owner/store-payouts", {
+        method: "POST",
+        body: JSON.stringify({
+          amountCents: Math.round(Number(amount) * 100),
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      await load();
+      setAmount("");
+      setMessage("Your proceeds request was submitted for review.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The request could not be submitted.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!data) {
+    return (
+      <div className="dashboard-page owner-platform">
+        <section className="card"><p>{message || "Loading private store sales…"}</p></section>
+      </div>
+    );
+  }
+
+  const chartMaximum = Math.max(
+    1,
+    ...data.chart.map((point) => point.estimatedProceedsCents),
+  );
+  return (
+    <div className="dashboard-page owner-platform">
+      <header className="owner-store-sales-heading">
+        <small>PRIVATE OWNER REPORTING</small>
+        <h1>Sales &amp; proceeds</h1>
+        <p>
+          Review store orders, delivery progress, and amounts that may become eligible for a
+          proceeds request.
+        </p>
+      </header>
+      <div className="owner-store-stage-grid">
+        {[
+          ["Purchased", data.summary.purchased, "Awaiting the recipient's redemption choice."],
+          ["Pending Delivery", data.summary.pendingDelivery, "Submitted to the signed server plugin."],
+          ["Delivered", data.summary.delivered, "Confirmed by the server integration."],
+        ].map(([label, value, detail], index) => (
+          <section className="card" key={label}>
+            <span>{index + 1}</span>
+            <div><small>{label}</small><strong>{value}</strong><p>{detail}</p></div>
+          </section>
+        ))}
+      </div>
+      <div className="owner-store-sales-grid">
+        <section className="card owner-store-proceeds-card">
+          <SettingsHeading
+            icon={TrendingUp}
+            title="Private proceeds summary"
+            description="These figures are not shown to players and do not assign a cash value to Sparks."
+          />
+          <div className="owner-store-proceeds-stats">
+            <div><small>May be eligible now</small><strong>{formatPrivateUsd(data.summary.availableCents)}</strong></div>
+            <div><small>Estimated pending</small><strong>{formatPrivateUsd(data.summary.pendingCents)}</strong></div>
+            <div><small>Total orders</small><strong>{data.summary.totalOrders.toLocaleString()}</strong></div>
+          </div>
+          <p className="owner-security-note">{data.language.notice}</p>
+          <form className="form-grid" onSubmit={requestProceeds}>
+            <label>
+              Proceeds request amount
+              <input
+                type="number"
+                min={data.configuration.minimumRequestCents / 100}
+                step="0.01"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder={(data.configuration.minimumRequestCents / 100).toFixed(2)}
+                required
+              />
+            </label>
+            <small>
+              Requests may be reviewed before processing. Availability, timing, adjustments, and
+              provider requirements may apply.
+            </small>
+            <Button
+              type="submit"
+              disabled={
+                busy ||
+                !data.configuration.requestsEnabled ||
+                !data.configuration.payoutProfileReady
+              }
+            >
+              {busy ? "Submitting…" : "Request proceeds review"}
+            </Button>
+            {!data.configuration.requestsEnabled ? (
+              <small>Requests are currently unavailable until a production payout workflow is enabled.</small>
+            ) : !data.configuration.payoutProfileReady ? (
+              <small>A reviewed payout profile must be connected by Nortix before requests can be submitted.</small>
+            ) : null}
+          </form>
+          {message ? <p role="status">{message}</p> : null}
+        </section>
+        <section className="card owner-store-sales-chart">
+          <SettingsHeading
+            icon={BarChart3}
+            title="Delivered order trend"
+            description="Private 30-day view of delivery-confirmed estimated proceeds."
+          />
+          <div className="owner-store-bar-chart" aria-label="Delivered order proceeds over 30 days">
+            {data.chart.map((point) => (
+              <span
+                key={point.date}
+                style={{ height: `${Math.max(4, (point.estimatedProceedsCents / chartMaximum) * 100)}%` }}
+                title={`${point.date}: ${formatPrivateUsd(point.estimatedProceedsCents)}`}
+              />
+            ))}
+          </div>
+          <div className="owner-store-chart-axis"><span>30 days ago</span><span>Today</span></div>
+        </section>
+      </div>
+      <section className="card owner-store-purchases">
+        <SettingsHeading
+          icon={Store}
+          title="Recent store sales"
+          description="Estimated proceeds may appear only after delivery and remain unavailable until seven days after purchase."
+        />
+        <div className="owner-store-purchase-list">
+          {data.sales.slice(0, 100).map((sale) => {
+            const stage =
+              sale.status === "PURCHASED"
+                ? "Purchased"
+                : sale.status === "PENDING_DELIVERY"
+                  ? "Pending Delivery"
+                  : sale.status === "DELIVERED"
+                    ? "Delivered"
+                    : sale.status === "REFUNDED"
+                      ? "Reversed"
+                      : "Delivery attention needed";
+            return (
+              <article key={sale.id}>
+                <div>
+                  <strong>{sale.item.name}</strong>
+                  <small>{sale.item.store.server.name} · {new Date(sale.createdAt).toLocaleDateString()}</small>
+                </div>
+                <span>{stage}</span>
+                <b>{sale.ownerProceedsCents > 0 ? formatPrivateUsd(sale.ownerProceedsCents) : "Not configured"}</b>
+              </article>
+            );
+          })}
+          {data.sales.length === 0 ? <p>No store sales yet.</p> : null}
+        </div>
+      </section>
+      <section className="card owner-store-purchases">
+        <SettingsHeading
+          icon={CreditCard}
+          title="Proceeds requests"
+          description="Requests remain subject to review and provider processing."
+        />
+        <div className="owner-store-purchase-list">
+          {data.payoutRequests.map((request) => (
+            <article key={request.id}>
+              <div><strong>{formatPrivateUsd(request.requestedCents)}</strong><small>{new Date(request.createdAt).toLocaleString()}</small></div>
+              <b>{request.status.replaceAll("_", " ")}</b>
+              {request.reason ? <small>{request.reason}</small> : null}
+            </article>
+          ))}
+          {data.payoutRequests.length === 0 ? <p>No proceeds requests yet.</p> : null}
+        </div>
+      </section>
+    </div>
+  );
+}
 
 function OwnerStoreManager({
   server,
@@ -1231,6 +1581,7 @@ function OwnerStoreManager({
 }) {
   const [store, setStore] = useState<OwnerServerStoreRecord | null>(null);
   const [purchases, setPurchases] = useState<OwnerServerStorePurchase[]>([]);
+  const [section, setSection] = useState<"items" | "storefront" | "orders">("items");
   const [storeDraft, setStoreDraft] = useState({
     name: `${server.name} Store`,
     description: `Official in-game items delivered on ${server.name}.`,
@@ -1239,8 +1590,22 @@ function OwnerStoreManager({
   });
   const [itemDraft, setItemDraft] = useState(emptyStoreItemDraft);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<{
+    name: string;
+    description: string;
+    sparksPrice: number;
+    imageUrls: string[];
+    stockQuantity: number | null;
+    status: "DRAFT" | "PUBLISHED" | "UNPUBLISHED";
+  } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const storePublishEligible =
+    server.claimed &&
+    server.verificationStatus === "VERIFIED" &&
+    server.discovery &&
+    server.pluginConnected;
 
   const load = async () => {
     const [storeResult, purchaseResult] = await Promise.all([
@@ -1270,6 +1635,7 @@ function OwnerStoreManager({
 
   useEffect(() => {
     setMessage("");
+    setSection("items");
     setEditingItemId(null);
     setItemDraft(emptyStoreItemDraft);
     load().catch((error) =>
@@ -1298,8 +1664,20 @@ function OwnerStoreManager({
     }
   };
 
-  const saveItem = async (event: React.FormEvent) => {
+  const draftImageUrls = itemDraft.imageUrls
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const saveItem = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const requestedStatus =
+      submitter?.value === "DRAFT" ||
+      submitter?.value === "PUBLISHED" ||
+      submitter?.value === "UNPUBLISHED"
+        ? submitter.value
+        : itemDraft.status;
     setBusy(true);
     setMessage("");
     const payload = {
@@ -1307,10 +1685,7 @@ function OwnerStoreManager({
       name: itemDraft.name.trim(),
       description: itemDraft.description.trim(),
       sparksPrice: Number(itemDraft.sparksPrice),
-      imageUrls: itemDraft.imageUrls
-        .split(/\r?\n/)
-        .map((value) => value.trim())
-        .filter(Boolean),
+      imageUrls: draftImageUrls,
       stockQuantity:
         itemDraft.stockQuantity.trim() === "" ? null : Number(itemDraft.stockQuantity),
       maxPerPurchase: Number(itemDraft.maxPerPurchase),
@@ -1318,7 +1693,7 @@ function OwnerStoreManager({
         .split(/\r?\n/)
         .map((value) => value.trim())
         .filter(Boolean),
-      available: itemDraft.available,
+      status: requestedStatus,
       sortOrder: Number(itemDraft.sortOrder),
     };
     try {
@@ -1334,7 +1709,15 @@ function OwnerStoreManager({
       await load();
       setEditingItemId(null);
       setItemDraft(emptyStoreItemDraft);
-      setMessage(editingItemId ? "Store item updated." : "Store item created.");
+      setMessage(
+        requestedStatus === "PUBLISHED"
+          ? "Store item published."
+          : requestedStatus === "UNPUBLISHED"
+            ? "Store item unpublished."
+            : editingItemId
+              ? "Draft saved."
+              : "Store item saved as a draft.",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The store item could not be saved.");
     } finally {
@@ -1353,10 +1736,87 @@ function OwnerStoreManager({
       stockQuantity: item.stockQuantity === null ? "" : String(item.stockQuantity),
       maxPerPurchase: String(item.maxPerPurchase),
       commandTemplates: item.commandTemplates.join("\n"),
-      available: item.available,
+      status: item.status,
       sortOrder: String(item.sortOrder),
     });
+    setSection("items");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const uploadImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    if (draftImageUrls.length + files.length > 6) {
+      setMessage("Store items support up to six images.");
+      return;
+    }
+    setUploadBusy(true);
+    setMessage("");
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files)) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+          throw new Error("Store images must be PNG, JPEG, or WebP files.");
+        }
+        if (file.size > 2_000_000) throw new Error("Store images must be 2 MB or smaller.");
+        const result = await api<{ url: string }>(`/owner/servers/${server.id}/store/media`, {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        uploaded.push(result.url);
+      }
+      setItemDraft((current) => ({
+        ...current,
+        imageUrls: [...draftImageUrls, ...uploaded].join("\n"),
+      }));
+      setMessage(`${uploaded.length} store image${uploaded.length === 1 ? "" : "s"} uploaded.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The store images could not be uploaded.");
+    } finally {
+      setUploadBusy(false);
+    }
+  };
+
+  const removeDraftImage = (url: string) => {
+    setItemDraft((current) => ({
+      ...current,
+      imageUrls: current.imageUrls
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter((value) => value && value !== url)
+        .join("\n"),
+    }));
+  };
+
+  const previewDraft = () =>
+    setPreviewItem({
+      name: itemDraft.name.trim() || "Untitled store item",
+      description: itemDraft.description.trim() || "Add a description to preview this item.",
+      sparksPrice: Number(itemDraft.sparksPrice) || 0,
+      imageUrls: draftImageUrls,
+      stockQuantity:
+        itemDraft.stockQuantity.trim() === "" ? null : Number(itemDraft.stockQuantity),
+      status: itemDraft.status,
+    });
+
+  const updateItemStatus = async (
+    item: OwnerServerStoreRecord["items"][number],
+    status: "PUBLISHED" | "UNPUBLISHED",
+  ) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      await api(`/owner/servers/${server.id}/store/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      await load();
+      setMessage(status === "PUBLISHED" ? "Store item published." : "Store item unpublished.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The item status could not be changed.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1369,12 +1829,27 @@ function OwnerStoreManager({
         setServer={setServer}
       />
       {message ? <div className="owner-team-message" role="status">{message}</div> : null}
-      <div className="owner-store-grid">
-        <form className="card form-grid" onSubmit={saveStore}>
+      <nav className="owner-store-section-tabs" aria-label="Server store sections">
+        <button className={section === "items" ? "active" : ""} onClick={() => setSection("items")}>
+          <Sparkles /> Items
+        </button>
+        <button
+          className={section === "storefront" ? "active" : ""}
+          onClick={() => setSection("storefront")}
+        >
+          <Store /> Storefront settings
+        </button>
+        <button className={section === "orders" ? "active" : ""} onClick={() => setSection("orders")}>
+          <Clock3 /> Recent orders
+        </button>
+      </nav>
+
+      {section === "storefront" ? (
+        <form className="card form-grid owner-storefront-settings" onSubmit={saveStore}>
           <SettingsHeading
             icon={Store}
-            title="Storefront"
-            description="The store becomes visible only for a verified, publicly listed server with a recently connected signed Paper plugin."
+            title="Storefront configuration"
+            description="Manage the storefront identity and visibility separately from its item catalog."
           />
           <label>
             Store name
@@ -1410,25 +1885,43 @@ function OwnerStoreManager({
             <input
               type="checkbox"
               checked={storeDraft.available}
+              disabled={!storePublishEligible && !storeDraft.available}
               onChange={(event) =>
                 setStoreDraft({ ...storeDraft, available: event.target.checked })
               }
             />
             <span>
               <strong>Publish store</strong>
-              <small>Unavailable items and out-of-stock items remain hidden.</small>
+              <small>
+                {storePublishEligible
+                  ? "Only published, in-stock items become visible in Server Market."
+                  : "Draft freely now. Publishing requires a verified, discoverable server with its signed Nortix plugin connected."}
+              </small>
             </span>
           </label>
           <Button disabled={busy} type="submit">
             <Save /> {busy ? "Saving…" : "Save storefront"}
           </Button>
         </form>
+      ) : null}
 
+      {section === "items" ? (
+        <>
+        {!store ? (
+          <section className="card owner-store-setup-callout">
+            <SettingsHeading
+              icon={Store}
+              title="Configure the storefront first"
+              description="A private storefront record is required before its first item can be saved."
+            />
+            <Button onClick={() => setSection("storefront")}>Open storefront settings</Button>
+          </section>
+        ) : null}
         <form className="card form-grid owner-store-item-editor" onSubmit={saveItem}>
           <SettingsHeading
             icon={Sparkles}
             title={editingItemId ? "Edit store item" : "Create store item"}
-            description="One command per line. Commands execute as the Minecraft server console."
+            description="Save a private draft, preview it, then publish when its images and delivery commands are ready."
           />
           <div className="form-grid form-grid--two">
             <label>
@@ -1500,15 +1993,43 @@ function OwnerStoreManager({
               />
             </label>
           </div>
-          <label>
-            Image URLs <small>One HTTPS URL per line, up to six.</small>
+          <label className="owner-store-upload">
+            Item images <small>Upload up to six PNG, JPEG, or WebP images. Maximum 2 MB each.</small>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              disabled={uploadBusy || draftImageUrls.length >= 6}
+              onChange={(event) => {
+                void uploadImages(event.target.files);
+                event.currentTarget.value = "";
+              }}
+            />
+            <span><Download /> {uploadBusy ? "Uploading…" : "Choose images"}</span>
+          </label>
+          {draftImageUrls.length ? (
+            <div className="owner-store-image-grid" aria-label="Item image previews">
+              {draftImageUrls.map((url, index) => (
+                <figure key={url}>
+                  <img src={url} alt={`Store item preview ${index + 1}`} />
+                  <button type="button" onClick={() => removeDraftImage(url)} aria-label={`Remove image ${index + 1}`}>
+                    <X />
+                  </button>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+          <details className="owner-store-external-images">
+            <summary>Use externally hosted images</summary>
+            <label>
+              HTTPS image URLs <small>One URL per line. Uploaded images are recommended.</small>
             <textarea
-              required
               value={itemDraft.imageUrls}
               onChange={(event) => setItemDraft({ ...itemDraft, imageUrls: event.target.value })}
               placeholder={"https://cdn.example.com/front.png\nhttps://cdn.example.com/back.png"}
             />
-          </label>
+            </label>
+          </details>
           <label>
             Console commands <small>One command per line, up to ten.</small>
             <textarea
@@ -1536,29 +2057,14 @@ function OwnerStoreManager({
               </span>
             ))}
           </div>
-          <div className="form-grid form-grid--two">
-            <label>
-              Sort order
-              <input
-                type="number"
-                value={itemDraft.sortOrder}
-                onChange={(event) => setItemDraft({ ...itemDraft, sortOrder: event.target.value })}
-              />
-            </label>
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={itemDraft.available}
-                onChange={(event) =>
-                  setItemDraft({ ...itemDraft, available: event.target.checked })
-                }
-              />
-              <span>
-                <strong>Item available</strong>
-                <small>Publish after testing its commands.</small>
-              </span>
-            </label>
-          </div>
+          <label>
+            Sort order
+            <input
+              type="number"
+              value={itemDraft.sortOrder}
+              onChange={(event) => setItemDraft({ ...itemDraft, sortOrder: event.target.value })}
+            />
+          </label>
           <div className="form-actions">
             {editingItemId ? (
               <Button
@@ -1572,19 +2078,29 @@ function OwnerStoreManager({
                 Cancel edit
               </Button>
             ) : null}
-            <Button disabled={busy || !store} type="submit">
-              <Plus /> {editingItemId ? "Save item" : "Create item"}
+            <Button variant="ghost" type="button" onClick={previewDraft}>
+              <Eye /> Preview
+            </Button>
+            <Button disabled={busy || uploadBusy || !store} type="submit" name="status" value="DRAFT">
+              <Save /> Save draft
+            </Button>
+            {editingItemId ? (
+              <Button disabled={busy || uploadBusy || !store} type="submit" name="status" value="UNPUBLISHED">
+                Unpublish
+              </Button>
+            ) : null}
+            <Button disabled={busy || uploadBusy || !store || draftImageUrls.length === 0} type="submit" name="status" value="PUBLISHED">
+              <ArrowUpRight /> Publish
             </Button>
           </div>
-          {!store ? <small>Save the storefront before creating its first item.</small> : null}
+          <small>Publishing requires at least one image. Drafts and unpublished items remain outside the player catalog.</small>
         </form>
-      </div>
 
-      <section className="card owner-store-items">
+        <section className="card owner-store-items">
         <SettingsHeading
           icon={Store}
-          title="Store items"
-          description="Items are archived by turning availability off; purchase history remains immutable."
+          title="Item catalog"
+          description="Drafts and unpublished items can be edited or previewed without appearing in the Sparks Shop."
         />
         {store?.items.length ? (
           <div className="owner-store-item-list">
@@ -1599,11 +2115,19 @@ function OwnerStoreManager({
                   />
                 ) : <Store />}
                 <div>
-                  <small>{item.available ? "Published" : "Hidden"} · {item._count.purchases} purchases</small>
+                  <small>{item.status === "PUBLISHED" ? "Published" : item.status === "DRAFT" ? "Draft" : "Unpublished"} · {item._count.purchases} purchases</small>
                   <strong>{item.name}</strong>
                   <p>{item.sparksPrice.toLocaleString()} Sparks · {item.stockQuantity === null ? "Unlimited stock" : `${item.stockQuantity} remaining`}</p>
                 </div>
-                <Button variant="ghost" onClick={() => editItem(item)}>Edit</Button>
+                <div className="owner-store-item-actions">
+                  <Button variant="ghost" onClick={() => setPreviewItem(item)}><Eye /> Preview</Button>
+                  <Button variant="ghost" onClick={() => editItem(item)}>Edit</Button>
+                  {item.status === "PUBLISHED" ? (
+                    <Button variant="ghost" disabled={busy} onClick={() => void updateItemStatus(item, "UNPUBLISHED")}>Unpublish</Button>
+                  ) : (
+                    <Button variant="ghost" disabled={busy} onClick={() => void updateItemStatus(item, "PUBLISHED")}>Publish</Button>
+                  )}
+                </div>
               </article>
             ))}
           </div>
@@ -1611,33 +2135,76 @@ function OwnerStoreManager({
           <p>No store items yet.</p>
         )}
       </section>
+      </>
+      ) : null}
 
-      <section className="card owner-store-purchases">
+      {section === "orders" ? (
+        <section className="card owner-store-purchases">
         <SettingsHeading
           icon={Sparkles}
           title="Recent purchases"
-          description="Delivery is automated by the signed Paper plugin. Failed jobs refund the buyer automatically."
+          description="Recipients choose when to redeem. The signed Paper plugin then handles pending delivery."
         />
         {purchases.length ? (
           <div className="owner-store-purchase-list">
-            {purchases.map((purchase) => (
-              <article key={purchase.id}>
-                <div>
-                  <strong>{purchase.item.name}</strong>
-                  <small>
-                    Minecraft: {purchase.recipientMinecraftUsername} · quantity {purchase.quantity}
-                  </small>
-                </div>
-                <span>{purchase.priceSparks.toLocaleString()} Sparks</span>
-                <b>{purchase.status}</b>
-                {purchase.delivery?.lastError ? <small>{purchase.delivery.lastError}</small> : null}
-              </article>
-            ))}
+            {purchases.map((purchase) => {
+              const stage =
+                purchase.status === "PURCHASED"
+                  ? "Purchased"
+                  : purchase.status === "PENDING_DELIVERY"
+                    ? "Pending Delivery"
+                    : purchase.status === "DELIVERED"
+                      ? "Delivered"
+                      : purchase.status === "REFUNDED"
+                        ? "Reversed"
+                        : "Delivery attention needed";
+              return (
+                <article key={purchase.id}>
+                  <div>
+                    <strong>{purchase.item.name}</strong>
+                    <small>
+                      Minecraft: {purchase.recipientMinecraftUsername} · quantity {purchase.quantity}
+                    </small>
+                  </div>
+                  <span>{purchase.priceSparks.toLocaleString()} Sparks</span>
+                  <b>{stage}</b>
+                  {purchase.delivery?.lastError ? <small>{purchase.delivery.lastError}</small> : null}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <p>No purchases for this server yet.</p>
         )}
       </section>
+      ) : null}
+
+      {previewItem ? (
+        <Modal title="Store item preview" className="owner-store-preview-modal" onClose={() => setPreviewItem(null)}>
+          <div className="modal__body">
+            <div className="owner-store-preview-gallery">
+              {previewItem.imageUrls.length ? (
+                previewItem.imageUrls.map((url, index) => (
+                  <img key={url} src={url} alt={`${previewItem.name} preview ${index + 1}`} />
+                ))
+              ) : (
+                <div><Store /><span>No image added yet</span></div>
+              )}
+            </div>
+            <small className="owner-store-preview-status">
+              Owner preview · {previewItem.status === "PUBLISHED" ? "Published" : previewItem.status === "DRAFT" ? "Draft" : "Unpublished"}
+            </small>
+            <h3>{previewItem.name}</h3>
+            <p>{previewItem.description}</p>
+            <div className="owner-store-preview-purchase">
+              <strong>{previewItem.sparksPrice.toLocaleString()} Sparks</strong>
+              <span>{previewItem.stockQuantity === null ? "Unlimited stock" : `${previewItem.stockQuantity} available`}</span>
+              <Button disabled>Purchase preview</Button>
+            </div>
+            <small>This is a private owner preview. No purchase is created and unpublished content is not added to the player catalog.</small>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

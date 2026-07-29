@@ -14,6 +14,13 @@ const EnvSchema = z.object({
   INTEGRATION_SIGNING_SECRET: z.string().min(16).default("local-integration-secret"),
   SERVER_VALIDATION_SECRET: z.string().min(32).default("local-server-validation-secret-please-change"),
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default("local-payment-secret"),
+  STORE_PROCEEDS_CENTS_PER_1000_SPARKS: z.coerce.number().int().min(0).max(100_000).default(0),
+  STORE_PAYOUT_REQUESTS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  STORE_MIN_PAYOUT_CENTS: z.coerce.number().int().min(1_000).max(10_000_000).default(1_000),
+  STORE_MEDIA_DIRECTORY: z.string().trim().min(1).default("./var/store-media"),
   IDENTITY_VERIFICATION_SECRET: z.string().min(32).default("local-identity-verification-secret"),
   TURNSTILE_SITE_KEY: z.string().trim().min(1).default("1x00000000000000000000AA"),
   TURNSTILE_SECRET_KEY: z
@@ -23,7 +30,7 @@ const EnvSchema = z.object({
     .default("1x0000000000000000000000000000000AA"),
   DISCOVERY_SCAN_ENABLED: z
     .enum(["true", "false"])
-    .default("false")
+    .default("true")
     .transform((value) => value === "true"),
   DISCOVERY_SCAN_INTERVAL_MINUTES: z.coerce.number().int().min(10).default(10),
   DISCOVERY_SCAN_SPACING_MS: z.coerce.number().int().min(12_000).default(12_000),
@@ -62,6 +69,14 @@ export const parseEnv = (input: NodeJS.ProcessEnv): Env => {
   ) {
     throw new Error(
       "Production Firebase authentication requires GOOGLE_APPLICATION_CREDENTIALS or a complete inline Firebase Admin credential.",
+    );
+  }
+  if (
+    result.data.STORE_PAYOUT_REQUESTS_ENABLED &&
+    result.data.STORE_PROCEEDS_CENTS_PER_1000_SPARKS <= 0
+  ) {
+    throw new Error(
+      "STORE_PROCEEDS_CENTS_PER_1000_SPARKS must be configured when store payout requests are enabled.",
     );
   }
   if (result.data.NODE_ENV === "production" && result.data.AUTH_MODE !== "firebase") {

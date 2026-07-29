@@ -35,6 +35,11 @@ export const buildApp = async (env: Env) => {
       defaultJsonParser(request, rawBody, done);
     },
   );
+  app.addContentTypeParser(
+    ["image/png", "image/jpeg", "image/webp"],
+    { parseAs: "buffer" },
+    (_request, body, done) => done(null, body),
+  );
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
@@ -106,6 +111,8 @@ export const buildApp = async (env: Env) => {
       "inactive campaign",
       "calculated by the backend",
       "server access",
+      "server registration",
+      "server address",
       "reserve",
       "linked",
       "played on this server",
@@ -120,6 +127,13 @@ export const buildApp = async (env: Env) => {
       "sponsored purchase",
       "server store",
       "store item",
+      "store image",
+      "store proceeds",
+      "payout profile",
+      "eligible server owner",
+      "gift purchases",
+      "14-day",
+      "redeemed server items",
       "recipient cannot receive",
       "delivery details",
       "ongoing campaign",

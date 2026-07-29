@@ -200,6 +200,12 @@ const privateRouteMetadata: Record<string, Omit<SeoProps, "path">> = {
     noIndex: true,
     image: null,
   },
+  "/owner/store-sales": {
+    title: "Store Sales and Proceeds",
+    description: "Review private server-store delivery and proceeds information.",
+    noIndex: true,
+    image: null,
+  },
   "/admin": {
     title: "Nortix Administration",
     description: "Restricted Nortix administration and moderation workspace.",

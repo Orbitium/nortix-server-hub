@@ -75,5 +75,19 @@ describe("production environment policy", () => {
     ).toThrow(/DISCOVERY_SCAN_SPACING_MS/i);
     expect(parseEnv(production).DISCOVERY_SCAN_SPACING_MS).toBe(12_000);
     expect(parseEnv(production).DISCOVERY_SCAN_INTERVAL_MINUTES).toBe(10);
+    expect(parseEnv(production).DISCOVERY_SCAN_ENABLED).toBe(true);
+    expect(
+      parseEnv({ ...production, DISCOVERY_SCAN_ENABLED: "false" }).DISCOVERY_SCAN_ENABLED,
+    ).toBe(false);
+  });
+
+  it("does not enable store proceeds requests without an operator-configured rate", () => {
+    expect(() =>
+      parseEnv({
+        ...production,
+        STORE_PAYOUT_REQUESTS_ENABLED: "true",
+        STORE_PROCEEDS_CENTS_PER_1000_SPARKS: "0",
+      }),
+    ).toThrow(/STORE_PROCEEDS_CENTS_PER_1000_SPARKS/i);
   });
 });

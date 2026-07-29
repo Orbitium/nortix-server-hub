@@ -267,11 +267,13 @@ export type ServerStore = {
 
 export type ServerStorePurchase = {
   id: string;
-  status: "QUEUED" | "PROCESSING" | "DELIVERED" | "FAILED" | "REFUNDED";
+  status: "PURCHASED" | "PENDING_DELIVERY" | "DELIVERED" | "FAILED" | "REFUNDED";
   quantity: number;
   priceSparks: number;
   recipientMinecraftUsername: string;
   giftMessage?: string | null;
+  refundEligibleUntil: string;
+  redeemedAt?: string | null;
   deliveredAt?: string | null;
   failedAt?: string | null;
   refundedAt?: string | null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ServerInputSchema } from "./index";
+import { DeleteServerRegistrationSchema, ServerInputSchema } from "./index";
 
 const registration = {
   name: "Example Network",
@@ -30,6 +30,21 @@ describe("server registration input", () => {
       ServerInputSchema.safeParse({
         ...registration,
         bannerUrl: "javascript:alert(1)",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a reason and explicit name for registration deletion", () => {
+    expect(
+      DeleteServerRegistrationSchema.safeParse({
+        confirmationName: "Example Network",
+        reason: "Registered the wrong public endpoint.",
+      }).success,
+    ).toBe(true);
+    expect(
+      DeleteServerRegistrationSchema.safeParse({
+        confirmationName: "Example Network",
+        reason: "oops",
       }).success,
     ).toBe(false);
   });
