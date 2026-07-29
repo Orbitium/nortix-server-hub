@@ -116,6 +116,20 @@ export const PluginPlayerHistorySchema = z.object({
   })).max(500),
 });
 
+export const PluginCrackedClaimCompletionSchema = z
+  .object({
+    serverId: z.string().min(1),
+    instanceId: z.string().min(8).max(100),
+    claimCode: z
+      .string()
+      .trim()
+      .regex(/^NX-C-[A-Z0-9]{4}-[A-Z0-9]{4}$/),
+    minecraftUuid: z.string().uuid(),
+    minecraftUsername: z.string().regex(/^[A-Za-z0-9_]{3,16}$/),
+    occurredAt: z.string().datetime(),
+  })
+  .strict();
+
 export const PluginPresenceSnapshotSchema = z
   .object({
     id: z.string().min(8).max(100),

@@ -212,6 +212,51 @@ final class MilestoneReporter implements Listener {
         });
     }
 
+    void completeCrackedClaim(
+        Player player,
+        String claimCode,
+        Runnable onSuccess,
+        Consumer<String> onError
+    ) {
+        if (!isConnected()) {
+            onError.accept("This server is not connected to Nortix.");
+            return;
+        }
+        String body = crackedClaimBody(
+            serverId,
+            instanceId,
+            claimCode,
+            player.getUniqueId().toString(),
+            player.getName(),
+            Instant.now().toString()
+        );
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                request("POST", "/plugin/cracked-claims/complete", body, true);
+                onSuccess.run();
+            } catch (Exception error) {
+                onError.accept(error.getMessage() != null && error.getMessage().startsWith("HTTP 4")
+                    ? "That claim is invalid, expired, or does not match this player."
+                    : "Nortix account linking is temporarily unavailable.");
+            }
+        });
+    }
+
+    static String crackedClaimBody(
+        String serverId,
+        String instanceId,
+        String claimCode,
+        String minecraftUuid,
+        String minecraftUsername,
+        String occurredAt
+    ) {
+        return "{\"serverId\":\"" + json(serverId) + "\",\"instanceId\":\""
+            + json(instanceId) + "\",\"claimCode\":\"" + json(claimCode)
+            + "\",\"minecraftUuid\":\"" + json(minecraftUuid)
+            + "\",\"minecraftUsername\":\"" + json(minecraftUsername)
+            + "\",\"occurredAt\":\"" + json(occurredAt) + "\"}";
+    }
+
     private void enqueue(Player player, String type, String metadata) {
         if (!isConnected()) return;
         String event = "{\"id\":\"" + UUID.randomUUID() + "\",\"serverId\":\"" + json(serverId)

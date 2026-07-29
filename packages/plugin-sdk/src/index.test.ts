@@ -1,12 +1,37 @@
 import { describe, expect, it } from "vitest";
 import {
   PluginCapabilitiesHandshakeSchema,
+  PluginCrackedClaimCompletionSchema,
   PluginCredentialResponseSchema,
   PluginPresenceSnapshotSchema,
   ServerPluginEventSchema,
 } from "./index.js";
 
 describe("Minecraft milestone plugin contracts", () => {
+  it("accepts only server-bound cracked claim completion payloads", () => {
+    const payload = {
+      serverId: "server-1",
+      instanceId: "instance-123",
+      claimCode: "NX-C-A1B2-C3D4",
+      minecraftUuid: "123e4567-e89b-12d3-a456-426614174000",
+      minecraftUsername: "Alex_Builder",
+      occurredAt: "2026-07-29T12:00:00.000Z",
+    };
+    expect(PluginCrackedClaimCompletionSchema.safeParse(payload).success).toBe(true);
+    expect(
+      PluginCrackedClaimCompletionSchema.safeParse({
+        ...payload,
+        claimCode: "NX-C-WRONG",
+      }).success,
+    ).toBe(false);
+    expect(
+      PluginCrackedClaimCompletionSchema.safeParse({
+        ...payload,
+        unexpectedUserId: "user-1",
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts only the server-bound P-256 credential shape", () => {
     const credential = {
       serverId: "server-1",

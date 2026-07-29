@@ -74,6 +74,7 @@ const sections = [
   ["Campaign moderation", "/admin/campaigns", ClipboardCheck],
   ["Reports & cases", "/admin/reports", ShieldAlert],
   ["Admin messages", "/admin/messages", MessageSquare],
+  ["Spark Economy", "/admin/spark-economy", BarChart3],
   ["Sparks administration", "/admin/sparks", Sparkles],
   ["Sponsored Sparks catalog", "/admin/sponsored-shop", Store],
   ["Sponsored purchases", "/admin/sponsored-purchases", Truck],
@@ -93,7 +94,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const visibleSections = sections.filter(
     ([label, href]) =>
       label.toLowerCase().includes(sectionSearch.toLowerCase()) &&
-      (!["/admin/messages", "/admin/sparks", "/admin/sponsored-shop", "/admin/sponsored-purchases", "/admin/store-payouts"].includes(href) ||
+      (!["/admin/messages", "/admin/spark-economy", "/admin/sparks", "/admin/sponsored-shop", "/admin/sponsored-purchases", "/admin/store-payouts"].includes(href) ||
         currentUser?.roles.includes("ADMIN")),
   );
   const hasAdminAccess = currentUser?.roles.some(

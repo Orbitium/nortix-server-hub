@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { StoreItemCategory } from "@nortix/shared";
+import type { ServerAwardKind, StoreItemCategory } from "@nortix/shared";
 import { api } from "../lib/api";
 
 export type PublicMilestone = {
@@ -10,6 +10,58 @@ export type PublicMilestone = {
   order: number;
   sparksReward: number;
   verificationMethod: string;
+};
+
+export type HypeMilestone = {
+  name: "Bronze" | "Silver" | "Gold" | "Platinum" | "Diamond";
+  minimum: number;
+};
+
+export type ServerHype = {
+  total: number;
+  periodStart: string;
+  carryPercent: number;
+  milestone: HypeMilestone | null;
+  nextMilestone: HypeMilestone | null;
+};
+
+export type HypeEligibility = ServerHype & {
+  playedBefore: boolean;
+  purchasesToday: number;
+  purchasesRemaining: number;
+  sparksBalance: number;
+  canPurchase: boolean;
+  bundle: { sparks: number; hype: number };
+  dailyPurchaseLimit: number;
+};
+
+export type ServerAwardGiver = {
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+};
+
+export type ServerAward = {
+  kind: ServerAwardKind;
+  name: string;
+  emoji: string;
+  cost: number;
+  description: string;
+  count: number;
+  givers: ServerAwardGiver[];
+};
+
+export type ServerAwards = {
+  total: number;
+  awards: ServerAward[];
+};
+
+export type ServerAwardEligibility = {
+  playedBefore: boolean;
+  purchasesToday: number;
+  purchasesRemaining: number;
+  dailyPurchaseLimit: number;
+  sparksBalance: number;
 };
 
 export type PublicServer = {
@@ -46,6 +98,9 @@ export type PublicServer = {
   lastCheckedAt?: string | null;
   campaigns?: PublicCampaign[];
   reviews?: PublicReview[];
+  hype?: ServerHype;
+  awards?: ServerAwards;
+  awardCount?: number;
 };
 
 export type PublicReview = {
@@ -623,26 +678,126 @@ export type AdminSparksPlayer = {
   lastActiveAt: string;
   balance: number;
   spent: number;
+  earned?: number;
+};
+
+export type AdminSparkBreakdown = {
+  key: string;
+  label: string;
+  total: number;
+  transactions: number;
+  percentage: number;
+  previousTotal: number;
+  changePercent: number;
 };
 
 export type AdminSparksDashboard = {
-  summary: {
-    activePlayers: number;
-    playersWithSparks: number;
-    totalAvailable: number;
-    totalCredited: number;
-    totalSpent: number;
-    ledgerEntries: number;
+  generatedAt: string;
+  range: {
+    from: string;
+    toExclusive: string;
+    label: string;
+    days: number;
   };
-  topBalances: Array<Omit<AdminSparksPlayer, "spent">>;
-  topSpenders: Array<Omit<AdminSparksPlayer, "balance">>;
-  spending: Array<{
-    transactionType: string;
-    amount: number;
-    transactions: number;
+  overview: {
+    totalIssued: number;
+    totalBurned: number;
+    totalRedeemed: number;
+    totalHeld: number;
+    netInflation: number;
+    averagePerActiveUser: number;
+    activeUsers: { hours24: number; days7: number; days30: number };
+  };
+  health: {
+    issuedToday: number;
+    burnedToday: number;
+    redeemedToday: number;
+    burnRate: number;
+    redemptionRate: number;
+    inflationRate: number;
+    burnToIssueRatio: number;
+    averageBalance: number;
+    medianBalance: number;
+    averageDailyEarnings: number;
+    averageDailySpending: number;
+    outstandingLiabilityCents: number;
+    previousPeriod: { issued: number; burned: number; redeemed: number };
+  };
+  sources: AdminSparkBreakdown[];
+  sinks: AdminSparkBreakdown[];
+  redemption: {
+    rewardsRedeemed: number;
+    sparksRedeemed: number;
+    averageSparkCost: number;
+    estimatedFulfillmentCostCents: number;
+    estimatedOutstandingLiabilityCents: number;
+    redemptionRate: number;
+    pendingClaims: number;
+    pendingSparks: number;
+    mostRedeemed: Array<{
+      name: string;
+      provider: string;
+      redemptions: number;
+      sparks: number;
+      costCents: number;
+    }>;
+    costModel: string;
+  };
+  rewardedAds: {
+    adsWatched: number;
+    estimatedAdRevenueCents: number | null;
+    sparksGranted: number;
+    estimatedSparkLiabilityCents: number;
+    averageRevenuePerAdCents: number | null;
+    averageSparkReward: number;
+    revenueTrackingConfigured: boolean;
+    note: string;
+  };
+  distribution: Array<{
+    label: string;
+    users: number;
+    percentage: number;
+    totalHeld: number;
+  }>;
+  topUsers: Array<AdminSparksPlayer & {
+    lifetimeEarned: number;
+    lifetimeSpent: number;
+    burnRatio: number;
+    redemptionHistory: { sparks: number; transactions: number };
+    flags: string[];
+  }>;
+  serverEconomy: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl?: string | null;
+    totalHype: number;
+    hypeGenerated: number;
+    hypeGeneratedToday: number;
+    hypeDecayed: number;
+    awardsReceived: number;
+    awardsAllTime: number;
+    sparkContributions: number;
+    trendPercent: number;
+  }>;
+  alerts: Array<{
+    code: string;
+    severity: "INFO" | "WARNING" | "CRITICAL";
+    title: string;
+    detail: string;
   }>;
   trend: Array<{
     date: string;
+    issued: number;
+    burned: number;
+    redeemed: number;
+    outstandingLiabilityCents: number;
+    burnToIssueRatio: number;
+    adsWatched: number;
+    estimatedAdRevenueCents: number | null;
+    adSparkLiabilityCents: number;
+    hypeGenerated: number;
+    awardsPurchased: number;
     credited: number;
     spent: number;
     entries: number;
@@ -659,6 +814,23 @@ export type AdminSparksDashboard = {
     user: Pick<AdminSparksPlayer, "id" | "username" | "displayName" | "avatarUrl" | "status" | "lastActiveAt">;
     createdBy?: { id: string; username: string; displayName: string } | null;
   }>;
+  assumptions: {
+    sparkLiabilityCentsPerThousand: number;
+    adRevenueTracking: boolean;
+    weeklyQuestSourceAvailable: boolean;
+    marketplaceFeeSinkAvailable: boolean;
+  };
+  summary: {
+    activePlayers: number;
+    playersWithSparks: number;
+    totalAvailable: number;
+    totalCredited: number;
+    totalSpent: number;
+    ledgerEntries: number;
+  };
+  topBalances: Array<Omit<AdminSparksPlayer, "spent">>;
+  topSpenders: Array<Omit<AdminSparksPlayer, "balance">>;
+  spending: Array<{ transactionType: string; amount: number; transactions: number }>;
 };
 
 export const artIndexFor = (id: string) => {
@@ -711,6 +883,20 @@ export const useProfileCosmetics = () =>
     queryFn: () => api<ProfileCosmetics>("/profile/cosmetics"),
   });
 
+export const useServerHypeEligibility = (serverId?: string, enabled = true) =>
+  useQuery({
+    queryKey: ["server-hype-eligibility", serverId],
+    queryFn: () => api<HypeEligibility>(`/servers/${serverId}/hype/eligibility`),
+    enabled: Boolean(serverId) && enabled,
+  });
+
+export const useServerAwardEligibility = (serverId?: string, enabled = true) =>
+  useQuery({
+    queryKey: ["server-award-eligibility", serverId],
+    queryFn: () => api<ServerAwardEligibility>(`/servers/${serverId}/awards/eligibility`),
+    enabled: Boolean(serverId) && enabled,
+  });
+
 export const useSponsoredStores = () =>
   useQuery({
     queryKey: ["sponsored-stores"],
@@ -750,14 +936,30 @@ export const useAdminSponsoredPurchases = (status = "") =>
       ),
   });
 
-export const useAdminSparks = (search = "") =>
-  useQuery({
-    queryKey: ["admin-sparks", search],
-    queryFn: () =>
-      api<AdminSparksDashboard>(
-        `/admin/sparks${search ? `?search=${encodeURIComponent(search)}` : ""}`,
-      ),
-  });
+export const useAdminSparks = (input: string | {
+  search?: string;
+  from?: string;
+  to?: string;
+  label?: string;
+  live?: boolean;
+} = {}) =>
+  {
+    const filters = typeof input === "string" ? { search: input } : input;
+    return useQuery({
+    queryKey: ["admin-sparks", filters],
+    queryFn: () => {
+      const query = new URLSearchParams();
+      if (filters.search) query.set("search", filters.search);
+      if (filters.from) query.set("from", filters.from);
+      if (filters.to) query.set("to", filters.to);
+      if (filters.label) query.set("label", filters.label);
+      return api<AdminSparksDashboard>(
+        `/admin/sparks${query.size > 0 ? `?${query.toString()}` : ""}`,
+      );
+    },
+    refetchInterval: filters.live ? 60_000 : false,
+    });
+  };
 
 export const useProfileActivity = () =>
   useQuery({

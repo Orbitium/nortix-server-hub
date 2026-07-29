@@ -26,6 +26,8 @@ import org.bukkit.inventory.meta.SkullMeta;
 public final class NortixPaperPlugin extends JavaPlugin implements Listener {
     static final String VERSION = "0.5.0";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
+    private static final Pattern CRACKED_CLAIM_CODE =
+        Pattern.compile("^NX-C-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private volatile String verificationCode = "";
     private MilestoneReporter reporter;
 
@@ -66,6 +68,29 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("vote")) {
             sendVotingLink(sender);
+            return true;
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage(ChatColor.RED + "Cracked account claims must be completed in game.");
+                return true;
+            }
+            String claimCode = normalize(args[1]);
+            if (!CRACKED_CLAIM_CODE.matcher(claimCode).matches()) {
+                sender.sendMessage(ChatColor.RED + "That Nortix cracked account claim code is invalid.");
+                return true;
+            }
+            Player player = (Player) sender;
+            player.sendMessage(ChatColor.GRAY + "Checking your server-scoped Nortix claim...");
+            reporter.completeCrackedClaim(
+                player,
+                claimCode,
+                () -> getServer().getScheduler().runTask(this, () ->
+                    player.sendMessage(ChatColor.GREEN + "Linked " + player.getName()
+                        + " to your Nortix account for this server.")),
+                message -> getServer().getScheduler().runTask(this, () ->
+                    player.sendMessage(ChatColor.RED + message))
+            );
             return true;
         }
         if (args.length == 1 && args[0].matches("^[A-Za-z0-9_]{3,16}$")
@@ -145,6 +170,8 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
             + "Open that player's public Nortix profile");
         sender.sendMessage(ChatColor.GRAY + "/nortix vote " + ChatColor.WHITE
             + "Open this server's Nortix voting page");
+        sender.sendMessage(ChatColor.GRAY + "/nortix claim CODE " + ChatColor.WHITE
+            + "Link your cracked name to this server");
         sender.sendMessage(ChatColor.GRAY + "/nortix help " + ChatColor.WHITE + "Show this help");
         if (sender.hasPermission("nortix.admin")) {
             sender.sendMessage(ChatColor.DARK_GRAY + "Admin: /nortix verify, connect, capabilities, status, clear");

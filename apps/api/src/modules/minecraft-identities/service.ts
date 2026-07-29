@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@nortix/database";
 import {
-  canActivateFirstJoin,
+  canCompleteCrackedClaim,
+  crackedLinkInactivityDeadline,
   crackedReservationRejection,
 } from "../../security/minecraft-link-policy.js";
 
@@ -23,7 +24,6 @@ export class MinecraftIdentityService {
         where: {
           status: "ACTIVE",
           expiresAt: { lte: now },
-          participations: { none: { completions: { some: {} } } },
         },
         select: { id: true, userId: true, serverId: true, minecraftUsername: true },
       }),
@@ -59,7 +59,7 @@ export class MinecraftIdentityService {
           data: {
             status: "RELEASED",
             releasedAt: now,
-            releaseReason: "NO_MILESTONE_WITHIN_THREE_DAYS",
+            releaseReason: "NO_LOGIN_WITHIN_THIRTY_DAYS",
           },
         });
         if (changed.count) await tx.minecraftIdentityActivity.create({
@@ -99,6 +99,7 @@ export class MinecraftIdentityService {
           reservedAt: true,
           expiresAt: true,
           activatedAt: true,
+          lastLoginAt: true,
           server: { select: { id: true, name: true, slug: true, logoUrl: true } },
         },
         orderBy: { reservedAt: "desc" },
@@ -233,6 +234,8 @@ export class MinecraftIdentityService {
     const now = new Date();
     const hourAgo = new Date(now.getTime() - 60 * 60_000);
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60_000);
+    const raw = randomBytes(4).toString("hex").toUpperCase();
+    const claimCode = `NX-C-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
     return prisma.$transaction(async (tx) => {
       const server = await tx.server.findFirst({
         where: {
@@ -254,13 +257,19 @@ export class MinecraftIdentityService {
       const open = await tx.crackedAccountLink.findFirst({
         where: { serverId, normalizedUsername, status: { in: ["PENDING", "ACTIVE"] } },
       });
-      const [hourCount, dayCount] = await Promise.all([
+      const [previousLink, hourCount, dayCount] = await Promise.all([
+        tx.crackedAccountLink.findFirst({
+          where: { serverId, normalizedUsername, activatedAt: { not: null } },
+          select: { userId: true },
+          orderBy: { activatedAt: "desc" },
+        }),
         tx.crackedAccountLink.count({ where: { userId, reservedAt: { gte: hourAgo } } }),
         tx.crackedAccountLink.count({ where: { userId, reservedAt: { gte: dayAgo } } }),
       ]);
       const rejection = crackedReservationRejection({
         playedBefore: Boolean(presence),
         openLinkOwnerId: open?.userId,
+        previousLinkedOwnerId: previousLink?.userId,
         requesterId: userId,
         claimsLastHour: hourCount,
         claimsLastDay: dayCount,
@@ -273,6 +282,7 @@ export class MinecraftIdentityService {
           serverId,
           minecraftUsername,
           normalizedUsername,
+          claimCodeHash: hashCode(claimCode),
           expiresAt,
         },
         select: {
@@ -294,51 +304,141 @@ export class MinecraftIdentityService {
           metadata: { expiresAt: expiresAt.toISOString() },
         },
       });
-      return link;
+      return { ...link, claimCode };
     }, { isolationLevel: "Serializable" });
   }
 
   async observeServerJoin(serverId: string, minecraftUsername: string, occurredAt: Date) {
     const normalizedUsername = normalizeUsername(minecraftUsername);
-    const now = new Date();
     return prisma.$transaction(async (tx) => {
       const existingPresence = await tx.serverPlayerPresence.findUnique({
         where: { serverId_normalizedUsername: { serverId, normalizedUsername } },
       });
       if (existingPresence) {
-        await tx.serverPlayerPresence.update({
-          where: { id: existingPresence.id },
-          data: { lastSeenAt: now, minecraftUsername },
+        if (occurredAt > existingPresence.lastSeenAt) {
+          await tx.serverPlayerPresence.update({
+            where: { id: existingPresence.id },
+            data: { lastSeenAt: occurredAt, minecraftUsername },
+          });
+        }
+      } else {
+        await tx.serverPlayerPresence.create({
+          data: {
+            serverId,
+            normalizedUsername,
+            minecraftUsername,
+            firstSeenAt: occurredAt,
+            lastSeenAt: occurredAt,
+          },
         });
-        return null;
       }
-      await tx.serverPlayerPresence.create({
-        data: {
-          serverId,
-          normalizedUsername,
-          minecraftUsername,
-          firstSeenAt: occurredAt,
-          lastSeenAt: occurredAt,
-        },
-      });
-      const pending = await tx.crackedAccountLink.findFirst({
+      const active = await tx.crackedAccountLink.findFirst({
         where: {
           serverId,
           normalizedUsername,
-          status: "PENDING",
+          status: "ACTIVE",
         },
       });
-      if (!pending || !canActivateFirstJoin({
-        presenceAlreadyExists: false,
+      if (active && active.expiresAt <= occurredAt) {
+        const released = await tx.crackedAccountLink.update({
+          where: { id: active.id },
+          data: {
+            status: "RELEASED",
+            releasedAt: occurredAt,
+            releaseReason: "NO_LOGIN_WITHIN_THIRTY_DAYS",
+          },
+        });
+        await tx.minecraftIdentityActivity.create({
+          data: {
+            userId: released.userId,
+            serverId,
+            type: "CRACKED_LINK_RELEASED_INACTIVE",
+            identityKind: "SERVER_SCOPED_CRACKED",
+            minecraftUsername,
+          },
+        });
+        return null;
+      }
+      if (!active || (active.lastLoginAt && active.lastLoginAt >= occurredAt)) return active;
+      return tx.crackedAccountLink.update({
+        where: { id: active.id },
+        data: {
+          lastLoginAt: occurredAt,
+          expiresAt: crackedLinkInactivityDeadline(occurredAt),
+          minecraftUsername,
+        },
+      });
+    }, { isolationLevel: "Serializable" });
+  }
+
+  async completeCrackedClaim(
+    serverId: string,
+    claimCode: string,
+    minecraftUsername: string,
+    occurredAt: Date,
+  ) {
+    const normalizedUsername = normalizeUsername(minecraftUsername);
+    return prisma.$transaction(async (tx) => {
+      const pending = await tx.crackedAccountLink.findUnique({
+        where: { claimCodeHash: hashCode(claimCode.trim().toUpperCase()) },
+      });
+      if (
+        !pending ||
+        pending.serverId !== serverId ||
+        pending.normalizedUsername !== normalizedUsername
+      ) {
+        throw new Error("Cracked account claim is invalid or expired.");
+      }
+      const presence = await tx.serverPlayerPresence.findUnique({
+        where: { serverId_normalizedUsername: { serverId, normalizedUsername } },
+      });
+      const previousLink = await tx.crackedAccountLink.findFirst({
+        where: {
+          id: { not: pending.id },
+          serverId,
+          normalizedUsername,
+          userId: pending.userId,
+          activatedAt: { not: null },
+        },
+        select: { id: true },
+      });
+      if (!canCompleteCrackedClaim({
         status: pending.status,
         reservedAt: pending.reservedAt,
         expiresAt: pending.expiresAt,
         occurredAt,
-      })) return null;
-      const retentionDeadline = new Date(occurredAt.getTime() + 3 * 24 * 60 * 60_000);
+        firstSeenAt: presence?.firstSeenAt,
+        previouslyLinkedToRequester: Boolean(previousLink),
+      })) {
+        throw new Error("Cracked account claim is invalid or expired.");
+      }
+      if (!presence) {
+        await tx.serverPlayerPresence.create({
+          data: {
+            serverId,
+            normalizedUsername,
+            minecraftUsername,
+            firstSeenAt: occurredAt,
+            lastSeenAt: occurredAt,
+          },
+        });
+      } else if (occurredAt > presence.lastSeenAt) {
+        await tx.serverPlayerPresence.update({
+          where: { id: presence.id },
+          data: { lastSeenAt: occurredAt, minecraftUsername },
+        });
+      }
+      const inactivityDeadline = crackedLinkInactivityDeadline(occurredAt);
       const link = await tx.crackedAccountLink.update({
         where: { id: pending.id },
-        data: { status: "ACTIVE", activatedAt: occurredAt, expiresAt: retentionDeadline },
+        data: {
+          status: "ACTIVE",
+          claimCodeHash: null,
+          activatedAt: occurredAt,
+          lastLoginAt: occurredAt,
+          expiresAt: inactivityDeadline,
+          minecraftUsername,
+        },
       });
       await tx.minecraftIdentityActivity.create({
         data: {
@@ -347,7 +447,7 @@ export class MinecraftIdentityService {
           type: "CRACKED_LINK_ACTIVATED",
           identityKind: "SERVER_SCOPED_CRACKED",
           minecraftUsername,
-          metadata: { retainIfMilestoneCompletedBy: retentionDeadline.toISOString() },
+          metadata: { inactiveAfter: inactivityDeadline.toISOString() },
         },
       });
       return link;

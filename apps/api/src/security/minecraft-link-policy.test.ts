@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  canActivateFirstJoin,
+  canCompleteCrackedClaim,
+  crackedLinkInactivityDeadline,
   crackedReservationRejection,
 } from "./minecraft-link-policy.js";
 
@@ -19,6 +20,13 @@ describe("server-scoped cracked account policy", () => {
       claimsLastHour: 0,
       claimsLastDay: 0,
     })).toBe("This name was linked to someone else.");
+    expect(crackedReservationRejection({
+      playedBefore: true,
+      previousLinkedOwnerId: "user-a",
+      requesterId: "user-a",
+      claimsLastHour: 0,
+      claimsLastDay: 0,
+    })).toBeNull();
   });
 
   it("enforces rolling hourly and daily limits", () => {
@@ -36,29 +44,41 @@ describe("server-scoped cracked account policy", () => {
     })).toMatch(/5 cracked accounts per 24 hours/i);
   });
 
-  it("activates only a first join occurring inside the reservation window", () => {
+  it("completes only on a first login inside the reservation window", () => {
     const reservedAt = new Date("2026-07-20T12:00:00Z");
     const expiresAt = new Date("2026-07-20T12:30:00Z");
-    expect(canActivateFirstJoin({
-      presenceAlreadyExists: false,
+    expect(canCompleteCrackedClaim({
       status: "PENDING",
       reservedAt,
       expiresAt,
       occurredAt: new Date("2026-07-20T12:29:59Z"),
+      firstSeenAt: new Date("2026-07-20T12:01:00Z"),
     })).toBe(true);
-    expect(canActivateFirstJoin({
-      presenceAlreadyExists: false,
+    expect(canCompleteCrackedClaim({
       status: "PENDING",
       reservedAt,
       expiresAt,
       occurredAt: new Date("2026-07-20T11:59:59Z"),
     })).toBe(false);
-    expect(canActivateFirstJoin({
-      presenceAlreadyExists: true,
+    expect(canCompleteCrackedClaim({
       status: "PENDING",
       reservedAt,
       expiresAt,
       occurredAt: new Date("2026-07-20T12:01:00Z"),
+      firstSeenAt: new Date("2026-07-20T11:59:00Z"),
     })).toBe(false);
+    expect(canCompleteCrackedClaim({
+      status: "PENDING",
+      reservedAt,
+      expiresAt,
+      occurredAt: new Date("2026-07-20T12:01:00Z"),
+      firstSeenAt: new Date("2026-07-01T12:00:00Z"),
+      previouslyLinkedToRequester: true,
+    })).toBe(true);
+  });
+
+  it("expires an active cracked link 30 days after its latest login", () => {
+    expect(crackedLinkInactivityDeadline(new Date("2026-07-20T12:00:00Z")).toISOString())
+      .toBe("2026-08-19T12:00:00.000Z");
   });
 });

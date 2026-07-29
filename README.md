@@ -161,6 +161,9 @@ docker compose up -d --build
 
 Docker caches the dependency installation separately from application source and
 exports one production-only API image shared by the migration and API services.
+Compose propagates explicit service updates through `api` → `web` → `cloudflared`
+after each dependency is healthy. This prevents Nginx or the tunnel connector
+from retaining the address of a container that was replaced during a rebuild.
 After the first build, source-only changes reuse the dependency layer. When no
 source or dependency changed, omit `--build` for the fastest restart:
 
@@ -180,6 +183,17 @@ docker compose logs --tail=100 cloudflared
 docker compose exec cloudflared \
   cloudflared tunnel ready --metrics 127.0.0.1:2000
 ```
+
+If an older stack reports `dial tcp ... web:80: connect: connection refused`
+immediately after replacing the web container, recover it once with:
+
+```bash
+docker compose up -d --force-recreate web cloudflared
+```
+
+Wait for `web` to become healthy before testing the public URL. Stacks created
+from the current Compose file restart the tunnel automatically when `web` is
+explicitly updated.
 
 An unhealthy or restarting `cloudflared` container means Cloudflare has no active
 connector and may return error 1033. In the Cloudflare dashboard, the tunnel must

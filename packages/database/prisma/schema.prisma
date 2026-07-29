@@ -122,7 +122,23 @@ enum SparksTransactionType {
   SPONSORED_PURCHASE_REFUND
   SERVER_STORE_PURCHASE
   SERVER_STORE_PURCHASE_REFUND
+  HYPE_PURCHASE
+  SERVER_AWARD_PURCHASE
   MANUAL_ADJUSTMENT
+}
+
+enum ServerAwardKind {
+  LOVE_IT
+  FIRE
+  CROWN
+  GOAT
+  FUNNY
+  CLOWN
+  DEAD
+  CIRCUS
+  SMART_DEV
+  ADDICTING
+  BEAUTIFUL
 }
 
 enum ServerStorePurchaseStatus {
@@ -289,82 +305,84 @@ enum AdminMessageStatus {
 }
 
 model User {
-  id                        String                      @id @default(cuid())
-  firebaseUid               String                      @unique
-  username                  String                      @unique
-  displayName               String
-  email                     String                      @unique
-  avatarUrl                 String?
-  roles                     UserRole[]                  @default([PLAYER])
-  status                    UserStatus                  @default(ACTIVE)
-  countryCode               String?
-  preferredCurrency         String                      @default("USD")
-  publicProfile             Json                        @default("{}")
-  moderationState           Json                        @default("{}")
-  reputationScore           Int                         @default(0)
-  reputationTier            String                      @default("New Tester")
-  testerLevel               Int                         @default(1)
-  testerExperience          Int                         @default(0)
-  sparksBalanceCache        Int                         @default(0)
-  earningsBalanceCache      Int                         @default(0)
-  pendingEarningsCache      Int                         @default(0)
-  createdAt                 DateTime                    @default(now())
-  lastActiveAt              DateTime                    @default(now())
-  minecraftIdentities       MinecraftIdentity[]
-  ownedServers              Server[]                    @relation("ServerOwner")
-  serverMemberships         ServerTeamMember[]          @relation("ServerTeamUser")
-  invitedServerMembers      ServerTeamMember[]          @relation("ServerTeamInviter")
-  sentServerInvites         ServerTeamInvite[]          @relation("ServerInviteSender")
-  receivedServerInvites     ServerTeamInvite[]          @relation("ServerInviteRecipient")
-  ownedCampaigns            Campaign[]                  @relation("CampaignOwner")
-  participations            CampaignParticipation[]
-  reviews                   Review[]
-  serverVotes               ServerVote[]
-  rewardedVoteSessions      RewardedVoteSession[]
-  withdrawals               WithdrawalRequest[]         @relation("WithdrawalPlayer")
-  reviewedWithdrawals       WithdrawalRequest[]         @relation("WithdrawalReviewer")
-  earningsLedger            EarningsLedgerEntry[]       @relation("EarningsUser")
-  createdEarningsEntries    EarningsLedgerEntry[]       @relation("EarningsCreator")
-  sparksLedger              SparksLedgerEntry[]         @relation("SparksUser")
-  createdSparksEntries      SparksLedgerEntry[]         @relation("SparksCreator")
-  campaignCreditLedger      CampaignCreditLedgerEntry[] @relation("CampaignCreditOwner")
-  createdCreditEntries      CampaignCreditLedgerEntry[] @relation("CampaignCreditCreator")
-  sponsoredCampaigns        Campaign[]                  @relation("CampaignSponsorAdmin")
-  campaignTerminations      CampaignTermination[]       @relation("CampaignTerminationActor")
-  reviewedCompletions       MilestoneCompletion[]       @relation("CompletionReviewer")
-  cosmeticPurchases         CosmeticPurchase[]
-  sponsoredPurchases        SponsoredPurchase[]          @relation("SponsoredPurchaseUser")
-  handledSponsoredPurchases SponsoredPurchase[]          @relation("SponsoredPurchaseHandler")
-  createdSponsoredStores    SponsoredStore[]             @relation("SponsoredStoreCreator")
-  serverStorePurchasesBought ServerStorePurchase[]        @relation("ServerStorePurchaseBuyer")
-  serverStorePurchasesReceived ServerStorePurchase[]      @relation("ServerStorePurchaseRecipient")
-  serverStoreProceeds        ServerStoreProceedsEntry[]    @relation("ServerStoreProceedsOwner")
-  serverStorePayoutProfile   ServerStorePayoutProfile?
-  serverStorePayoutRequests  ServerStorePayoutRequest[]    @relation("ServerStorePayoutOwner")
-  reviewedServerStorePayouts ServerStorePayoutRequest[]    @relation("ServerStorePayoutReviewer")
-  uploadedServerStoreMedia   ServerStoreMediaAsset[]        @relation("ServerStoreMediaUploader")
-  equippedCosmetics         EquippedCosmetic[]
-  analyticsEvents           AnalyticsEvent[]
-  fraudFlags                FraudFlag[]                 @relation("FraudSubjectUser")
-  createdFraudFlags         FraudFlag[]                 @relation("FraudFlagCreator")
-  moderationCases           ModerationCase[]            @relation("ModerationSubjectUser")
-  assignedCases             ModerationCase[]            @relation("ModerationAssignee")
-  auditLogs                 AuditLog[]                  @relation("AuditActor")
-  consumedAdminEnrollmentTokens AdminEnrollmentToken[]  @relation("AdminEnrollmentConsumer")
-  userQuests                UserQuest[]
-  badgeAwards               BadgeAward[]
-  premiumIdentityClaims     PremiumIdentityClaim[]
-  crackedAccountLinks       CrackedAccountLink[]
-  minecraftIdentityActivity MinecraftIdentityActivity[]
-  notificationPreference    NotificationPreference?
-  notifications             Notification[]
-  createdAdminMessages      AdminMessage[]              @relation("AdminMessageCreator")
-  targetedAdminMessages     AdminMessage[]              @relation("AdminMessageTarget")
-  adminMessageDeliveries    AdminMessageDelivery[]
-  dailyActivities           UserDailyActivity[]
-  gameplayDailyStats        PlayerGameplayDailyStat[]
-  referralInvites           ReferralInvite[]            @relation("ReferralInviter")
-  referredByInvite          ReferralInvite?             @relation("ReferralInvitee")
+  id                            String                      @id @default(cuid())
+  firebaseUid                   String                      @unique
+  username                      String                      @unique
+  displayName                   String
+  email                         String                      @unique
+  avatarUrl                     String?
+  roles                         UserRole[]                  @default([PLAYER])
+  status                        UserStatus                  @default(ACTIVE)
+  countryCode                   String?
+  preferredCurrency             String                      @default("USD")
+  publicProfile                 Json                        @default("{}")
+  moderationState               Json                        @default("{}")
+  reputationScore               Int                         @default(0)
+  reputationTier                String                      @default("New Tester")
+  testerLevel                   Int                         @default(1)
+  testerExperience              Int                         @default(0)
+  sparksBalanceCache            Int                         @default(0)
+  earningsBalanceCache          Int                         @default(0)
+  pendingEarningsCache          Int                         @default(0)
+  createdAt                     DateTime                    @default(now())
+  lastActiveAt                  DateTime                    @default(now())
+  minecraftIdentities           MinecraftIdentity[]
+  ownedServers                  Server[]                    @relation("ServerOwner")
+  serverMemberships             ServerTeamMember[]          @relation("ServerTeamUser")
+  invitedServerMembers          ServerTeamMember[]          @relation("ServerTeamInviter")
+  sentServerInvites             ServerTeamInvite[]          @relation("ServerInviteSender")
+  receivedServerInvites         ServerTeamInvite[]          @relation("ServerInviteRecipient")
+  ownedCampaigns                Campaign[]                  @relation("CampaignOwner")
+  participations                CampaignParticipation[]
+  reviews                       Review[]
+  serverVotes                   ServerVote[]
+  rewardedVoteSessions          RewardedVoteSession[]
+  withdrawals                   WithdrawalRequest[]         @relation("WithdrawalPlayer")
+  reviewedWithdrawals           WithdrawalRequest[]         @relation("WithdrawalReviewer")
+  earningsLedger                EarningsLedgerEntry[]       @relation("EarningsUser")
+  createdEarningsEntries        EarningsLedgerEntry[]       @relation("EarningsCreator")
+  sparksLedger                  SparksLedgerEntry[]         @relation("SparksUser")
+  createdSparksEntries          SparksLedgerEntry[]         @relation("SparksCreator")
+  campaignCreditLedger          CampaignCreditLedgerEntry[] @relation("CampaignCreditOwner")
+  createdCreditEntries          CampaignCreditLedgerEntry[] @relation("CampaignCreditCreator")
+  sponsoredCampaigns            Campaign[]                  @relation("CampaignSponsorAdmin")
+  campaignTerminations          CampaignTermination[]       @relation("CampaignTerminationActor")
+  reviewedCompletions           MilestoneCompletion[]       @relation("CompletionReviewer")
+  cosmeticPurchases             CosmeticPurchase[]
+  sponsoredPurchases            SponsoredPurchase[]         @relation("SponsoredPurchaseUser")
+  handledSponsoredPurchases     SponsoredPurchase[]         @relation("SponsoredPurchaseHandler")
+  createdSponsoredStores        SponsoredStore[]            @relation("SponsoredStoreCreator")
+  serverStorePurchasesBought    ServerStorePurchase[]       @relation("ServerStorePurchaseBuyer")
+  serverStorePurchasesReceived  ServerStorePurchase[]       @relation("ServerStorePurchaseRecipient")
+  serverStoreProceeds           ServerStoreProceedsEntry[]  @relation("ServerStoreProceedsOwner")
+  serverStorePayoutProfile      ServerStorePayoutProfile?
+  serverStorePayoutRequests     ServerStorePayoutRequest[]  @relation("ServerStorePayoutOwner")
+  reviewedServerStorePayouts    ServerStorePayoutRequest[]  @relation("ServerStorePayoutReviewer")
+  uploadedServerStoreMedia      ServerStoreMediaAsset[]     @relation("ServerStoreMediaUploader")
+  equippedCosmetics             EquippedCosmetic[]
+  analyticsEvents               AnalyticsEvent[]
+  fraudFlags                    FraudFlag[]                 @relation("FraudSubjectUser")
+  createdFraudFlags             FraudFlag[]                 @relation("FraudFlagCreator")
+  moderationCases               ModerationCase[]            @relation("ModerationSubjectUser")
+  assignedCases                 ModerationCase[]            @relation("ModerationAssignee")
+  auditLogs                     AuditLog[]                  @relation("AuditActor")
+  consumedAdminEnrollmentTokens AdminEnrollmentToken[]      @relation("AdminEnrollmentConsumer")
+  userQuests                    UserQuest[]
+  badgeAwards                   BadgeAward[]
+  premiumIdentityClaims         PremiumIdentityClaim[]
+  crackedAccountLinks           CrackedAccountLink[]
+  minecraftIdentityActivity     MinecraftIdentityActivity[]
+  notificationPreference        NotificationPreference?
+  notifications                 Notification[]
+  createdAdminMessages          AdminMessage[]              @relation("AdminMessageCreator")
+  targetedAdminMessages         AdminMessage[]              @relation("AdminMessageTarget")
+  adminMessageDeliveries        AdminMessageDelivery[]
+  dailyActivities               UserDailyActivity[]
+  gameplayDailyStats            PlayerGameplayDailyStat[]
+  referralInvites               ReferralInvite[]            @relation("ReferralInviter")
+  referredByInvite              ReferralInvite?             @relation("ReferralInvitee")
+  hypePurchases                 HypePurchase[]
+  serverAwardPurchases          ServerAwardPurchase[]
 
   @@index([status])
   @@index([reputationScore])
@@ -535,6 +553,8 @@ model Server {
   pluginLastSeenAt          DateTime?
   pluginInstanceId          String?
   playerHistorySyncedAt     DateTime?
+  hypeScore                 Int                         @default(0)
+  hypePeriodStart           DateTime                    @default(now())
   createdAt                 DateTime                    @default(now())
   updatedAt                 DateTime                    @updatedAt
   verifications             ServerVerification[]
@@ -554,6 +574,8 @@ model Server {
   store                     ServerStore?
   storeDeliveries           ServerStoreDelivery[]
   storeMediaAssets          ServerStoreMediaAsset[]
+  hypePurchases             HypePurchase[]
+  awardPurchases            ServerAwardPurchase[]
 
   @@index([ownerId])
   @@index([ownerId, edition, normalizedHostname, port])
@@ -626,10 +648,12 @@ model CrackedAccountLink {
   server             Server                  @relation(fields: [serverId], references: [id], onDelete: Cascade)
   minecraftUsername  String
   normalizedUsername String
+  claimCodeHash      String?                 @unique
   status             CrackedLinkStatus       @default(PENDING)
   reservedAt         DateTime                @default(now())
   expiresAt          DateTime
   activatedAt        DateTime?
+  lastLoginAt        DateTime?
   releasedAt         DateTime?
   releaseReason      String?
   participations     CampaignParticipation[]
@@ -883,16 +907,16 @@ model Review {
 }
 
 model ServerVote {
-  id                       String                 @id @default(cuid())
-  serverId                 String
-  server                   Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  playerId                 String
-  player                   User                   @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  voteDate                 DateTime
-  weight                   Int                    @default(1)
-  rewardedVoteSessionId    String?                @unique
-  rewardedVoteSession      RewardedVoteSession?   @relation(fields: [rewardedVoteSessionId], references: [id], onDelete: SetNull)
-  createdAt                DateTime               @default(now())
+  id                    String               @id @default(cuid())
+  serverId              String
+  server                Server               @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId              String
+  player                User                 @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  voteDate              DateTime
+  weight                Int                  @default(1)
+  rewardedVoteSessionId String?              @unique
+  rewardedVoteSession   RewardedVoteSession? @relation(fields: [rewardedVoteSessionId], references: [id], onDelete: SetNull)
+  createdAt             DateTime             @default(now())
 
   @@unique([serverId, playerId, voteDate])
   @@index([playerId, voteDate])
@@ -900,16 +924,16 @@ model ServerVote {
 }
 
 model RewardedVoteSession {
-  id          String      @id @default(cuid())
-  serverId    String
-  server      Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  playerId    String
-  player      User        @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  tokenHash   String      @unique
-  expiresAt   DateTime
-  consumedAt  DateTime?
-  createdAt   DateTime    @default(now())
-  vote        ServerVote?
+  id         String      @id @default(cuid())
+  serverId   String
+  server     Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId   String
+  player     User        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tokenHash  String      @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime    @default(now())
+  vote       ServerVote?
 
   @@index([playerId, createdAt])
   @@index([serverId, createdAt])
@@ -963,26 +987,66 @@ model EarningsLedgerEntry {
 }
 
 model SparksLedgerEntry {
-  id              String                @id @default(cuid())
-  userId          String
-  user            User                  @relation("SparksUser", fields: [userId], references: [id])
-  direction       LedgerDirection
-  amount          Int
-  transactionType SparksTransactionType
-  referenceType   String
-  referenceId     String
-  idempotencyKey  String                @unique
-  createdById     String?
-  createdBy       User?                 @relation("SparksCreator", fields: [createdById], references: [id])
-  internalNote    String?
-  createdAt       DateTime              @default(now())
-  completion      MilestoneCompletion?  @relation("CompletionSparks")
-  sponsoredPurchaseDebit  SponsoredPurchase? @relation("SponsoredPurchaseDebit")
-  sponsoredPurchaseRefund SponsoredPurchase? @relation("SponsoredPurchaseRefund")
-  serverStorePurchaseDebit  ServerStorePurchase? @relation("ServerStorePurchaseDebit")
-  serverStorePurchaseRefund ServerStorePurchase? @relation("ServerStorePurchaseRefund")
+  id                        String                @id @default(cuid())
+  userId                    String
+  user                      User                  @relation("SparksUser", fields: [userId], references: [id])
+  direction                 LedgerDirection
+  amount                    Int
+  transactionType           SparksTransactionType
+  referenceType             String
+  referenceId               String
+  idempotencyKey            String                @unique
+  createdById               String?
+  createdBy                 User?                 @relation("SparksCreator", fields: [createdById], references: [id])
+  internalNote              String?
+  createdAt                 DateTime              @default(now())
+  completion                MilestoneCompletion?  @relation("CompletionSparks")
+  sponsoredPurchaseDebit    SponsoredPurchase?    @relation("SponsoredPurchaseDebit")
+  sponsoredPurchaseRefund   SponsoredPurchase?    @relation("SponsoredPurchaseRefund")
+  serverStorePurchaseDebit  ServerStorePurchase?  @relation("ServerStorePurchaseDebit")
+  serverStorePurchaseRefund ServerStorePurchase?  @relation("ServerStorePurchaseRefund")
+  hypePurchase              HypePurchase?
+  serverAwardPurchase       ServerAwardPurchase?
 
   @@index([userId, createdAt])
+}
+
+model HypePurchase {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  serverId       String
+  server         Server            @relation(fields: [serverId], references: [id], onDelete: Restrict)
+  hypeAmount     Int               @default(5)
+  sparksCost     Int               @default(500)
+  periodStart    DateTime
+  purchaseDate   DateTime
+  idempotencyKey String            @unique
+  ledgerEntryId  String            @unique
+  ledgerEntry    SparksLedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  createdAt      DateTime          @default(now())
+
+  @@index([userId, serverId, purchaseDate])
+  @@index([serverId, periodStart])
+}
+
+model ServerAwardPurchase {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  serverId       String
+  server         Server            @relation(fields: [serverId], references: [id], onDelete: Restrict)
+  kind           ServerAwardKind
+  sparksCost     Int
+  showGiver      Boolean           @default(false)
+  purchaseDate   DateTime
+  idempotencyKey String            @unique
+  ledgerEntryId  String            @unique
+  ledgerEntry    SparksLedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  createdAt      DateTime          @default(now())
+
+  @@index([serverId, kind, createdAt])
+  @@index([userId, serverId, purchaseDate])
 }
 
 model CampaignCreditLedgerEntry {
@@ -1061,53 +1125,53 @@ model SponsoredStore {
 }
 
 model SponsoredItem {
-  id                    String                       @id @default(cuid())
-  storeId               String
-  store                 SponsoredStore               @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  slug                  String
-  name                  String
-  description           String
-  category              StoreItemCategory            @default(OTHER)
-  sparksPrice           Int
-  imageUrl              String?
-  fulfillmentSummary    String
-  fulfillmentFields     SponsoredFulfillmentField[]
-  available             Boolean                      @default(true)
-  sortOrder             Int                          @default(0)
-  purchases             SponsoredPurchase[]
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
+  id                 String                      @id @default(cuid())
+  storeId            String
+  store              SponsoredStore              @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  slug               String
+  name               String
+  description        String
+  category           StoreItemCategory           @default(OTHER)
+  sparksPrice        Int
+  imageUrl           String?
+  fulfillmentSummary String
+  fulfillmentFields  SponsoredFulfillmentField[]
+  available          Boolean                     @default(true)
+  sortOrder          Int                         @default(0)
+  purchases          SponsoredPurchase[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@unique([storeId, slug])
   @@index([storeId, available, category, sortOrder])
 }
 
 model SponsoredPurchase {
-  id                         String                  @id @default(cuid())
-  userId                     String
-  user                       User                    @relation("SponsoredPurchaseUser", fields: [userId], references: [id], onDelete: Restrict)
-  itemId                     String
-  item                       SponsoredItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  status                     SponsoredPurchaseStatus @default(REQUESTED)
-  quantity                   Int                     @default(1)
-  priceSparks                Int
-  fulfillmentDetails         Json                    @default("{}")
-  deliveryReference          String?
-  statusReason               String?
-  adminNote                  String?
-  idempotencyKey             String                  @unique
-  sparksDebitLedgerEntryId   String                  @unique
-  sparksDebitLedgerEntry     SparksLedgerEntry       @relation("SponsoredPurchaseDebit", fields: [sparksDebitLedgerEntryId], references: [id], onDelete: Restrict)
-  sparksRefundLedgerEntryId  String?                 @unique
-  sparksRefundLedgerEntry    SparksLedgerEntry?      @relation("SponsoredPurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
-  handledById                String?
-  handledBy                  User?                   @relation("SponsoredPurchaseHandler", fields: [handledById], references: [id], onDelete: Restrict)
-  processingAt               DateTime?
-  deliveredAt                DateTime?
-  cancelledAt                DateTime?
-  refundedAt                 DateTime?
-  createdAt                  DateTime                @default(now())
-  updatedAt                  DateTime                @updatedAt
+  id                        String                  @id @default(cuid())
+  userId                    String
+  user                      User                    @relation("SponsoredPurchaseUser", fields: [userId], references: [id], onDelete: Restrict)
+  itemId                    String
+  item                      SponsoredItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  status                    SponsoredPurchaseStatus @default(REQUESTED)
+  quantity                  Int                     @default(1)
+  priceSparks               Int
+  fulfillmentDetails        Json                    @default("{}")
+  deliveryReference         String?
+  statusReason              String?
+  adminNote                 String?
+  idempotencyKey            String                  @unique
+  sparksDebitLedgerEntryId  String                  @unique
+  sparksDebitLedgerEntry    SparksLedgerEntry       @relation("SponsoredPurchaseDebit", fields: [sparksDebitLedgerEntryId], references: [id], onDelete: Restrict)
+  sparksRefundLedgerEntryId String?                 @unique
+  sparksRefundLedgerEntry   SparksLedgerEntry?      @relation("SponsoredPurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
+  handledById               String?
+  handledBy                 User?                   @relation("SponsoredPurchaseHandler", fields: [handledById], references: [id], onDelete: Restrict)
+  processingAt              DateTime?
+  deliveredAt               DateTime?
+  cancelledAt               DateTime?
+  refundedAt                DateTime?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -1115,37 +1179,37 @@ model SponsoredPurchase {
 }
 
 model ServerStore {
-  id          String            @id @default(cuid())
-  serverId    String            @unique
-  server      Server            @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  id          String                     @id @default(cuid())
+  serverId    String                     @unique
+  server      Server                     @relation(fields: [serverId], references: [id], onDelete: Cascade)
   name        String
   description String
   logoUrl     String?
-  available   Boolean           @default(false)
+  available   Boolean                    @default(false)
   items       ServerStoreItem[]
   proceeds    ServerStoreProceedsEntry[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
 }
 
 model ServerStoreItem {
-  id                 String                @id @default(cuid())
-  storeId            String
-  store              ServerStore           @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  slug               String
-  name               String
-  description        String
-  category           StoreItemCategory     @default(OTHER)
-  sparksPrice        Int
-  imageUrls          String[]
-  stockQuantity      Int?
-  maxPerPurchase     Int                   @default(1)
-  commandTemplates   String[]
-  status             ServerStoreItemStatus @default(DRAFT)
-  sortOrder          Int                   @default(0)
-  purchases          ServerStorePurchase[]
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  id               String                @id @default(cuid())
+  storeId          String
+  store            ServerStore           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  slug             String
+  name             String
+  description      String
+  category         StoreItemCategory     @default(OTHER)
+  sparksPrice      Int
+  imageUrls        String[]
+  stockQuantity    Int?
+  maxPerPurchase   Int                   @default(1)
+  commandTemplates String[]
+  status           ServerStoreItemStatus @default(DRAFT)
+  sortOrder        Int                   @default(0)
+  purchases        ServerStorePurchase[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@unique([storeId, slug])
   @@index([storeId, status, category, sortOrder])
@@ -1167,34 +1231,34 @@ model ServerStoreMediaAsset {
 }
 
 model ServerStorePurchase {
-  id                        String                    @id @default(cuid())
-  buyerId                   String
-  buyer                     User                      @relation("ServerStorePurchaseBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
-  recipientId               String
-  recipient                 User                      @relation("ServerStorePurchaseRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
-  itemId                    String
-  item                      ServerStoreItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  status                    ServerStorePurchaseStatus @default(PURCHASED)
-  quantity                  Int
-  priceSparks               Int
-  ownerProceedsCents        Int                       @default(0)
+  id                         String                    @id @default(cuid())
+  buyerId                    String
+  buyer                      User                      @relation("ServerStorePurchaseBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  recipientId                String
+  recipient                  User                      @relation("ServerStorePurchaseRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+  itemId                     String
+  item                       ServerStoreItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  status                     ServerStorePurchaseStatus @default(PURCHASED)
+  quantity                   Int
+  priceSparks                Int
+  ownerProceedsCents         Int                       @default(0)
   recipientMinecraftUsername String
-  giftMessage               String?
-  commandSnapshot           String[]
-  idempotencyKey            String                    @unique
-  sparksDebitLedgerEntryId  String                    @unique
-  sparksDebitLedgerEntry    SparksLedgerEntry         @relation("ServerStorePurchaseDebit", fields: [sparksDebitLedgerEntryId], references: [id], onDelete: Restrict)
-  sparksRefundLedgerEntryId String?                   @unique
-  sparksRefundLedgerEntry   SparksLedgerEntry?        @relation("ServerStorePurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
-  delivery                  ServerStoreDelivery?
-  proceedsEntry             ServerStoreProceedsEntry?
-  refundEligibleUntil       DateTime
-  redeemedAt                DateTime?
-  deliveredAt               DateTime?
-  failedAt                  DateTime?
-  refundedAt                DateTime?
-  createdAt                 DateTime                  @default(now())
-  updatedAt                 DateTime                  @updatedAt
+  giftMessage                String?
+  commandSnapshot            String[]
+  idempotencyKey             String                    @unique
+  sparksDebitLedgerEntryId   String                    @unique
+  sparksDebitLedgerEntry     SparksLedgerEntry         @relation("ServerStorePurchaseDebit", fields: [sparksDebitLedgerEntryId], references: [id], onDelete: Restrict)
+  sparksRefundLedgerEntryId  String?                   @unique
+  sparksRefundLedgerEntry    SparksLedgerEntry?        @relation("ServerStorePurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
+  delivery                   ServerStoreDelivery?
+  proceedsEntry              ServerStoreProceedsEntry?
+  refundEligibleUntil        DateTime
+  redeemedAt                 DateTime?
+  deliveredAt                DateTime?
+  failedAt                   DateTime?
+  refundedAt                 DateTime?
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
 
   @@index([buyerId, createdAt])
   @@index([recipientId, createdAt])
@@ -1219,23 +1283,23 @@ model ServerStoreDelivery {
 }
 
 model ServerStoreProceedsEntry {
-  id              String                     @id @default(cuid())
+  id              String                    @id @default(cuid())
   ownerId         String
-  owner           User                       @relation("ServerStoreProceedsOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  owner           User                      @relation("ServerStoreProceedsOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   storeId         String?
-  store           ServerStore?               @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  purchaseId      String?                    @unique
-  purchase        ServerStorePurchase?       @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  store           ServerStore?              @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  purchaseId      String?                   @unique
+  purchase        ServerStorePurchase?      @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
   payoutRequestId String?
-  payoutRequest   ServerStorePayoutRequest?  @relation("ServerStorePayoutLedger", fields: [payoutRequestId], references: [id], onDelete: Restrict)
+  payoutRequest   ServerStorePayoutRequest? @relation("ServerStorePayoutLedger", fields: [payoutRequestId], references: [id], onDelete: Restrict)
   direction       LedgerDirection
   amountCents     Int
-  currency        String                     @default("USD")
+  currency        String                    @default("USD")
   type            ServerStoreProceedsType
   availableAt     DateTime
-  idempotencyKey  String                     @unique
+  idempotencyKey  String                    @unique
   internalNote    String?
-  createdAt       DateTime                   @default(now())
+  createdAt       DateTime                  @default(now())
 
   @@index([ownerId, currency, availableAt])
   @@index([storeId, createdAt])
@@ -1336,19 +1400,19 @@ model PlayerGameplayDailyStat {
 }
 
 model IntegrationApiKey {
-  id          String               @id @default(cuid())
-  serverId    String
-  server      Server               @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  name        String
-  algorithm   String               @default("LEGACY_TOKEN_SHA256")
-  keyHash     String?
-  publicKey   String?
-  scopes      String[]
-  lastFour    String
-  expiresAt   DateTime?
-  revokedAt   DateTime?
-  lastUsedAt  DateTime?
-  createdAt   DateTime             @default(now())
+  id            String               @id @default(cuid())
+  serverId      String
+  server        Server               @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name          String
+  algorithm     String               @default("LEGACY_TOKEN_SHA256")
+  keyHash       String?
+  publicKey     String?
+  scopes        String[]
+  lastFour      String
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  lastUsedAt    DateTime?
+  createdAt     DateTime             @default(now())
   requestNonces PluginRequestNonce[]
 
   @@index([serverId])

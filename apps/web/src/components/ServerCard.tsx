@@ -1,4 +1,4 @@
-import { CircleDot, Star, Users } from "lucide-react";
+import { Award, CircleDot, Flame, Star, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, Card, VerifiedBadge } from "@nortix/ui";
 import { type PublicServer } from "../features/api-data";
@@ -43,6 +43,16 @@ export function ServerCard({ server }: { server: PublicServer }) {
             <Star size={13} fill="currentColor" />{" "}
             {server.rating == null ? t("server.new") : server.rating.toFixed(1)}
           </span>
+          {server.hype ? (
+            <span className="server-card__hype">
+              <Flame size={13} fill="currentColor" /> {formatNumber(server.hype.total)} Hype
+            </span>
+          ) : null}
+          {server.awardCount != null ? (
+            <span className="server-card__awards">
+              <Award size={13} /> {formatNumber(server.awardCount)} Awards
+            </span>
+          ) : null}
         </div>
       </div>
     </Card>

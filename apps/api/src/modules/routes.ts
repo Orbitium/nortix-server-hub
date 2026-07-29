@@ -41,10 +41,13 @@ import {
   EquipCosmeticInputSchema,
   UnequipCosmeticInputSchema,
   ClaimReferralInviteInputSchema,
+  HypePurchaseInputSchema,
+  ServerAwardPurchaseInputSchema,
 } from "@nortix/shared";
 import {
   CreateServerVerificationSchema,
   PluginCapabilitiesHandshakeSchema,
+  PluginCrackedClaimCompletionSchema,
   PluginPresenceSnapshotSchema,
   PluginVerificationHandshakeSchema,
   PluginVerificationStatusSchema,
@@ -99,11 +102,15 @@ import {
 } from "./server-store/media.js";
 import { AdminEnrollmentService } from "./admin-enrollment/service.js";
 import { AdminSparksService } from "./admin-sparks/service.js";
+import { AdminSparkEconomyService } from "./admin-sparks/economy-service.js";
 import { presentOwnerPluginState } from "./owner-servers/presenter.js";
 import { buildCampaignShareHtml } from "./campaign-sharing/html.js";
 import { normalizeServerHostname } from "./server-registration/policy.js";
 import { ServerRegistrationService } from "./server-registration/service.js";
 import { AdminEntityService } from "./admin-entities/service.js";
+import { HypeService } from "./hype/service.js";
+import { discoveryScore, utcDayStart } from "./hype/policy.js";
+import { ServerAwardService } from "./awards/service.js";
 
 const campaignService = new CampaignService();
 const serverVerificationService = new ServerVerificationService();
@@ -118,8 +125,11 @@ const gameplayService = new GameplayService();
 const sponsoredShopService = new SponsoredShopService();
 const adminEnrollmentService = new AdminEnrollmentService();
 const adminSparksService = new AdminSparksService();
+const adminSparkEconomyService = new AdminSparkEconomyService();
 const serverRegistrationService = new ServerRegistrationService();
 const adminEntityService = new AdminEntityService();
+const hypeService = new HypeService();
+const serverAwardService = new ServerAwardService();
 const REWARDED_VOTE_SESSION_TTL_MS = 10 * 60_000;
 const hashRewardedVoteToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -764,6 +774,9 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         select: {
           ...publicServerSelect,
           playerHistorySyncedAt: true,
+          pluginLastSeenAt: true,
+          hypeScore: true,
+          hypePeriodStart: true,
           _count: {
             select: {
               campaigns: {
@@ -773,52 +786,154 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
                   endsAt: { gt: new Date() },
                 },
               },
-              reviews: true,
+              reviews: { where: { moderationStatus: "APPROVED" } },
               votes: true,
+              awardPurchases: true,
             },
           },
-          reviews: { select: { rating: true } },
+          reviews: {
+            where: { moderationStatus: "APPROVED" },
+            select: { rating: true },
+          },
         },
         orderBy: [{ online: "desc" }, { playerCount: "desc" }],
       }),
       prisma.server.count({ where }),
       serverDiscoveryService.list(search),
     ]);
-    const voteWeights = items.length === 0
-      ? []
-      : await prisma.serverVote.groupBy({
-          by: ["serverId"],
-          where: { serverId: { in: items.map((server) => server.id) } },
-          _sum: { weight: true },
-        });
+    const serverIds = items.map((server) => server.id);
+    const today = utcDayStart();
+    const recentStart = new Date(today.getTime() - 6 * 86_400_000);
+    const previousStart = new Date(today.getTime() - 13 * 86_400_000);
+    const [voteWeights, monthlyVoteWeights, campaignSignals, gameplaySignals] =
+      serverIds.length === 0
+        ? [[], [], [], []]
+        : await Promise.all([
+            prisma.serverVote.groupBy({
+              by: ["serverId"],
+              where: { serverId: { in: serverIds } },
+              _sum: { weight: true },
+            }),
+            prisma.serverVote.groupBy({
+              by: ["serverId"],
+              where: {
+                serverId: { in: serverIds },
+                voteDate: { gte: utcMonthStart() },
+              },
+              _sum: { weight: true },
+            }),
+            prisma.campaign.findMany({
+              where: {
+                serverId: { in: serverIds },
+                status: { in: ["ACTIVE", "COMPLETED"] },
+              },
+              select: {
+                serverId: true,
+                participations: { select: { status: true } },
+              },
+            }),
+            prisma.playerGameplayDailyStat.findMany({
+              where: {
+                serverId: { in: serverIds },
+                activityDate: { gte: previousStart },
+                OR: [{ joins: { gt: 0 } }, { playtimeSeconds: { gt: 0 } }],
+              },
+              select: { serverId: true, userId: true, activityDate: true },
+            }),
+          ]);
     const voteWeightsByServer = new Map(
       voteWeights.map((vote) => [vote.serverId, vote._sum.weight ?? 0]),
     );
-    const ownedItems = items.map(({ playerHistorySyncedAt, reviews, _count, ...server }) => ({
-      ...server,
-      source: "NORTIX" as const,
-      rating:
-        reviews.length > 0
-          ? Number(
-              (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1),
-            )
-          : null,
-      reviewCount: _count.reviews,
-      voteCount: voteWeightsByServer.get(server.id) ?? 0,
-      activeCampaignCount: _count.campaigns,
-      crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
-    }));
+    const monthlyVotesByServer = new Map(
+      monthlyVoteWeights.map((vote) => [vote.serverId, vote._sum.weight ?? 0]),
+    );
+    const campaignRates = new Map<string, { completed: number; total: number }>();
+    for (const campaign of campaignSignals) {
+      const current = campaignRates.get(campaign.serverId) ?? { completed: 0, total: 0 };
+      current.total += campaign.participations.length;
+      current.completed += campaign.participations.filter(
+        (participation) => participation.status === "COMPLETED",
+      ).length;
+      campaignRates.set(campaign.serverId, current);
+    }
+    const activitySets = new Map<string, { previous: Set<string>; recent: Set<string> }>();
+    for (const activity of gameplaySignals) {
+      const current = activitySets.get(activity.serverId) ?? {
+        previous: new Set<string>(),
+        recent: new Set<string>(),
+      };
+      (activity.activityDate >= recentStart ? current.recent : current.previous).add(activity.userId);
+      activitySets.set(activity.serverId, current);
+    }
+    const ownedItems = items.map(
+      ({
+        playerHistorySyncedAt,
+        pluginLastSeenAt,
+        hypeScore,
+        hypePeriodStart,
+        reviews,
+        _count,
+        ...server
+      }) => {
+        const rating =
+          reviews.length > 0
+            ? Number(
+                (
+                  reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+                ).toFixed(1),
+              )
+            : null;
+        const hype = hypeService.present(hypeScore, hypePeriodStart);
+        const campaignRate = campaignRates.get(server.id);
+        const activity = activitySets.get(server.id);
+        const retained =
+          activity?.previous.size
+            ? [...activity.previous].filter((userId) => activity.recent.has(userId)).length /
+              activity.previous.size
+            : null;
+        const score = discoveryScore({
+          hype: hype.total,
+          online: server.online,
+          playerCount: server.playerCount ?? 0,
+          rating,
+          reviewCount: _count.reviews,
+          monthlyVotes: monthlyVotesByServer.get(server.id) ?? 0,
+          activeCampaigns: _count.campaigns,
+          completionRate:
+            campaignRate?.total ? campaignRate.completed / campaignRate.total : null,
+          retentionRate: retained,
+          recentlyActive:
+            server.online ||
+            Boolean(pluginLastSeenAt && pluginLastSeenAt >= new Date(Date.now() - 7 * 86_400_000)),
+        });
+        return {
+          ...server,
+          source: "NORTIX" as const,
+          rating,
+          reviewCount: _count.reviews,
+          voteCount: voteWeightsByServer.get(server.id) ?? 0,
+          monthlyVoteCount: monthlyVotesByServer.get(server.id) ?? 0,
+          activeCampaignCount: _count.campaigns,
+          awardCount: _count.awardPurchases,
+          crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
+          hype,
+          discoveryScore: Math.round(score * 100) / 100,
+        };
+      },
+    );
     const combined = [...ownedItems, ...discoveredItems].sort(
       (a, b) =>
-        ((b as (typeof ownedItems)[number]).activeCampaignCount ?? 0) -
-          ((a as (typeof ownedItems)[number]).activeCampaignCount ?? 0) ||
-        ((b as (typeof ownedItems)[number]).voteCount ?? 0) -
-          ((a as (typeof ownedItems)[number]).voteCount ?? 0) ||
+        ((b as (typeof ownedItems)[number]).discoveryScore ?? 0) -
+          ((a as (typeof ownedItems)[number]).discoveryScore ?? 0) ||
         Number(b.online) - Number(a.online) ||
         (b.playerCount ?? 0) - (a.playerCount ?? 0),
     );
     return {
-      items: combined.slice((page - 1) * pageSize, page * pageSize),
+      items: combined.slice((page - 1) * pageSize, page * pageSize).map((item) => {
+        if (!("discoveryScore" in item)) return item;
+        const { discoveryScore: _discoveryScore, ...publicItem } = item;
+        return publicItem;
+      }),
       page,
       pageSize,
       total: ownedTotal + discoveredItems.length,
@@ -830,11 +945,14 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       where: { slug, publicListing: true, moderationStatus: "APPROVED", edition: "JAVA" },
       select: {
         ...publicServerSelect,
+        hypeScore: true,
+        hypePeriodStart: true,
         _count: {
           select: {
             campaigns: {
               where: { status: { in: ["SCHEDULED", "ACTIVE", "COMPLETED"] } },
             },
+            awardPurchases: true,
           },
         },
         campaigns: {
@@ -880,15 +998,16 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         reply.code(404).send({ code: "NOT_FOUND", message: "Server not found." })
       );
     }
-    const { _count, ...publicServer } = server;
+    const { _count, hypeScore, hypePeriodStart, ...publicServer } = server;
     const activitySince = new Date(Date.now() - 7 * 86_400_000);
-    const [voteCount, monthlyVoteCount, playerAverage] = await Promise.all([
+    const [voteCount, monthlyVoteCount, playerAverage, awards] = await Promise.all([
       getWeightedVoteCount(server.id),
       getWeightedVoteCount(server.id, utcMonthStart()),
       prisma.serverActivitySample.aggregate({
         where: { serverId: server.id, observedAt: { gte: activitySince } },
         _avg: { onlinePlayers: true },
       }),
+      serverAwardService.summary(server.id),
     ]);
     return {
       ...publicServer,
@@ -912,8 +1031,64 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       averagePlayerWindowDays: 7,
       campaignCountAllTime: _count.campaigns,
       activeCampaignCount: server.campaigns.length,
+      hype: hypeService.present(hypeScore, hypePeriodStart),
+      awards,
     };
   });
+  app.get(
+    "/v1/servers/:id/hype/eligibility",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return hypeService.eligibility(request.user!.id, id);
+    },
+  );
+  app.post(
+    "/v1/servers/:id/hype",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 12, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const input = HypePurchaseInputSchema.parse(request.body);
+      const result = await hypeService.purchase(
+        request.user!.id,
+        id,
+        input.idempotencyKey,
+        request.id,
+      );
+      return reply.code(result.replayed ? 200 : 201).send(result);
+    },
+  );
+  app.get(
+    "/v1/servers/:id/awards/eligibility",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      return serverAwardService.eligibility(request.user!.id, id);
+    },
+  );
+  app.post(
+    "/v1/servers/:id/awards",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const input = ServerAwardPurchaseInputSchema.parse(request.body);
+      const result = await serverAwardService.purchase({
+        userId: request.user!.id,
+        serverId: id,
+        kind: input.kind,
+        showGiver: input.showGiver,
+        idempotencyKey: input.idempotencyKey,
+        requestId: request.id,
+      });
+      return reply.code(result.replayed ? 200 : 201).send(result);
+    },
+  );
   app.get("/v1/voting/config", async () => ({ turnstileSiteKey: env.TURNSTILE_SITE_KEY }));
   app.get("/v1/voting/servers", { preHandler: app.authenticate }, async (request) => ({
     ...(await votingService.list(request.user!.id)),
@@ -1499,6 +1674,33 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         return inserted;
       });
       return reply.code(202).send({ accepted: true, recorded: result.count });
+    },
+  );
+
+  app.post(
+    "/v1/plugin/cracked-claims/complete",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const input = PluginCrackedClaimCompletionSchema.parse(request.body);
+      const credential = await authenticateSignedPluginRequest(request, input.serverId);
+      if (credential.server.pluginInstanceId !== input.instanceId) {
+        throw new Error("Plugin instance verification is required before completing a claim.");
+      }
+      const occurredAt = new Date(input.occurredAt);
+      if (Math.abs(Date.now() - occurredAt.getTime()) > 5 * 60_000) {
+        throw new Error("Cracked account claims must be completed from a current server session.");
+      }
+      const link = await minecraftIdentityService.completeCrackedClaim(
+        input.serverId,
+        input.claimCode,
+        input.minecraftUsername,
+        occurredAt,
+      );
+      return reply.code(200).send({
+        linked: true,
+        minecraftUsername: link.minecraftUsername,
+        inactiveAfter: link.expiresAt,
+      });
     },
   );
 
@@ -2805,9 +3007,43 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { preHandler: app.requirePermission("sparks:manage") },
     async (request) => {
       const query = z
-        .object({ search: z.string().trim().max(80).default("") })
+        .object({
+          search: z.string().trim().max(80).default(""),
+          from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          label: z.string().trim().max(80).default("Last 30 days"),
+        })
+        .refine((value) => Boolean(value.from) === Boolean(value.to), {
+          message: "Both range dates are required.",
+        })
+        .superRefine((value, context) => {
+          if (!value.from || !value.to) return;
+          const from = new Date(`${value.from}T00:00:00.000Z`);
+          const inclusiveTo = new Date(`${value.to}T00:00:00.000Z`);
+          const duration = inclusiveTo.getTime() - from.getTime() + 86_400_000;
+          if (
+            !Number.isFinite(from.getTime()) ||
+            !Number.isFinite(inclusiveTo.getTime()) ||
+            duration < 86_400_000 ||
+            duration > 366 * 86_400_000
+          ) {
+            context.addIssue({
+              code: "custom",
+              message: "Spark economy ranges must cover between 1 and 366 UTC days.",
+            });
+          }
+        })
         .parse(request.query);
-      return adminSparksService.dashboard(query.search);
+      const today = utcDayStart();
+      const from = query.from
+        ? new Date(`${query.from}T00:00:00.000Z`)
+        : new Date(today.getTime() - 29 * 86_400_000);
+      const inclusiveTo = query.to ? new Date(`${query.to}T00:00:00.000Z`) : today;
+      const to = new Date(inclusiveTo.getTime() + 86_400_000);
+      return adminSparkEconomyService.dashboard(
+        { from, to, label: query.label },
+        query.search,
+      );
     },
   );
   app.post(

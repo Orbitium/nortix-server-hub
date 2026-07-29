@@ -35,6 +35,7 @@ import {
   SparksAdjustmentReviewPage,
 } from "../routes/AdminPages";
 import { AdminEnrollmentPage, AuthPage } from "../routes/AuthPages";
+import { SparkEconomyPage } from "../routes/SparkEconomyPage";
 import { RouteSeo } from "../components/Seo";
 import { InboxPage, NotificationSettingsPage } from "../components/InboxCenter";
 import { CookieConsent } from "../components/CookieConsent";
@@ -129,6 +130,7 @@ function AdminRoutes() {
         <Route path="servers/:serverId" element={<AdminServerDetailPage />} />
         <Route path="campaigns" element={<CampaignReviewPage />} />
         <Route path="sparks" element={<SparksAdjustmentReviewPage />} />
+        <Route path="spark-economy" element={<SparkEconomyPage />} />
         <Route path="sparks-adjustments" element={<SparksAdjustmentReviewPage />} />
         <Route path="sponsored-shop" element={<AdminSponsoredShopPage />} />
         <Route path="sponsored-purchases" element={<AdminSponsoredPurchasesPage />} />

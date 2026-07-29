@@ -2585,6 +2585,7 @@ export function ProfilePage() {
       status: "PENDING" | "ACTIVE";
       expiresAt: string;
       activatedAt?: string;
+      lastLoginAt?: string;
       server: { id: string; name: string; slug: string };
     }>;
     activity: Array<{
@@ -2609,6 +2610,12 @@ export function ProfilePage() {
     verificationServer: string;
   }>();
   const [claimOpen, setClaimOpen] = useState(false);
+  const [crackedClaim, setCrackedClaim] = useState<{
+    code: string;
+    expiresAt: string;
+    minecraftUsername: string;
+    server: { name: string };
+  }>();
   const [serverId, setServerId] = useState("");
   const [crackedName, setCrackedName] = useState("");
   const [identityMessage, setIdentityMessage] = useState("");
@@ -2720,12 +2727,23 @@ export function ProfilePage() {
     setIdentityBusy(true);
     setIdentityMessage("");
     try {
-      await api("/minecraft-identities/cracked/claims", {
-        method: "POST",
-        body: JSON.stringify({ serverId, minecraftUsername: crackedName }),
+      const createdClaim = await api<{
+        claimCode: string;
+        expiresAt: string;
+        minecraftUsername: string;
+        server: { name: string };
+      }>("/minecraft-identities/cracked/claims", {
+          method: "POST",
+          body: JSON.stringify({ serverId, minecraftUsername: crackedName }),
+        });
+      setCrackedClaim({
+        code: createdClaim.claimCode,
+        expiresAt: createdClaim.expiresAt,
+        minecraftUsername: createdClaim.minecraftUsername,
+        server: createdClaim.server,
       });
       setCrackedName("");
-      setIdentityMessage("Reserved. Join that server with this exact name within 30 minutes.");
+      setIdentityMessage("Reservation created. Use the one-time command in game within 30 minutes.");
       await refreshIdentities();
     } catch (error) {
       setIdentityMessage((error as Error).message);
@@ -2737,7 +2755,7 @@ export function ProfilePage() {
   const unlink = async (kind: "premium" | "cracked", id: string, activated = false) => {
     const warning =
       kind === "cracked" && activated
-        ? "Release this server-scoped name? Because it has already played on the server, it cannot be reserved again."
+        ? "Release this server-scoped name? Its existing Nortix link will stop working immediately."
         : kind === "cracked"
           ? "Cancel this pending name reservation?"
           : "Unlink this premium Minecraft account? It can be verified again later.";
@@ -3388,8 +3406,8 @@ export function ProfilePage() {
               <div>
                 <h3>Cracked server account</h3>
                 <p>
-                  Reserve the exact name before its first-ever join. This does not appear on your
-                  public profile.
+                  Reserve the exact name before its first-ever join, then confirm it in game with
+                  the one-time code. This does not appear on your public profile.
                 </p>
               </div>
             </div>
@@ -3427,8 +3445,26 @@ export function ProfilePage() {
             </button>
             <small className="identity-rules">
               Up to 3 reservations per hour and 5 per rolling day. Unused reservations expire
-              automatically.
+              automatically. Active links expire after 30 days without a login.
             </small>
+            {crackedClaim ? (
+              <div className="identity-claim-ready" role="status">
+                <span>
+                  <strong>{crackedClaim.minecraftUsername} on {crackedClaim.server.name}</strong>
+                  <small>
+                    Join with that exact name and run{" "}
+                    <code>/nortix claim {crackedClaim.code}</code>
+                  </small>
+                  <small>
+                    Expires{" "}
+                    {new Date(crackedClaim.expiresAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </small>
+                </span>
+              </div>
+            ) : null}
           </Card>
         </div>
         {identityData.cracked.length > 0 && (
@@ -3440,7 +3476,13 @@ export function ProfilePage() {
                   <strong>{link.minecraftUsername}</strong>
                   <small>
                     {link.server.name} ·{" "}
-                    {link.status === "PENDING" ? "Waiting for first join" : "First join confirmed"}
+                    {link.status === "PENDING"
+                      ? "Waiting for in-game claim"
+                      : `Linked · expires after 30 days without login${
+                          link.lastLoginAt
+                            ? ` · last login ${new Date(link.lastLoginAt).toLocaleDateString()}`
+                            : ""
+                        }`}
                   </small>
                 </span>
                 <Badge tone={link.status === "ACTIVE" ? "success" : "purple"}>{link.status}</Badge>

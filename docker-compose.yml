@@ -107,6 +107,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
+        restart: true
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/healthz >/dev/null || exit 1"]
       interval: 2s
@@ -133,6 +134,7 @@ services:
     depends_on:
       web:
         condition: service_healthy
+        restart: true
     healthcheck:
       test: ["CMD", "cloudflared", "tunnel", "ready", "--metrics", "127.0.0.1:2000"]
       interval: 15s

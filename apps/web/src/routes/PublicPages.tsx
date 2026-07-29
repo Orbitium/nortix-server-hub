@@ -1,11 +1,13 @@
 import {
   ArrowRight,
+  Award,
   BarChart3,
   Check,
   ChevronRight,
   Clock3,
   Compass,
   Eye,
+  Flame,
   Gamepad2,
   Globe2,
   HeartHandshake,
@@ -42,11 +44,14 @@ import {
   usePublicProfile,
   usePublicServer,
   usePublicServers,
+  useServerHypeEligibility,
+  useServerAwardEligibility,
 } from "../features/api-data";
+import type { ServerAward } from "../features/api-data";
 import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
 import { minecraftMajorVersions, normalizeMinecraftVersions, serverTypes } from "@nortix/shared";
-import { accountCreationUrl } from "../lib/auth-session";
+import { accountCreationUrl, useAuthSession } from "../lib/auth-session";
 import {
   filterServers,
   getServerFilterOptions,
@@ -627,6 +632,25 @@ export function ServerDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const sharedCampaignId = searchParams.get("campaign") ?? undefined;
   const { data: server, isLoading, isError, refetch } = usePublicServer(slug);
+  const { isAuthenticated } = useAuthSession();
+  const {
+    data: hypeEligibility,
+    isLoading: hypeEligibilityLoading,
+    isError: hypeEligibilityError,
+    refetch: refetchHypeEligibility,
+  } = useServerHypeEligibility(
+    server?.source === "NORTIX" ? server.id : undefined,
+    isAuthenticated,
+  );
+  const {
+    data: awardEligibility,
+    isLoading: awardEligibilityLoading,
+    isError: awardEligibilityError,
+    refetch: refetchAwardEligibility,
+  } = useServerAwardEligibility(
+    server?.source === "NORTIX" ? server.id : undefined,
+    isAuthenticated,
+  );
   const { data: sharedCampaign, isLoading: sharedCampaignLoading } =
     usePublicCampaign(sharedCampaignId);
   const { data: campaignData, isLoading: campaignsLoading } = usePublicCampaigns();
@@ -641,6 +665,13 @@ export function ServerDetailPage() {
   const [shareTermsAccepted, setShareTermsAccepted] = useState(false);
   const [shareJoinMessage, setShareJoinMessage] = useState("");
   const [shareJoined, setShareJoined] = useState(false);
+  const [hypeOpen, setHypeOpen] = useState(false);
+  const [hypeMessage, setHypeMessage] = useState("");
+  const [hypePurchasing, setHypePurchasing] = useState(false);
+  const [selectedAwardKind, setSelectedAwardKind] = useState<ServerAward["kind"] | null>(null);
+  const [showAwardGiver, setShowAwardGiver] = useState(false);
+  const [awardMessage, setAwardMessage] = useState("");
+  const [awardPurchasing, setAwardPurchasing] = useState(false);
   if (isLoading) {
     return <DetailPageSkeleton label="Loading server" />;
   }
@@ -705,6 +736,53 @@ export function ServerDetailPage() {
   const canonicalPath = `/servers/${server.slug}`;
   const normalizedVersions = normalizeMinecraftVersions(server.versions);
   const heroArtwork = server.bannerUrl ?? server.logoUrl;
+  const hype = server.hype ?? {
+    total: 0,
+    periodStart: new Date().toISOString(),
+    carryPercent: 20,
+    milestone: null,
+    nextMilestone: { name: "Bronze" as const, minimum: 25 },
+  };
+  const awards = server.awards ?? { total: 0, awards: [] };
+  const selectedAward =
+    awards.awards.find((award) => award.kind === selectedAwardKind) ?? null;
+  const purchaseHype = async () => {
+    setHypePurchasing(true);
+    setHypeMessage("");
+    try {
+      await api(`/servers/${server.id}/hype`, {
+        method: "POST",
+        body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+      });
+      setHypeMessage("5 Hype added. Thank you for supporting this server.");
+      await Promise.all([refetch(), refetchHypeEligibility()]);
+    } catch (error) {
+      setHypeMessage(error instanceof Error ? error.message : "Hype could not be added.");
+    } finally {
+      setHypePurchasing(false);
+    }
+  };
+  const purchaseAward = async () => {
+    if (!selectedAward) return;
+    setAwardPurchasing(true);
+    setAwardMessage("");
+    try {
+      await api(`/servers/${server.id}/awards`, {
+        method: "POST",
+        body: JSON.stringify({
+          kind: selectedAward.kind,
+          showGiver: showAwardGiver,
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      setAwardMessage(`${selectedAward.emoji} ${selectedAward.name} permanently added.`);
+      await Promise.all([refetch(), refetchAwardEligibility()]);
+    } catch (error) {
+      setAwardMessage(error instanceof Error ? error.message : "The award could not be added.");
+    } finally {
+      setAwardPurchasing(false);
+    }
+  };
   const submitReview = async () => {
     try {
       await api(`/servers/${server.id}/reviews`, {
@@ -803,6 +881,207 @@ export function ServerDetailPage() {
           </div>
         </Modal>
       ) : null}
+      {hypeOpen && !isDiscovered ? (
+        <Modal title={`Support ${server.name} with Hype`} onClose={() => setHypeOpen(false)}>
+          <div className="modal__body hype-modal">
+            <div className="hype-modal__summary">
+              <span className="hype-flame"><Flame aria-hidden="true" /></span>
+              <div>
+                <small>CURRENT COMMUNITY HYPE</small>
+                <strong>{hype.total.toLocaleString()} Hype</strong>
+                <span>
+                  {hype.milestone
+                    ? `${hype.milestone.name} milestone unlocked`
+                    : `${hype.nextMilestone?.minimum ?? 25} Hype unlocks Bronze`}
+                </span>
+              </div>
+            </div>
+            <div className="hype-bundle">
+              <div><Sparkles aria-hidden="true" /><strong>500 Sparks</strong></div>
+              <ArrowRight aria-hidden="true" />
+              <div><Flame aria-hidden="true" /><strong>5 Hype</strong></div>
+            </div>
+            <p>
+              Hype is an optional way to support a server you have played through Nortix.
+              Purchases are final and cannot be refunded or transferred.
+            </p>
+            <div className="hype-milestones" aria-label="Hype milestones">
+              {[
+                ["Bronze", 25],
+                ["Silver", 100],
+                ["Gold", 500],
+                ["Platinum", 2_500],
+                ["Diamond", 10_000],
+              ].map(([name, minimum]) => (
+                <span
+                  className={hype.total >= Number(minimum) ? "is-unlocked" : undefined}
+                  key={String(name)}
+                >
+                  <Flame aria-hidden="true" />
+                  <b>{name}</b>
+                  <small>{Number(minimum).toLocaleString()}</small>
+                </span>
+              ))}
+            </div>
+            <p className="hype-modal__rollover">
+              Hype is month-bound. At the start of each UTC month, the server carries forward
+              20% of its previous Hype and can build again from there.
+            </p>
+            {!isAuthenticated ? (
+              <p role="status">Sign in to check your play history and add Hype.</p>
+            ) : hypeEligibilityLoading ? (
+              <p role="status">Checking your Hype eligibility…</p>
+            ) : hypeEligibilityError ? (
+              <div className="hype-eligibility-error">
+                <p role="alert">Your Hype eligibility could not be checked.</p>
+                <Button variant="secondary" onClick={() => void refetchHypeEligibility()}>
+                  Try again
+                </Button>
+              </div>
+            ) : hypeEligibility ? (
+              <div className="hype-eligibility">
+                <span>
+                  <b>Play history</b>
+                  {hypeEligibility.playedBefore ? "Eligible" : "Play this server first"}
+                </span>
+                <span>
+                  <b>Today</b>
+                  {hypeEligibility.purchasesRemaining} of {hypeEligibility.dailyPurchaseLimit} purchases left
+                </span>
+                <span>
+                  <b>Sparks</b>
+                  {hypeEligibility.sparksBalance.toLocaleString()} available
+                </span>
+              </div>
+            ) : null}
+            {hypeEligibility &&
+            hypeEligibility.playedBefore &&
+            hypeEligibility.purchasesRemaining > 0 &&
+            hypeEligibility.sparksBalance < hypeEligibility.bundle.sparks ? (
+              <p className="form-message" role="status">
+                Not enough Sparks. You need 500 Sparks to add 5 Hype.
+              </p>
+            ) : null}
+            {hypeMessage ? <p className="form-message" role="status">{hypeMessage}</p> : null}
+          </div>
+          <div className="modal__footer">
+            <Button variant="secondary" onClick={() => setHypeOpen(false)}>Close</Button>
+            {!isAuthenticated ? (
+              <Link
+                className="button button--primary"
+                to={`/sign-in?next=${encodeURIComponent(canonicalPath)}`}
+              >
+                Sign in
+              </Link>
+            ) : (
+              <Button
+                disabled={!hypeEligibility?.canPurchase || hypePurchasing}
+                onClick={() => void purchaseHype()}
+              >
+                {hypePurchasing ? "Adding Hype…" : "Spend 500 Sparks"}
+              </Button>
+            )}
+          </div>
+        </Modal>
+      ) : null}
+      {selectedAward && !isDiscovered ? (
+        <Modal
+          title={`Give ${server.name} an award`}
+          onClose={() => setSelectedAwardKind(null)}
+        >
+          <div className="modal__body award-purchase-modal">
+            <div className="award-purchase-modal__award">
+              <span aria-hidden="true">{selectedAward.emoji}</span>
+              <div>
+                <small>PERMANENT SERVER AWARD</small>
+                <strong>{selectedAward.name}</strong>
+                <p>{selectedAward.description}</p>
+              </div>
+            </div>
+            <div className="award-purchase-modal__price">
+              <Sparkles aria-hidden="true" />
+              <strong>{selectedAward.cost.toLocaleString()} Sparks</strong>
+              <span>will be permanently removed from your balance</span>
+            </div>
+            <p>
+              Awards never expire, cannot be refunded or transferred, and do not affect server
+              discovery ranking.
+            </p>
+            {!isAuthenticated ? (
+              <p role="status">Sign in to check your play history and give this award.</p>
+            ) : awardEligibilityLoading ? (
+              <p role="status">Checking your award eligibility…</p>
+            ) : awardEligibilityError ? (
+              <div className="hype-eligibility-error">
+                <p role="alert">Your award eligibility could not be checked.</p>
+                <Button variant="secondary" onClick={() => void refetchAwardEligibility()}>
+                  Try again
+                </Button>
+              </div>
+            ) : awardEligibility ? (
+              <>
+                <div className="hype-eligibility">
+                  <span>
+                    <b>Play history</b>
+                    {awardEligibility.playedBefore ? "Eligible" : "Play this server first"}
+                  </span>
+                  <span>
+                    <b>Today</b>
+                    {awardEligibility.purchasesRemaining} of{" "}
+                    {awardEligibility.dailyPurchaseLimit} awards left
+                  </span>
+                  <span>
+                    <b>Sparks</b>
+                    {awardEligibility.sparksBalance.toLocaleString()} available
+                  </span>
+                </div>
+                <label className="checkbox-row award-giver-choice">
+                  <input
+                    type="checkbox"
+                    checked={showAwardGiver}
+                    onChange={(event) => setShowAwardGiver(event.target.checked)}
+                  />
+                  <span>
+                    Show my public profile with this award. Leave this off to give it anonymously.
+                  </span>
+                </label>
+              </>
+            ) : null}
+            {awardEligibility &&
+            awardEligibility.playedBefore &&
+            awardEligibility.purchasesRemaining > 0 &&
+            awardEligibility.sparksBalance < selectedAward.cost ? (
+              <p className="form-message" role="status">
+                Not enough Sparks. This award requires {selectedAward.cost.toLocaleString()} Sparks.
+              </p>
+            ) : null}
+            {awardMessage ? <p className="form-message" role="status">{awardMessage}</p> : null}
+          </div>
+          <div className="modal__footer">
+            <Button variant="secondary" onClick={() => setSelectedAwardKind(null)}>Close</Button>
+            {!isAuthenticated ? (
+              <Link
+                className="button button--primary"
+                to={`/sign-in?next=${encodeURIComponent(canonicalPath)}`}
+              >
+                Sign in
+              </Link>
+            ) : (
+              <Button
+                disabled={
+                  awardPurchasing ||
+                  !awardEligibility?.playedBefore ||
+                  awardEligibility.purchasesRemaining <= 0 ||
+                  awardEligibility.sparksBalance < selectedAward.cost
+                }
+                onClick={() => void purchaseAward()}
+              >
+                {awardPurchasing ? "Adding award…" : `Give ${selectedAward.name}`}
+              </Button>
+            )}
+          </div>
+        </Modal>
+      ) : null}
       <div className="server-detail-hero">
         {heroArtwork ? (
           <img
@@ -830,6 +1109,39 @@ export function ServerDetailPage() {
               </Badge>
             )}
           </div>
+          {!isDiscovered ? (
+            <div className="server-hype-row">
+              <button
+                className="server-hype-score"
+                type="button"
+                onClick={() => {
+                  setHypeMessage("");
+                  setHypeOpen(true);
+                }}
+              >
+                <Flame aria-hidden="true" />
+                <strong>{hype.total.toLocaleString()} Hype</strong>
+              </button>
+              {hype.milestone ? (
+                <span className={`hype-tier hype-tier--${hype.milestone.name.toLowerCase()}`}>
+                  {hype.milestone.name}
+                </span>
+              ) : null}
+              <button
+                className="server-award-score"
+                type="button"
+                onClick={() =>
+                  document.getElementById("server-awards")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  })
+                }
+              >
+                <Award aria-hidden="true" />
+                <strong>{awards.total.toLocaleString()} Awards</strong>
+              </button>
+            </div>
+          ) : null}
           <p>{server.description}</p>
           <div className="chip-row">
             {server.categories.map((tag) => (
@@ -911,6 +1223,59 @@ export function ServerDetailPage() {
               </span>
             </div>
           </Card>
+          {!isDiscovered ? (
+            <section className="server-awards-section" id="server-awards">
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">PERMANENT COMMUNITY REACTIONS</span>
+                  <h2>Awards</h2>
+                  <p>
+                    Celebrate, recognize, or humorously react to this server. Awards never expire
+                    and do not influence discovery ranking.
+                  </p>
+                </div>
+                <div className="server-awards-section__total">
+                  <Award aria-hidden="true" />
+                  <strong>{awards.total.toLocaleString()}</strong>
+                  <span>Total awards</span>
+                </div>
+              </div>
+              <div className="server-award-grid">
+                {awards.awards.map((award) => (
+                  <button
+                    className="server-award-card"
+                    type="button"
+                    key={award.kind}
+                    onClick={() => {
+                      setAwardMessage("");
+                      setShowAwardGiver(false);
+                      setSelectedAwardKind(award.kind);
+                    }}
+                  >
+                    <span className="server-award-card__emoji" aria-hidden="true">
+                      {award.emoji}
+                    </span>
+                    <span className="server-award-card__heading">
+                      <b>{award.name}</b>
+                      <strong>{award.count.toLocaleString()}</strong>
+                    </span>
+                    <small>{award.cost.toLocaleString()} Sparks</small>
+                    {award.givers.length > 0 ? (
+                      <span className="server-award-card__givers">
+                        Given publicly by{" "}
+                        {award.givers
+                          .slice(0, 3)
+                          .map((giver) => giver.displayName || giver.username)
+                          .join(", ")}
+                      </span>
+                    ) : (
+                      <span className="server-award-card__givers">Give the first public award</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
           <section>
             <div className="section-heading">
               <div>

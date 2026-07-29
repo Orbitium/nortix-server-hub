@@ -218,6 +218,12 @@ const privateRouteMetadata: Record<string, Omit<SeoProps, "path">> = {
     noIndex: true,
     image: null,
   },
+  "/admin/spark-economy": {
+    title: "Spark Economy",
+    description: "Monitor Nortix Spark economy health, liabilities, sources, sinks, and risk signals.",
+    noIndex: true,
+    image: null,
+  },
   "/admin/enroll": {
     title: "Nortix Admin Enrollment",
     description: "Redeem a short-lived, single-use Nortix administrator enrollment code.",

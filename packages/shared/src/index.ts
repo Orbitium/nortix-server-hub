@@ -715,6 +715,34 @@ export const CrackedAccountClaimSchema = z.object({
     .regex(/^[A-Za-z0-9_]{3,16}$/),
 });
 
+export const HypePurchaseInputSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+  })
+  .strict();
+
+export const ServerAwardKindSchema = z.enum([
+  "LOVE_IT",
+  "FIRE",
+  "CROWN",
+  "GOAT",
+  "FUNNY",
+  "CLOWN",
+  "DEAD",
+  "CIRCUS",
+  "SMART_DEV",
+  "ADDICTING",
+  "BEAUTIFUL",
+]);
+
+export const ServerAwardPurchaseInputSchema = z
+  .object({
+    kind: ServerAwardKindSchema,
+    showGiver: z.boolean().default(false),
+    idempotencyKey: z.string().uuid(),
+  })
+  .strict();
+
 export const MilestoneSubmissionSchema = z.object({
   evidence: z.record(z.string(), z.unknown()).default({}),
   note: z.string().max(2000).optional(),
@@ -764,6 +792,9 @@ export type AdminServerStorePayoutAction = z.infer<
 >;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
 export type DeleteServerRegistrationInput = z.infer<typeof DeleteServerRegistrationSchema>;
+export type HypePurchaseInput = z.infer<typeof HypePurchaseInputSchema>;
+export type ServerAwardKind = z.infer<typeof ServerAwardKindSchema>;
+export type ServerAwardPurchaseInput = z.infer<typeof ServerAwardPurchaseInputSchema>;
 export type ApiError = {
   code: string;
   message: string;

@@ -23,9 +23,15 @@ timestamped request; the API atomically consumes the one-time claim.
 
 The standard Paper plugin 0.5.0 reports a `PLAYER_JOIN` observation with the
 server-scoped name. A player must reserve that exact name on the server's
-Nortix page before its first observed join. The API, not the plugin, decides
-whether the reservation predates the first join and whether it is still within
-the thirty-minute window.
+Nortix page before its first observed join, then run `/nortix claim CODE` in
+game. The one-time code expires after thirty minutes. The API, not the plugin,
+binds the signed request to the verified server and decides whether the
+reservation predates the first login.
+
+After activation, every signed `PLAYER_JOIN` refreshes the private link's last
+login time. The link is released after thirty days without a login, or
+immediately when the Nortix user unlinks it. Cracked names remain scoped to one
+exact server and are never treated as global Minecraft identities.
 
 Before the backend enables cracked-name reservations for a server, the plugin
 uploads its existing Bukkit player-name history in bounded batches. This closes
@@ -106,6 +112,21 @@ and never prevent Paper from starting.
 ```
 
 Built JARs are copied to `plugins/minecraft/dist/` and the web downloads folder.
+
+## Local runtime smoke tests
+
+Run the JVM smoke suite before testing on a real Paper server, Velocity proxy, or the Nortix
+identity-verification server:
+
+```powershell
+.\gradlew.bat clean test build
+```
+
+The suite validates the server-scoped P-256 request signature and replay headers, Paper event and
+store-delivery payload handling, Velocity profile and idempotency helpers, identity-verifier HMAC
+and error sanitization, and final JAR compilation. It does not replace a live-server test of Bukkit
+or Velocity lifecycle callbacks, scheduler/thread behavior, public MOTD verification, or command
+dispatch by an installed server-store plugin.
 
 ## Paper configuration
 
