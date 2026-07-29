@@ -19,12 +19,25 @@ describe("activity streak policy", () => {
     );
   });
 
-  it("counts web, campaign, and verified-server activity on consecutive days", () => {
+  it("returns a complete zero-day response for an account without activity", () => {
+    const streak = calculateActivityStreak([], new Date("2026-07-29T18:00:00.000Z"));
+
+    expect(streak.current).toBe(0);
+    expect(streak.longest).toBe(0);
+    expect(streak.today.active).toBe(false);
+    expect(streak.days).toHaveLength(7);
+  });
+
+  it("counts persisted web check-ins on consecutive days", () => {
     const streak = calculateActivityStreak(
       [
         day("2026-07-27"),
-        day("2026-07-28", { campaignPlayed: true }),
-        day("2026-07-29", { verifiedServerJoined: true }),
+        day("2026-07-28"),
+        day("2026-07-29", {
+          webOpened: true,
+          campaignPlayed: true,
+          verifiedServerJoined: true,
+        }),
       ],
       new Date("2026-07-29T18:00:00.000Z"),
     );
@@ -33,6 +46,21 @@ describe("activity streak policy", () => {
     expect(streak.longest).toBe(3);
     expect(streak.today.verifiedServerJoined).toBe(true);
     expect(streak.days.at(-1)?.active).toBe(true);
+  });
+
+  it("does not let plugin or campaign events create a web streak", () => {
+    const streak = calculateActivityStreak(
+      [
+        day("2026-07-28", { campaignPlayed: true }),
+        day("2026-07-29", { verifiedServerJoined: true }),
+      ],
+      new Date("2026-07-29T18:00:00.000Z"),
+    );
+
+    expect(streak.current).toBe(0);
+    expect(streak.longest).toBe(0);
+    expect(streak.today.verifiedServerJoined).toBe(true);
+    expect(streak.today.active).toBe(false);
   });
 
   it("keeps yesterday's current streak available until the current UTC day ends", () => {
@@ -64,7 +92,7 @@ describe("activity streak policy", () => {
     const streak = calculateActivityStreak(
       [
         day("2026-07-28"),
-        day("2026-07-28", { campaignPlayed: true }),
+        day("2026-07-28", { webOpened: true, campaignPlayed: true }),
         day("2026-07-29", {}),
       ],
       new Date("2026-07-29T08:00:00.000Z"),

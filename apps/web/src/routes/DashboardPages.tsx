@@ -391,18 +391,18 @@ export function DashboardServersPage() {
       </div>
       <div className="server-grid">
         {isLoading ? (
-          <Card>
+          <Card className="directory-status-card">
             <p>Loading servers…</p>
           </Card>
         ) : null}
         {isError ? (
-          <Card>
+          <Card className="directory-status-card">
             <p>{t("listing.serverError")}</p>
             <Button onClick={() => refetch()}>{t("ui.retry")}</Button>
           </Card>
         ) : null}
         {!isLoading && !isError && filtered.length === 0 ? (
-          <Card>
+          <Card className="directory-status-card">
             <p>{t("ui.noServers")}</p>
           </Card>
         ) : null}
@@ -526,18 +526,18 @@ export function DashboardCampaignsPage() {
       </div>
       <div className="campaign-grid">
         {isLoading ? (
-          <Card>
+          <Card className="directory-status-card">
             <p>Loading seeded campaigns…</p>
           </Card>
         ) : null}
         {isError ? (
-          <Card>
+          <Card className="directory-status-card">
             <p>{t("listing.campaignError")}</p>
             <Button onClick={() => refetch()}>{t("ui.retry")}</Button>
           </Card>
         ) : null}
         {!isLoading && !isError && visibleCampaigns.length === 0 ? (
-          <Card>
+          <Card className="directory-status-card">
             <p>{t("ui.noCampaigns")}</p>
           </Card>
         ) : null}

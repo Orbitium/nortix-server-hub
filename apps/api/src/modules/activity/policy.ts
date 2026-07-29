@@ -10,8 +10,7 @@ export type DailyActivity = {
 export const utcActivityDay = (date = new Date()) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 
-export const isActiveDay = (activity: DailyActivity) =>
-  activity.webOpened || activity.campaignPlayed || activity.verifiedServerJoined;
+export const isWebActivityDay = (activity: DailyActivity) => activity.webOpened;
 
 export function calculateActivityStreak(rows: readonly DailyActivity[], now = new Date()) {
   const today = utcActivityDay(now);
@@ -21,7 +20,7 @@ export function calculateActivityStreak(rows: readonly DailyActivity[], now = ne
       .map((row) => [utcActivityDay(row.activityDate).getTime(), row]),
   );
   const activeDays = [...rowByDay.entries()]
-    .filter(([, row]) => isActiveDay(row))
+    .filter(([, row]) => isWebActivityDay(row))
     .map(([timestamp]) => timestamp)
     .sort((left, right) => left - right);
   const activeDaySet = new Set(activeDays);
@@ -57,14 +56,14 @@ export function calculateActivityStreak(rows: readonly DailyActivity[], now = ne
       webOpened: todayRow?.webOpened ?? false,
       campaignPlayed: todayRow?.campaignPlayed ?? false,
       verifiedServerJoined: todayRow?.verifiedServerJoined ?? false,
-      active: todayRow ? isActiveDay(todayRow) : false,
+      active: todayRow ? isWebActivityDay(todayRow) : false,
     },
     days: Array.from({ length: 7 }, (_, index) => {
       const date = new Date(todayTimestamp - (6 - index) * ACTIVITY_DAY_MS);
       const row = rowByDay.get(date.getTime());
       return {
         date: date.toISOString(),
-        active: row ? isActiveDay(row) : false,
+        active: row ? isWebActivityDay(row) : false,
       };
     }),
   };

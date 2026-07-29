@@ -194,6 +194,18 @@ const privateRouteMetadata: Record<string, Omit<SeoProps, "path">> = {
     noIndex: true,
     image: null,
   },
+  "/admin": {
+    title: "Nortix Administration",
+    description: "Restricted Nortix administration and moderation workspace.",
+    noIndex: true,
+    image: null,
+  },
+  "/admin/enroll": {
+    title: "Nortix Admin Enrollment",
+    description: "Redeem a short-lived, single-use Nortix administrator enrollment code.",
+    noIndex: true,
+    image: null,
+  },
 };
 
 const isPrivateRoute = (path: string) =>

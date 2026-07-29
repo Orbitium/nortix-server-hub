@@ -1963,9 +1963,16 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     cosmeticService.activity(request.user!.id),
   );
   const checkInAndReadStreak = async (userId: string) => {
-    await activityService.record(userId, "WEB_OPEN");
-    await questService.evaluateAndAward(userId);
-    return activityService.streak(userId);
+    const streak = await activityService.checkInAndStreak(userId);
+    try {
+      await questService.evaluateAndAward(userId);
+    } catch (error) {
+      app.log.error(
+        { err: error, userId },
+        "Daily quest evaluation failed after the web activity check-in.",
+      );
+    }
+    return streak;
   };
   app.post(
     "/v1/profile/activity/check-in",

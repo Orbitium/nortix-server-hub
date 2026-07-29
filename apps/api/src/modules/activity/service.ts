@@ -2,6 +2,7 @@ import { prisma, type Prisma } from "@nortix/database";
 import { calculateActivityStreak, utcActivityDay } from "./policy.js";
 
 type ActivityTransaction = Prisma.TransactionClient;
+type ActivityStore = Pick<ActivityTransaction, "userDailyActivity">;
 
 async function recordInTransaction(
   tx: ActivityTransaction,
@@ -28,6 +29,23 @@ async function recordInTransaction(
   });
 }
 
+async function readStreak(store: ActivityStore, userId: string, now = new Date()) {
+  const rows = await store.userDailyActivity.findMany({
+    where: {
+      userId,
+      activityDate: { lte: utcActivityDay(now) },
+    },
+    select: {
+      activityDate: true,
+      webOpened: true,
+      campaignPlayed: true,
+      verifiedServerJoined: true,
+    },
+    orderBy: { activityDate: "asc" },
+  });
+  return calculateActivityStreak(rows, now);
+}
+
 export class ActivityService {
   async record(
     userId: string,
@@ -47,19 +65,13 @@ export class ActivityService {
   }
 
   async streak(userId: string) {
-    const rows = await prisma.userDailyActivity.findMany({
-      where: {
-        userId,
-        activityDate: { lte: utcActivityDay() },
-      },
-      select: {
-        activityDate: true,
-        webOpened: true,
-        campaignPlayed: true,
-        verifiedServerJoined: true,
-      },
-      orderBy: { activityDate: "asc" },
+    return readStreak(prisma, userId);
+  }
+
+  async checkInAndStreak(userId: string, date = new Date()) {
+    return prisma.$transaction(async (tx) => {
+      await recordInTransaction(tx, userId, "WEB_OPEN", date);
+      return readStreak(tx, userId, date);
     });
-    return calculateActivityStreak(rows);
   }
 }

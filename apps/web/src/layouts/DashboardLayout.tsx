@@ -560,7 +560,7 @@ export function DashboardLayout() {
               ) : (
                 <span className="rail-action">
                   {streak
-                    ? `Best: ${streak.longest} days · tracked in ${streak.timezone}`
+                    ? `Best: ${streak.longest} days · web check-ins · ${streak.timezone}`
                     : streakLoading
                       ? "Loading streak…"
                       : "No activity recorded yet"}

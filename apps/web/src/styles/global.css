@@ -8779,7 +8779,7 @@ td > small {
 
 .admin-v2 {
   min-height: 100vh;
-  background: #071019;
+  background: var(--background);
 }
 
 .admin-access-state {
@@ -8806,13 +8806,135 @@ td > small {
   margin: 0;
 }
 
+.admin-access-state h1 {
+  color: #f5f7fa;
+}
+
 .admin-access-state p {
   max-width: 460px;
-  color: var(--text-secondary);
+  color: #a9b7c1;
 }
 
 .admin-access-state .button {
   margin-top: 8px;
+}
+
+.admin-enrollment-form {
+  display: grid;
+  gap: 14px;
+  width: min(480px, calc(100vw - 40px));
+  margin-top: 8px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.admin-enrollment-form > div {
+  display: grid;
+  gap: 5px;
+}
+
+.admin-enrollment-form > div strong {
+  font-size: 15px;
+}
+
+.admin-enrollment-form > div small,
+.admin-enrollment-form > small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.admin-enrollment-form > label {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.admin-enrollment-form > label > span {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.admin-enrollment-form > label > span:focus-within {
+  border-color: rgba(104, 227, 75, 0.62);
+  box-shadow: 0 0 0 3px rgba(104, 227, 75, 0.1);
+}
+
+.admin-enrollment-form > label svg {
+  width: 17px;
+  margin-left: 12px;
+  color: var(--nortix-green);
+}
+
+.admin-enrollment-form input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-enrollment-form > p {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 91, 91, 0.32);
+  border-radius: 7px;
+  color: #ffaaaa;
+  background: rgba(121, 30, 30, 0.18);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.admin-enrollment-form > .button {
+  justify-content: center;
+  width: 100%;
+}
+
+.admin-access-state .admin-enrollment-form {
+  border-color: #263743;
+  color: #f5f7fa;
+  background: #0b1822;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+}
+
+.admin-access-state .admin-enrollment-form > label > span {
+  border-color: #2a3b48;
+  background: #09141d;
+}
+
+.admin-access-state .admin-enrollment-form input {
+  color: #f5f7fa;
+}
+
+.admin-access-state .admin-enrollment-form > label {
+  color: #d8e0e6;
+}
+
+.admin-access-state .admin-enrollment-form > div small,
+.admin-access-state .admin-enrollment-form > small {
+  color: #91a1ad;
+}
+
+.admin-access-state .admin-enrollment-form input::placeholder {
+  color: #687985;
+}
+
+.auth-card .admin-enrollment-form {
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .admin-role {
@@ -14563,4 +14685,153 @@ td > small {
 .theme-light .owner-verification-guide > code {
   color: #5d3eaa;
   background: #eee6fa;
+}
+
+/* Shared control sizing and alignment pass. */
+.topbar .global-search {
+  margin-left: 0;
+}
+
+.topbar .global-search-wrap {
+  min-width: 0;
+  margin-right: 16px;
+}
+
+.topbar__actions {
+  flex: 0 0 auto;
+}
+
+.dashboard-page .dashboard-filter {
+  display: grid;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dashboard-page .server-filters {
+  grid-template-columns: minmax(260px, 1.5fr) repeat(2, minmax(150px, 0.75fr));
+}
+
+.dashboard-page .campaign-filters {
+  grid-template-columns: minmax(280px, 1.35fr) repeat(3, minmax(140px, 0.8fr));
+}
+
+.dashboard-page .dashboard-filter > label,
+.dashboard-page .dashboard-filter > select {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  box-sizing: border-box;
+}
+
+.dashboard-page .dashboard-filter > label {
+  gap: 9px;
+  padding: 0 13px;
+}
+
+.dashboard-page .dashboard-filter > label input {
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.dashboard-page .dashboard-filter > select {
+  padding-block: 0;
+  font-size: 12px;
+}
+
+.directory-status-card {
+  grid-column: 1 / -1;
+  min-height: 116px;
+  padding: 26px;
+}
+
+.directory-status-card p {
+  margin: 0;
+}
+
+.campaign-directory__heading {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.home-section .campaign-filters {
+  flex: 1 1 560px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.home-section .campaign-filters button,
+.home-section .campaign-filters label {
+  min-height: 40px;
+  height: 40px;
+  padding-inline: 12px;
+  font-size: 11px;
+}
+
+.home-section .campaign-filters label {
+  flex: 1 1 220px;
+  width: min(300px, 100%);
+  max-width: 340px;
+}
+
+.home-section .campaign-filters input {
+  font-size: 12px;
+}
+
+.rail-action {
+  display: block;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1120px) {
+  .dashboard-page .campaign-filters {
+    grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(120px, 0.7fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-page .server-filters,
+  .dashboard-page .campaign-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-page .dashboard-filter > label {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-page .server-filters,
+  .dashboard-page .campaign-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-page .dashboard-filter > label {
+    grid-column: auto;
+  }
+
+  .home-section .campaign-filters > * {
+    flex: 1 1 calc(50% - 6px);
+  }
+
+  .home-section .campaign-filters {
+    flex: 0 1 auto;
+    overflow: visible;
+  }
+
+  .home-section .campaign-filters label {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-v2 .admin-layout > aside {
+    position: relative;
+    height: auto;
+  }
 }
