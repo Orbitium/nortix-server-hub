@@ -4,7 +4,8 @@ public-address: ""
 verification-code: ""
 plugin-motd: true
 server-id: ""
-server-token: ""
+server-key-id: ""
+server-private-key: ""
 proxy-server-name: ""
 metric-poll-seconds: 30
 presence-snapshot-seconds: 60

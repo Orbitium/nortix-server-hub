@@ -12,6 +12,12 @@ describe("authorization policies", () => {
     expect(canAccessServer("owner", "owner", undefined, "integrations")).toBe(true);
   });
 
+  it("limits command-bearing store configuration to owners and server admins", () => {
+    expect(canAccessServer("owner", "member", "ADMIN", "store")).toBe(true);
+    expect(canAccessServer("owner", "member", "OPERATOR", "store")).toBe(false);
+    expect(canAccessServer("owner", "owner", undefined, "store")).toBe(true);
+  });
+
   it("keeps integration-verified milestones out of client submission paths", () => {
     expect(allowsPlayerMilestoneSubmission("MANUAL")).toBe(true);
     expect(allowsPlayerMilestoneSubmission("SERVER_PLUGIN")).toBe(false);

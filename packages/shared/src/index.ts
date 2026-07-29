@@ -239,6 +239,90 @@ export const AdminSponsoredPurchaseActionSchema = z
     { message: "A reason is required for cancellation or refund.", path: ["reason"] },
   );
 
+export const serverStoreCommandPlaceholders = [
+  "%player%",
+  "%amount%",
+  "%quantity%",
+  "%purchase_id%",
+  "%item_id%",
+  "%buyer%",
+  "%recipient%",
+] as const;
+
+const ServerStoreImageUrlSchema = z
+  .string()
+  .url()
+  .max(2_000)
+  .refine((value) => new URL(value).protocol === "https:", "Store images must use HTTPS.");
+
+const ServerStoreCommandTemplateSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine(
+    (value) => ![...value].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127;
+    }),
+    "Commands must be one line.",
+  )
+  .refine(
+    (value) =>
+      [...value.matchAll(/%[^%\s]+%/g)].every((match) =>
+        (serverStoreCommandPlaceholders as readonly string[]).includes(match[0].toLowerCase()),
+      ),
+    "A command contains an unsupported placeholder.",
+  );
+
+export const OwnerServerStoreInputSchema = z
+  .object({
+    name: z.string().trim().min(2).max(80),
+    description: z.string().trim().min(10).max(500),
+    logoUrl: ServerStoreImageUrlSchema.optional(),
+    available: z.boolean().default(false),
+  })
+  .strict();
+
+export const OwnerServerStoreItemInputSchema = z
+  .object({
+    slug: SponsoredSlugSchema,
+    name: z.string().trim().min(2).max(100),
+    description: z.string().trim().min(10).max(1_000),
+    sparksPrice: z.number().int().min(1).max(1_000_000),
+    imageUrls: z
+      .array(ServerStoreImageUrlSchema)
+      .min(1)
+      .max(6)
+      .refine((urls) => new Set(urls).size === urls.length, "Item images must be unique."),
+    stockQuantity: z.number().int().min(0).max(10_000_000).nullable().default(null),
+    maxPerPurchase: z.number().int().min(1).max(100).default(1),
+    commandTemplates: z.array(ServerStoreCommandTemplateSchema).min(1).max(10),
+    available: z.boolean().default(false),
+    sortOrder: z.number().int().min(-10_000).max(10_000).default(0),
+  })
+  .strict();
+
+export const OwnerServerStoreItemUpdateSchema = OwnerServerStoreItemInputSchema.partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "At least one item field is required.");
+
+export const ServerStorePurchaseInputSchema = z
+  .object({
+    itemId: z.string().min(1).max(120),
+    idempotencyKey: z.string().uuid(),
+    quantity: z.number().int().min(1).max(100).default(1),
+    recipientUsername: z
+      .string()
+      .trim()
+      .min(3)
+      .max(32)
+      .regex(/^[A-Za-z0-9_]+$/)
+      .optional(),
+    giftMessage: z.string().trim().max(300).optional(),
+  })
+  .strict();
+
 export const milestoneTypes = [
   "JOIN_SERVER",
   "JOIN_DAILY",
@@ -521,6 +605,10 @@ export type AdminSponsoredItemInput = z.infer<typeof AdminSponsoredItemInputSche
 export type AdminSponsoredItemUpdate = z.infer<typeof AdminSponsoredItemUpdateSchema>;
 export type SponsoredPurchaseInput = z.infer<typeof SponsoredPurchaseInputSchema>;
 export type AdminSponsoredPurchaseAction = z.infer<typeof AdminSponsoredPurchaseActionSchema>;
+export type OwnerServerStoreInput = z.infer<typeof OwnerServerStoreInputSchema>;
+export type OwnerServerStoreItemInput = z.infer<typeof OwnerServerStoreItemInputSchema>;
+export type OwnerServerStoreItemUpdate = z.infer<typeof OwnerServerStoreItemUpdateSchema>;
+export type ServerStorePurchaseInput = z.infer<typeof ServerStorePurchaseInputSchema>;
 export type ServerInput = z.infer<typeof ServerInputSchema>;
 export type ApiError = {
   code: string;

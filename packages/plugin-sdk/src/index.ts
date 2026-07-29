@@ -14,12 +14,25 @@ export const IntegrationEventSchema = z.object({
 export type IntegrationEvent = z.infer<typeof IntegrationEventSchema>;
 
 export type SignedIntegrationRequest = {
+  serverId: string;
   keyId: string;
   timestamp: string;
   nonce: string;
   signature: string;
   idempotencyKey: string;
 };
+
+export const PluginCredentialResponseSchema = z.object({
+  serverId: z.string().min(1),
+  serverName: z.string().min(1),
+  keyId: z.string().min(8),
+  algorithm: z.literal("ECDSA_P256_SHA256"),
+  privateKey: z.string().regex(/^p256_[A-Za-z0-9_-]{40,50}$/),
+  publicKey: z.string().regex(/^p256_[A-Za-z0-9_-]{40,50}\.[A-Za-z0-9_-]{40,50}$/),
+  shownOnce: z.literal(true),
+});
+
+export type PluginCredentialResponse = z.infer<typeof PluginCredentialResponseSchema>;
 
 export type CampaignIntegrationConfig = {
   campaignId: string;
@@ -132,5 +145,28 @@ export const PluginPresenceSnapshotSchema = z
       });
     }
   });
+
+export const PluginStoreDeliveryQuerySchema = z.object({
+  serverId: z.string().min(1),
+});
+
+export const PluginStoreDeliveryResultSchema = z
+  .object({
+    serverId: z.string().min(1),
+    deliveryId: z.string().min(8).max(120),
+    success: z.boolean(),
+    error: z.string().trim().min(1).max(1_000).optional(),
+  })
+  .strict()
+  .refine((value) => value.success || Boolean(value.error), {
+    message: "A failed delivery must include an error.",
+    path: ["error"],
+  });
+
+export const PluginStoreDeliverySchema = z.object({
+  id: z.string().min(8),
+  purchaseId: z.string().min(8),
+  commands: z.array(z.string().min(1).max(500)).min(1).max(10),
+});
 
 export type PluginCapability = z.infer<typeof PluginCapabilitySchema>;

@@ -22,6 +22,19 @@ export const buildApp = async (env: Env) => {
     genReqId: () => crypto.randomUUID(),
     trustProxy: true,
   });
+  const defaultJsonParser = app.getDefaultJsonParser("error", "error");
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (request, body, done) => {
+      const rawBody = typeof body === "string" ? body : body.toString("utf8");
+      if (request.raw.url?.includes("/plugin/")) {
+        (request as typeof request & { rawBody?: string }).rawBody = rawBody;
+      }
+      defaultJsonParser(request, rawBody, done);
+    },
+  );
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
@@ -80,7 +93,8 @@ export const buildApp = async (env: Env) => {
       "already",
       "expired",
       "server owner",
-      "plugin token",
+      "signed server plugin",
+      "plugin signing key",
       "milestone tracking",
       "plugin capabilities",
       "integration evidence",
@@ -104,6 +118,9 @@ export const buildApp = async (env: Env) => {
       "sponsored store",
       "sponsored item",
       "sponsored purchase",
+      "server store",
+      "store item",
+      "recipient cannot receive",
       "delivery details",
       "ongoing campaign",
       "campaign termination",

@@ -2,7 +2,7 @@
 
 ## Nortix-operated premium identity verifier
 
-`nortix-identity-verifier-0.4.1.jar` is only for the server operated by Nortix
+`nortix-identity-verifier-0.5.0.jar` is only for the server operated by Nortix
 at `verify.nortixlabs.com`. It deliberately refuses to operate unless the
 server uses `online-mode=true` and a dedicated secret of at least 32
 characters is configured.
@@ -21,7 +21,7 @@ timestamped request; the API atomically consumes the one-time claim.
 
 ## Server-scoped cracked names
 
-The standard Paper plugin 0.4.1 reports a `PLAYER_JOIN` observation with the
+The standard Paper plugin 0.5.0 reports a `PLAYER_JOIN` observation with the
 server-scoped name. A player must reserve that exact name on the server's
 Nortix page before its first observed join. The API, not the plugin, decides
 whether the reservation predates the first join and whether it is still within
@@ -60,11 +60,14 @@ Self-hosted installations can set `web-base-url`; it defaults to `https://hub.no
 ## Milestone tracking
 
 After verification, open **Plugin & Servers**, select the exact server, and
-generate a one-time connection token. On that Paper backend run:
+generate a server signing-key pair. On that Paper backend run the one-time command shown by Nortix:
 
 ```text
-/nortix connect SERVER_ID TOKEN
+/nortix connect SERVER_ID KEY_ID PRIVATE_KEY
 ```
+
+Version 0.5.0 intentionally does not accept the older bearer-token configuration. After upgrading
+from 0.4.x, rotate the server integration in Nortix and run the new connection command once.
 
 For a proxy network, register each backend as a child of the verified proxy and
 run its own connection command on each Paper backend. Each child keeps separate
@@ -111,7 +114,8 @@ Built JARs are copied to `plugins/minecraft/dist/` and the web downloads folder.
 - `public-address`: optional verification diagnostic.
 - `verification-code`: active temporary ownership code.
 - `plugin-motd`: publish the ownership code in ping responses.
-- `server-id` / `server-token`: backend-specific milestone connection.
+- `server-id` / `server-key-id` / `server-private-key`: backend-specific signed connection. The
+  API stores the matching public key only; rotating keys immediately revokes the previous pair.
 - `proxy-server-name`: optional proxy backend name for diagnostics.
 - `metric-poll-seconds`: optional plugin-metric and playtime interval.
 - `presence-snapshot-seconds`: privacy-conscious presence interval, clamped to 30–60 seconds.
@@ -121,6 +125,19 @@ Built JARs are copied to `plugins/minecraft/dist/` and the web downloads folder.
 
 The TypeScript contracts in `@nortix/plugin-sdk` are canonical.
 
+## Server-store fulfillment
+
+The Paper plugin checks the signed, server-bound store-delivery queue every ten seconds. Claimed
+deliveries contain console commands whose supported placeholders were rendered by the API from an
+immutable purchase snapshot. Paper executes those commands on the main server thread and signs the
+delivery result back to Nortix.
+
+Completed delivery IDs are retained in the plugin data folder to avoid running a command twice
+when an acknowledgement must be retried. Owners should still include `%purchase_id%` when
+integrating with a command-aware fulfillment plugin so that plugin can enforce its own
+idempotency. Failed terminal deliveries are refunded by the API; plugin credentials never reveal
+or authorize changes to a player's Sparks balance.
+
 ## Privacy-conscious activity analytics
 
 Connected Paper servers and Velocity proxies publish one activity snapshot every 60 seconds.
@@ -128,10 +145,11 @@ A snapshot contains the online count, capacity, software version, and the Minecr
 current backend for players online at that moment. It does not send chat, commands, IP addresses,
 coordinates, inventory, message contents, device data, or arbitrary plugin data.
 
-The API authenticates each snapshot with the server-scoped token, checks the bound plugin instance
-and observation time, converts UUIDs into one-way server-scoped hashes, retains only aggregate
-backend counts, and removes samples after 14 days. Raw player names are not stored in activity
-samples, and owners cannot view the sampled roster.
+The API authenticates each snapshot with the server-scoped public key, verifies the signed method,
+path, body, timestamp, nonce, and idempotency key, checks the bound plugin instance and observation
+time, converts UUIDs into one-way server-scoped hashes, retains only aggregate backend counts, and
+removes samples after 14 days. Raw player names are not stored in activity samples, and owners
+cannot view the sampled roster.
 
 Campaign eligibility uses the rolling seven-day history. A server needs at least ten samples
 spanning eight minutes, a sample from the last ten minutes, and at least 10 average online players.

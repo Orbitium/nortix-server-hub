@@ -18,6 +18,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Store,
   Sun,
   Trophy,
   UserPlus,
@@ -69,6 +70,7 @@ const ownerNav = [
   ["/owner/analytics", "nav.analytics", BarChart3],
   ["/owner/balance", "nav.credits", CreditCard],
   ["/owner/integrations", "nav.plugins", Gamepad2],
+  ["/owner/store", "nav.serverStore", Store],
   ["/owner/settings", "nav.settings", Settings],
 ] as const satisfies ReadonlyArray<readonly [string, TranslationKey, typeof Home]>;
 

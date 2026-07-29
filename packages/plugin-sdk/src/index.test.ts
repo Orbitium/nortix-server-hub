@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
   PluginCapabilitiesHandshakeSchema,
+  PluginCredentialResponseSchema,
   PluginPresenceSnapshotSchema,
   ServerPluginEventSchema,
 } from "./index.js";
 
 describe("Minecraft milestone plugin contracts", () => {
+  it("accepts only the server-bound P-256 credential shape", () => {
+    const credential = {
+      serverId: "server-1",
+      serverName: "Example",
+      keyId: "credential-123",
+      algorithm: "ECDSA_P256_SHA256",
+      privateKey: `p256_${"a".repeat(43)}`,
+      publicKey: `p256_${"b".repeat(43)}.${"c".repeat(43)}`,
+      shownOnce: true,
+    };
+    expect(PluginCredentialResponseSchema.safeParse(credential).success).toBe(true);
+    expect(
+      PluginCredentialResponseSchema.safeParse({ ...credential, algorithm: "HMAC_SHA256" }).success,
+    ).toBe(false);
+  });
+
   it("accepts a proxy-child capability report", () => {
     expect(PluginCapabilitiesHandshakeSchema.parse({
       serverId: "child-server",

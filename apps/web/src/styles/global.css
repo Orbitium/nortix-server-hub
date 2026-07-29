@@ -14835,3 +14835,140 @@ td > small {
     height: auto;
   }
 }
+
+/* Server-owned Sparks stores */
+.owner-store-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.owner-store-grid > .card,
+.owner-store-items,
+.owner-store-purchases {
+  padding: 24px;
+}
+
+.owner-store-item-editor textarea,
+.owner-command-editor {
+  min-height: 110px;
+}
+
+.owner-command-editor {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.owner-placeholder-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 7px;
+}
+
+.owner-placeholder-list > span {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.owner-placeholder-list code {
+  color: var(--nortix-green);
+  font-size: 12px;
+}
+
+.owner-placeholder-list small {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.owner-store-items,
+.owner-store-purchases {
+  margin-top: 18px;
+}
+
+.owner-store-item-list,
+.owner-store-purchase-list {
+  display: grid;
+  gap: 10px;
+}
+
+.owner-store-item-list article,
+.owner-store-purchase-list article {
+  display: grid;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.owner-store-item-list article {
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+}
+
+.owner-store-item-list img,
+.owner-store-item-list article > svg {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.owner-store-item-list div,
+.owner-store-purchase-list div {
+  display: grid;
+  gap: 4px;
+}
+
+.owner-store-item-list p,
+.owner-store-item-list small,
+.owner-store-purchase-list small {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.owner-store-purchase-list article {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.server-store-image-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 8px;
+}
+
+.server-store-image-gallery img {
+  width: 100%;
+  aspect-ratio: 1.35;
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.server-store-item-card > img {
+  aspect-ratio: 1.35;
+  object-fit: cover;
+}
+
+@media (max-width: 920px) {
+  .owner-store-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .owner-store-grid > .card,
+  .owner-store-items,
+  .owner-store-purchases {
+    padding: 18px;
+  }
+
+  .owner-store-item-list article,
+  .owner-store-purchase-list article {
+    grid-template-columns: 1fr;
+  }
+}

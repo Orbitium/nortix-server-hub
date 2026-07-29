@@ -239,6 +239,62 @@ export type AdminSponsoredPurchase = SponsoredPurchase & {
   sparksRefundLedgerEntryId?: string | null;
 };
 
+export type ServerStoreItem = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  sparksPrice: number;
+  imageUrls: string[];
+  stockQuantity: number | null;
+  maxPerPurchase: number;
+};
+
+export type ServerStore = {
+  id: string;
+  name: string;
+  description: string;
+  logoUrl?: string | null;
+  server: {
+    id: string;
+    slug: string;
+    name: string;
+    logoUrl?: string | null;
+    online: boolean;
+  };
+  items: ServerStoreItem[];
+};
+
+export type ServerStorePurchase = {
+  id: string;
+  status: "QUEUED" | "PROCESSING" | "DELIVERED" | "FAILED" | "REFUNDED";
+  quantity: number;
+  priceSparks: number;
+  recipientMinecraftUsername: string;
+  giftMessage?: string | null;
+  deliveredAt?: string | null;
+  failedAt?: string | null;
+  refundedAt?: string | null;
+  createdAt: string;
+  buyer: { username: string; displayName: string };
+  recipient: { username: string; displayName: string };
+  item: {
+    id: string;
+    name: string;
+    imageUrls: string[];
+    store: {
+      id: string;
+      name: string;
+      server: { id: string; slug: string; name: string };
+    };
+  };
+  delivery?: {
+    id: string;
+    status: "PENDING" | "CLAIMED" | "DELIVERED" | "FAILED";
+    updatedAt: string;
+  } | null;
+};
+
 export type ProfileActivity = {
   stats: {
     verifiedPlaytests: number;
@@ -613,6 +669,18 @@ export const useSponsoredPurchases = () =>
   useQuery({
     queryKey: ["sponsored-purchases"],
     queryFn: () => api<SponsoredPurchase[]>("/sparks/sponsored-purchases"),
+  });
+
+export const useServerStores = () =>
+  useQuery({
+    queryKey: ["server-stores"],
+    queryFn: () => api<ServerStore[]>("/sparks/server-stores"),
+  });
+
+export const useServerStorePurchases = () =>
+  useQuery({
+    queryKey: ["server-store-purchases"],
+    queryFn: () => api<ServerStorePurchase[]>("/sparks/server-store-purchases"),
   });
 
 export const useAdminSponsoredStores = () =>

@@ -1,6 +1,7 @@
-import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
+import { ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown, CircleDot, Clock3, Copy, CreditCard, Database, Download, Eye, Filter, Gauge, Globe2, KeyRound, LockKeyhole, MessageSquareText, MoreHorizontal, Network, Plug, Plus, Radio, RefreshCw, Save, Search, Server, Settings, ShieldCheck, Sparkles, Store, TrendingUp, UserPlus, Users, Vote, X, Zap } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { Button } from "@nortix/ui";
 import { api } from "../lib/api";
 import { useNotificationPreferences, useOwnerAnalytics } from "../features/api-data";
 import { minecraftMajorVersions, serverTypes } from "@nortix/shared";
@@ -330,7 +331,7 @@ export function OwnerPlatform() {
     );
   }
 
-  const content = path.includes("campaigns/new") ? <CampaignBuilder server={server} setServer={setServer} /> : path.includes("servers/new") ? <RegisterServer server={server} setServer={setServer} /> : path.includes("analytics") ? <OwnerAnalytics server={server} setServer={setServer} /> : path.includes("integrations") ? <PluginServers server={server} setServer={setServer} /> : path.includes("balance") ? <OwnerCredits server={server} setServer={setServer} /> : path.includes("settings") ? <OwnerSettings server={server} setServer={setServer} /> : <OwnerDashboard server={server} setServer={setServer} />;
+  const content = path.includes("campaigns/new") ? <CampaignBuilder server={server} setServer={setServer} /> : path.includes("servers/new") ? <RegisterServer server={server} setServer={setServer} /> : path.includes("analytics") ? <OwnerAnalytics server={server} setServer={setServer} /> : path.includes("integrations") ? <PluginServers server={server} setServer={setServer} /> : path.includes("store") ? <OwnerStoreManager server={server} setServer={setServer} /> : path.includes("balance") ? <OwnerCredits server={server} setServer={setServer} /> : path.includes("settings") ? <OwnerSettings server={server} setServer={setServer} /> : <OwnerDashboard server={server} setServer={setServer} />;
   return <OwnerServersContext.Provider value={{ servers, refreshServers }}>{content}</OwnerServersContext.Provider>;
 }
 
@@ -873,9 +874,13 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
   const { servers } = useContext(OwnerServersContext);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState("");
-  const [connectionToken, setConnectionToken] = useState<{
+  const [connectionCredentials, setConnectionCredentials] = useState<{
     serverId: string;
-    token: string;
+    keyId: string;
+    algorithm: "ECDSA_P256_SHA256";
+    privateKey: string;
+    publicKey: string;
+    shownOnce: true;
   } | null>(null);
   const [connectionMessage, setConnectionMessage] = useState("");
   const [capabilities, setCapabilities] = useState<PluginCapabilityInfo[]>([]);
@@ -892,19 +897,26 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
   const verifiedCount = servers.filter((item) => item.claimed && item.verificationStatus === "VERIFIED").length;
   const connectedCount = servers.filter((item) => item.pluginConnected).length;
   useEffect(() => {
-    setConnectionToken(null);
+    setConnectionCredentials(null);
     api<{ pluginCapabilities: PluginCapabilityInfo[] }>(`/owner/servers/${server.id}/plugin-capabilities`)
       .then((result) => setCapabilities(result.pluginCapabilities ?? []))
       .catch(() => setCapabilities([]));
   }, [server.id]);
 
-  const generatePluginToken = async () => {
+  const generatePluginCredentials = async () => {
     setConnectionMessage("");
     try {
-      const result = await api<{ serverId: string; token: string }>(`/owner/servers/${server.id}/plugin-token`, { method: "POST" });
-      setConnectionToken(result);
+      const result = await api<{
+        serverId: string;
+        keyId: string;
+        algorithm: "ECDSA_P256_SHA256";
+        privateKey: string;
+        publicKey: string;
+        shownOnce: true;
+      }>(`/owner/servers/${server.id}/plugin-credentials`, { method: "POST" });
+      setConnectionCredentials(result);
     } catch (error) {
-      setConnectionMessage(error instanceof Error ? error.message : "A plugin token could not be generated.");
+      setConnectionMessage(error instanceof Error ? error.message : "Plugin signing keys could not be generated.");
     }
   };
 
@@ -1033,36 +1045,41 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
         <div className="owner-card-heading">
           <div>
             <h2>Milestone tracking connection</h2>
-            <p>Connect the Paper plugin separately on this server. Proxy child servers inherit ownership verification, but keep isolated tokens, events, and milestone capabilities.</p>
+            <p>Connect the Paper plugin separately on this server. Proxy child servers inherit ownership verification, but keep isolated signing keys, events, and milestone capabilities.</p>
           </div>
           {server.accessType === "TEAM" ? (
-            <span className="owner-team-chip">Only the server owner can rotate its plugin token</span>
+            <span className="owner-team-chip">Only the server owner can rotate its plugin signing key</span>
           ) : (
-            <button className="button button--primary" onClick={generatePluginToken}>
-              <KeyRound /> Generate connection token
+            <button className="button button--primary" onClick={generatePluginCredentials}>
+              <KeyRound /> Generate signing keys
             </button>
           )}
         </div>
         {connectionMessage && <div className="owner-team-message">{connectionMessage}</div>}
-        {connectionToken && (
+        {connectionCredentials && (
           <div className="owner-token-panel">
             <div>
               <strong>Copy this command now</strong>
-              <small>The token is shown once. Generating another token immediately revokes this one.</small>
+              <small>
+                The private key is shown once and stays on your server. Nortix stores only the
+                public key. Generating another pair immediately revokes this one.
+              </small>
             </div>
             <code>
-              Paper: /nortix connect {connectionToken.serverId} {connectionToken.token}
+              Paper: /nortix connect {connectionCredentials.serverId} {connectionCredentials.keyId} {connectionCredentials.privateKey}
               <br />
-              Velocity: /nortixproxy connect {connectionToken.serverId} {connectionToken.token}
+              Velocity: /nortixproxy connect {connectionCredentials.serverId} {connectionCredentials.keyId} {connectionCredentials.privateKey}
+              <br />
+              Public-key fingerprint: {connectionCredentials.publicKey.slice(-16)}
             </code>
             <button
               onClick={() => {
-                navigator.clipboard.writeText(`/nortix connect ${connectionToken.serverId} ${connectionToken.token}\n/nortixproxy connect ${connectionToken.serverId} ${connectionToken.token}`);
-                setCopied("token");
+                navigator.clipboard.writeText(`/nortix connect ${connectionCredentials.serverId} ${connectionCredentials.keyId} ${connectionCredentials.privateKey}\n/nortixproxy connect ${connectionCredentials.serverId} ${connectionCredentials.keyId} ${connectionCredentials.privateKey}`);
+                setCopied("credentials");
               }}
             >
               <Copy />
-              {copied === "token" ? "Copied" : "Copy"}
+              {copied === "credentials" ? "Copied" : "Copy"}
             </button>
           </div>
         )}
@@ -1092,7 +1109,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
               <Radio />
               <span>
                 <strong>No capability report yet</strong>
-                <small>Install plugin v0.4.1, run the connection command, and the campaign builder will update automatically.</small>
+                <small>Install plugin v0.5.0, run the signed connection command, and the campaign builder will update automatically.</small>
               </span>
             </div>
           )}
@@ -1114,7 +1131,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
                 <strong>Paper 1.16 and newer</strong>
                 <small>Install on every backend that should verify milestones. Version 0.4 adds activity eligibility snapshots and public profile lookup.</small>
               </span>
-              <a className="button" href="/downloads/nortix-paper-0.4.1.jar" download>
+              <a className="button" href="/downloads/nortix-paper-0.5.0.jar" download>
                 <Download /> Paper .jar
               </a>
             </li>
@@ -1124,7 +1141,7 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
                 <strong>Velocity 3.x proxy</strong>
                 <small>Verify the public proxy once, report network activity, and offer public profile lookup across the network.</small>
               </span>
-              <a className="button" href="/downloads/nortix-velocity-0.4.1.jar" download>
+              <a className="button" href="/downloads/nortix-velocity-0.5.0.jar" download>
                 <Download /> Velocity .jar
               </a>
             </li>
@@ -1153,6 +1170,473 @@ function PluginServers({ server, setServer }: { server: ServerRecord; setServer:
           <p className="owner-security-note">
             <LockKeyhole /> These plugins only perform registration and ownership verification. They do not collect gameplay or player data.
           </p>
+      </section>
+    </div>
+  );
+}
+
+type OwnerServerStoreRecord = {
+  id: string;
+  serverId: string;
+  name: string;
+  description: string;
+  logoUrl?: string | null;
+  available: boolean;
+  items: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    description: string;
+    sparksPrice: number;
+    imageUrls: string[];
+    stockQuantity: number | null;
+    maxPerPurchase: number;
+    commandTemplates: string[];
+    available: boolean;
+    sortOrder: number;
+    _count: { purchases: number };
+  }>;
+};
+
+type OwnerServerStorePurchase = {
+  id: string;
+  status: string;
+  quantity: number;
+  priceSparks: number;
+  recipientMinecraftUsername: string;
+  createdAt: string;
+  item: { name: string };
+  delivery?: { status: string; attemptCount: number; lastError?: string | null } | null;
+};
+
+const emptyStoreItemDraft = {
+  slug: "",
+  name: "",
+  description: "",
+  sparksPrice: "100",
+  imageUrls: "",
+  stockQuantity: "",
+  maxPerPurchase: "1",
+  commandTemplates: "give %player% diamond %amount%",
+  available: false,
+  sortOrder: "0",
+};
+
+function OwnerStoreManager({
+  server,
+  setServer,
+}: {
+  server: ServerRecord;
+  setServer: (server: ServerRecord) => void;
+}) {
+  const [store, setStore] = useState<OwnerServerStoreRecord | null>(null);
+  const [purchases, setPurchases] = useState<OwnerServerStorePurchase[]>([]);
+  const [storeDraft, setStoreDraft] = useState({
+    name: `${server.name} Store`,
+    description: `Official in-game items delivered on ${server.name}.`,
+    logoUrl: "",
+    available: false,
+  });
+  const [itemDraft, setItemDraft] = useState(emptyStoreItemDraft);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    const [storeResult, purchaseResult] = await Promise.all([
+      api<OwnerServerStoreRecord | null>(`/owner/servers/${server.id}/store`),
+      api<OwnerServerStorePurchase[]>(`/owner/servers/${server.id}/store/purchases`).catch(
+        () => [],
+      ),
+    ]);
+    setStore(storeResult);
+    setPurchases(purchaseResult);
+    setStoreDraft(
+      storeResult
+        ? {
+            name: storeResult.name,
+            description: storeResult.description,
+            logoUrl: storeResult.logoUrl ?? "",
+            available: storeResult.available,
+          }
+        : {
+            name: `${server.name} Store`,
+            description: `Official in-game items delivered on ${server.name}.`,
+            logoUrl: "",
+            available: false,
+          },
+    );
+  };
+
+  useEffect(() => {
+    setMessage("");
+    setEditingItemId(null);
+    setItemDraft(emptyStoreItemDraft);
+    load().catch((error) =>
+      setMessage(error instanceof Error ? error.message : "The server store could not be loaded."),
+    );
+  }, [server.id]);
+
+  const saveStore = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      await api(`/owner/servers/${server.id}/store`, {
+        method: "PUT",
+        body: JSON.stringify({
+          ...storeDraft,
+          logoUrl: storeDraft.logoUrl.trim() || undefined,
+        }),
+      });
+      await load();
+      setMessage("Server store settings saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The server store could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveItem = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    const payload = {
+      slug: itemDraft.slug.trim(),
+      name: itemDraft.name.trim(),
+      description: itemDraft.description.trim(),
+      sparksPrice: Number(itemDraft.sparksPrice),
+      imageUrls: itemDraft.imageUrls
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      stockQuantity:
+        itemDraft.stockQuantity.trim() === "" ? null : Number(itemDraft.stockQuantity),
+      maxPerPurchase: Number(itemDraft.maxPerPurchase),
+      commandTemplates: itemDraft.commandTemplates
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      available: itemDraft.available,
+      sortOrder: Number(itemDraft.sortOrder),
+    };
+    try {
+      await api(
+        editingItemId
+          ? `/owner/servers/${server.id}/store/items/${editingItemId}`
+          : `/owner/servers/${server.id}/store/items`,
+        {
+          method: editingItemId ? "PATCH" : "POST",
+          body: JSON.stringify(payload),
+        },
+      );
+      await load();
+      setEditingItemId(null);
+      setItemDraft(emptyStoreItemDraft);
+      setMessage(editingItemId ? "Store item updated." : "Store item created.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The store item could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editItem = (item: OwnerServerStoreRecord["items"][number]) => {
+    setEditingItemId(item.id);
+    setItemDraft({
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      sparksPrice: String(item.sparksPrice),
+      imageUrls: item.imageUrls.join("\n"),
+      stockQuantity: item.stockQuantity === null ? "" : String(item.stockQuantity),
+      maxPerPurchase: String(item.maxPerPurchase),
+      commandTemplates: item.commandTemplates.join("\n"),
+      available: item.available,
+      sortOrder: String(item.sortOrder),
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  return (
+    <div className="dashboard-page owner-platform">
+      <OwnerHeader
+        eyebrow="SERVER STORE"
+        title="Sell in-game items for Sparks"
+        description="Create a server-specific catalog, control stock and images, and define console commands delivered only through this server's signed plugin connection."
+        server={server}
+        setServer={setServer}
+      />
+      {message ? <div className="owner-team-message" role="status">{message}</div> : null}
+      <div className="owner-store-grid">
+        <form className="card form-grid" onSubmit={saveStore}>
+          <SettingsHeading
+            icon={Store}
+            title="Storefront"
+            description="The store becomes visible only for a verified, publicly listed server with a recently connected signed Paper plugin."
+          />
+          <label>
+            Store name
+            <input
+              required
+              minLength={2}
+              maxLength={80}
+              value={storeDraft.name}
+              onChange={(event) => setStoreDraft({ ...storeDraft, name: event.target.value })}
+            />
+          </label>
+          <label>
+            Description
+            <textarea
+              required
+              minLength={10}
+              maxLength={500}
+              value={storeDraft.description}
+              onChange={(event) =>
+                setStoreDraft({ ...storeDraft, description: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Store logo URL <small>Optional HTTPS image.</small>
+            <input
+              type="url"
+              value={storeDraft.logoUrl}
+              onChange={(event) => setStoreDraft({ ...storeDraft, logoUrl: event.target.value })}
+            />
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={storeDraft.available}
+              onChange={(event) =>
+                setStoreDraft({ ...storeDraft, available: event.target.checked })
+              }
+            />
+            <span>
+              <strong>Publish store</strong>
+              <small>Unavailable items and out-of-stock items remain hidden.</small>
+            </span>
+          </label>
+          <Button disabled={busy} type="submit">
+            <Save /> {busy ? "Saving…" : "Save storefront"}
+          </Button>
+        </form>
+
+        <form className="card form-grid owner-store-item-editor" onSubmit={saveItem}>
+          <SettingsHeading
+            icon={Sparkles}
+            title={editingItemId ? "Edit store item" : "Create store item"}
+            description="One command per line. Commands execute as the Minecraft server console."
+          />
+          <div className="form-grid form-grid--two">
+            <label>
+              Item name
+              <input
+                required
+                value={itemDraft.name}
+                onChange={(event) => setItemDraft({ ...itemDraft, name: event.target.value })}
+              />
+            </label>
+            <label>
+              Slug
+              <input
+                required
+                pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                value={itemDraft.slug}
+                onChange={(event) => setItemDraft({ ...itemDraft, slug: event.target.value })}
+                placeholder="vip-rank"
+              />
+            </label>
+          </div>
+          <label>
+            Description
+            <textarea
+              required
+              minLength={10}
+              maxLength={1000}
+              value={itemDraft.description}
+              onChange={(event) =>
+                setItemDraft({ ...itemDraft, description: event.target.value })
+              }
+            />
+          </label>
+          <div className="form-grid form-grid--three">
+            <label>
+              Sparks price
+              <input
+                required
+                type="number"
+                min={1}
+                value={itemDraft.sparksPrice}
+                onChange={(event) =>
+                  setItemDraft({ ...itemDraft, sparksPrice: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Stock <small>Blank means unlimited.</small>
+              <input
+                type="number"
+                min={0}
+                value={itemDraft.stockQuantity}
+                onChange={(event) =>
+                  setItemDraft({ ...itemDraft, stockQuantity: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Max per purchase
+              <input
+                required
+                type="number"
+                min={1}
+                max={100}
+                value={itemDraft.maxPerPurchase}
+                onChange={(event) =>
+                  setItemDraft({ ...itemDraft, maxPerPurchase: event.target.value })
+                }
+              />
+            </label>
+          </div>
+          <label>
+            Image URLs <small>One HTTPS URL per line, up to six.</small>
+            <textarea
+              required
+              value={itemDraft.imageUrls}
+              onChange={(event) => setItemDraft({ ...itemDraft, imageUrls: event.target.value })}
+              placeholder={"https://cdn.example.com/front.png\nhttps://cdn.example.com/back.png"}
+            />
+          </label>
+          <label>
+            Console commands <small>One command per line, up to ten.</small>
+            <textarea
+              required
+              className="owner-command-editor"
+              value={itemDraft.commandTemplates}
+              onChange={(event) =>
+                setItemDraft({ ...itemDraft, commandTemplates: event.target.value })
+              }
+            />
+          </label>
+          <div className="owner-placeholder-list" aria-label="Available command placeholders">
+            {[
+              ["%player%", "Recipient's linked Minecraft name"],
+              ["%amount%", "Purchased quantity"],
+              ["%quantity%", "Purchased quantity"],
+              ["%purchase_id%", "Unique delivery-safe purchase ID"],
+              ["%item_id%", "Nortix store item ID"],
+              ["%buyer%", "Buyer's Nortix username"],
+              ["%recipient%", "Recipient's Nortix username"],
+            ].map(([placeholder, meaning]) => (
+              <span key={placeholder}>
+                <code>{placeholder}</code>
+                <small>{meaning}</small>
+              </span>
+            ))}
+          </div>
+          <div className="form-grid form-grid--two">
+            <label>
+              Sort order
+              <input
+                type="number"
+                value={itemDraft.sortOrder}
+                onChange={(event) => setItemDraft({ ...itemDraft, sortOrder: event.target.value })}
+              />
+            </label>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={itemDraft.available}
+                onChange={(event) =>
+                  setItemDraft({ ...itemDraft, available: event.target.checked })
+                }
+              />
+              <span>
+                <strong>Item available</strong>
+                <small>Publish after testing its commands.</small>
+              </span>
+            </label>
+          </div>
+          <div className="form-actions">
+            {editingItemId ? (
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => {
+                  setEditingItemId(null);
+                  setItemDraft(emptyStoreItemDraft);
+                }}
+              >
+                Cancel edit
+              </Button>
+            ) : null}
+            <Button disabled={busy || !store} type="submit">
+              <Plus /> {editingItemId ? "Save item" : "Create item"}
+            </Button>
+          </div>
+          {!store ? <small>Save the storefront before creating its first item.</small> : null}
+        </form>
+      </div>
+
+      <section className="card owner-store-items">
+        <SettingsHeading
+          icon={Store}
+          title="Store items"
+          description="Items are archived by turning availability off; purchase history remains immutable."
+        />
+        {store?.items.length ? (
+          <div className="owner-store-item-list">
+            {store.items.map((item) => (
+              <article key={item.id}>
+                {item.imageUrls[0] ? (
+                  <img
+                    src={item.imageUrls[0]}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : <Store />}
+                <div>
+                  <small>{item.available ? "Published" : "Hidden"} · {item._count.purchases} purchases</small>
+                  <strong>{item.name}</strong>
+                  <p>{item.sparksPrice.toLocaleString()} Sparks · {item.stockQuantity === null ? "Unlimited stock" : `${item.stockQuantity} remaining`}</p>
+                </div>
+                <Button variant="ghost" onClick={() => editItem(item)}>Edit</Button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>No store items yet.</p>
+        )}
+      </section>
+
+      <section className="card owner-store-purchases">
+        <SettingsHeading
+          icon={Sparkles}
+          title="Recent purchases"
+          description="Delivery is automated by the signed Paper plugin. Failed jobs refund the buyer automatically."
+        />
+        {purchases.length ? (
+          <div className="owner-store-purchase-list">
+            {purchases.map((purchase) => (
+              <article key={purchase.id}>
+                <div>
+                  <strong>{purchase.item.name}</strong>
+                  <small>
+                    Minecraft: {purchase.recipientMinecraftUsername} · quantity {purchase.quantity}
+                  </small>
+                </div>
+                <span>{purchase.priceSparks.toLocaleString()} Sparks</span>
+                <b>{purchase.status}</b>
+                {purchase.delivery?.lastError ? <small>{purchase.delivery.lastError}</small> : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>No purchases for this server yet.</p>
+        )}
       </section>
     </div>
   );
@@ -2901,7 +3385,7 @@ function RegisterServer({ server, setServer }: { server: ServerRecord | null; se
                         </div>
                         <a
                           className="button button--secondary button--small"
-                          href={platform === "VELOCITY" ? "/downloads/nortix-velocity-0.4.1.jar" : "/downloads/nortix-paper-0.4.1.jar"}
+                          href={platform === "VELOCITY" ? "/downloads/nortix-velocity-0.5.0.jar" : "/downloads/nortix-paper-0.5.0.jar"}
                           download
                         >
                           <Download /> Download plugin

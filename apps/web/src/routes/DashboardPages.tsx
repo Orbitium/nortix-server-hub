@@ -47,6 +47,8 @@ import {
   type ProfileCosmeticType,
   type SponsoredItem,
   type SponsoredStore,
+  type ServerStore,
+  type ServerStoreItem,
   useCurrentUser,
   useDailyQuests,
   useLeaderboard,
@@ -59,6 +61,8 @@ import {
   useSparksSummary,
   useSponsoredPurchases,
   useSponsoredStores,
+  useServerStores,
+  useServerStorePurchases,
   useVotingServers,
 } from "../features/api-data";
 import { api } from "../lib/api";
@@ -941,6 +945,9 @@ export function SparksShopPage() {
   const { data: sponsoredStores = [], refetch: refetchSponsoredStores } = useSponsoredStores();
   const { data: sponsoredPurchases = [], refetch: refetchSponsoredPurchases } =
     useSponsoredPurchases();
+  const { data: serverStores = [], refetch: refetchServerStores } = useServerStores();
+  const { data: serverStorePurchases = [], refetch: refetchServerStorePurchases } =
+    useServerStorePurchases();
   const cosmetics =
     cosmeticCollection?.items.filter((item) => item.unlockMethod === "SPARKS") ?? [];
   const balance = sparksSummary?.balance ?? 0;
@@ -957,6 +964,16 @@ export function SparksShopPage() {
   const [sponsoredAttemptKey, setSponsoredAttemptKey] = useState("");
   const [sponsoredMessage, setSponsoredMessage] = useState("");
   const [sponsoredBusy, setSponsoredBusy] = useState(false);
+  const [selectedServerItem, setSelectedServerItem] = useState<{
+    store: ServerStore;
+    item: ServerStoreItem;
+  } | null>(null);
+  const [serverStoreQuantity, setServerStoreQuantity] = useState(1);
+  const [giftRecipient, setGiftRecipient] = useState("");
+  const [giftMessage, setGiftMessage] = useState("");
+  const [serverStoreAttemptKey, setServerStoreAttemptKey] = useState("");
+  const [serverStoreMessage, setServerStoreMessage] = useState("");
+  const [serverStoreBusy, setServerStoreBusy] = useState(false);
   const [insufficientPurchase, setInsufficientPurchase] = useState<{
     itemName: string;
     required: number;
@@ -973,6 +990,9 @@ export function SparksShopPage() {
   } as const;
   const selectedSponsoredTotal = selectedSponsored
     ? sparksPurchaseTotal(selectedSponsored.item.sparksPrice, sponsoredQuantity)
+    : 0;
+  const selectedServerStoreTotal = selectedServerItem
+    ? sparksPurchaseTotal(selectedServerItem.item.sparksPrice, serverStoreQuantity)
     : 0;
   return (
     <div className="dashboard-page">
@@ -1069,6 +1089,113 @@ export function SparksShopPage() {
             </Card>
           ))}
       </div>
+      <PageHeading
+        eyebrow="SERVER STORES"
+        title="Items delivered in-game"
+        description="Purchase items for yourself or gift them to another Nortix user. Delivery is performed by the verified server plugin."
+      />
+      <div className="sponsored-store-list">
+        {serverStores.map((store) => (
+          <section className="sponsored-store" key={store.id}>
+            <div className="sponsored-store__heading">
+              {store.logoUrl || store.server.logoUrl ? (
+                <img
+                  src={store.logoUrl ?? store.server.logoUrl ?? ""}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <ServerCog />
+              )}
+              <div>
+                <h3>{store.name}</h3>
+                <p>{store.description}</p>
+                <small>
+                  Operated by {store.server.name} · {store.server.online ? "Server online" : "Server offline"}
+                </small>
+              </div>
+            </div>
+            <div className="cosmetic-grid">
+              {store.items.map((item) => (
+                <Card className="sponsored-item-card server-store-item-card" key={item.id}>
+                  {item.imageUrls[0] ? (
+                    <img
+                      src={item.imageUrls[0]}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : <Gift />}
+                  <div>
+                    <small>{store.server.name}</small>
+                    <h3>{item.name}</h3>
+                    <p>{item.description}</p>
+                    <span>
+                      {item.stockQuantity === null
+                        ? "Available"
+                        : `${item.stockQuantity.toLocaleString()} in stock`}
+                    </span>
+                    <Button
+                      disabled={sparksLoading}
+                      onClick={() => {
+                        setSelectedServerItem({ store, item });
+                        setServerStoreQuantity(1);
+                        setGiftRecipient("");
+                        setGiftMessage("");
+                        setServerStoreAttemptKey(crypto.randomUUID());
+                        setServerStoreMessage("");
+                      }}
+                    >
+                      Purchase · <Sparks value={item.sparksPrice.toLocaleString()} />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+      {serverStores.length === 0 ? (
+        <Card>
+          <p>No verified server stores are available right now.</p>
+        </Card>
+      ) : null}
+      {serverStorePurchases.length ? (
+        <>
+          <PageHeading
+            eyebrow="IN-GAME DELIVERY"
+            title="Your server-store purchases and gifts"
+            description="Purchases you sent or received appear here without exposing private account details."
+          />
+          <div className="sponsored-purchase-list">
+            {serverStorePurchases.map((purchase) => (
+              <Card key={purchase.id}>
+                <div>
+                  <small>{purchase.item.store.server.name}</small>
+                  <h3>{purchase.item.name}</h3>
+                  <p>
+                    Quantity {purchase.quantity} · for @{purchase.recipient.username} ·{" "}
+                    {new Date(purchase.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <Badge
+                  tone={
+                    purchase.status === "DELIVERED"
+                      ? "success"
+                      : purchase.status === "REFUNDED" || purchase.status === "FAILED"
+                        ? "neutral"
+                        : "warning"
+                  }
+                >
+                  {purchase.status}
+                </Badge>
+                {purchase.giftMessage ? <small>Gift message: {purchase.giftMessage}</small> : null}
+              </Card>
+            ))}
+          </div>
+        </>
+      ) : null}
       <PageHeading
         eyebrow="NORTIX SPONSORED"
         title="Gifts from Nortix Labs"
@@ -1278,6 +1405,158 @@ export function SparksShopPage() {
           </div>
         </Modal>
       )}
+      {selectedServerItem ? (
+        <Modal
+          title={`Purchase ${selectedServerItem.item.name}`}
+          className="modal--compact sparks-purchase-modal"
+          onClose={() => setSelectedServerItem(null)}
+        >
+          <form
+            className="modal__body form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (balance < selectedServerStoreTotal) {
+                setSelectedServerItem(null);
+                setInsufficientPurchase({
+                  itemName: selectedServerItem.item.name,
+                  required: selectedServerStoreTotal,
+                  available: balance,
+                });
+                return;
+              }
+              setServerStoreBusy(true);
+              setServerStoreMessage("");
+              try {
+                await api("/sparks/server-store-purchases", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    itemId: selectedServerItem.item.id,
+                    idempotencyKey: serverStoreAttemptKey,
+                    quantity: serverStoreQuantity,
+                    recipientUsername: giftRecipient.trim() || undefined,
+                    giftMessage: giftMessage.trim() || undefined,
+                  }),
+                });
+                await Promise.all([
+                  refetchSparks(),
+                  refetchServerStores(),
+                  refetchServerStorePurchases(),
+                ]);
+                setSelectedServerItem(null);
+              } catch (error) {
+                if (isInsufficientSparksError(error)) {
+                  const refreshed = await refetchSparks();
+                  setSelectedServerItem(null);
+                  setInsufficientPurchase({
+                    itemName: selectedServerItem.item.name,
+                    required: selectedServerStoreTotal,
+                    available: refreshed.data?.balance ?? balance,
+                  });
+                } else {
+                  setServerStoreMessage(
+                    error instanceof Error ? error.message : "The server item could not be purchased.",
+                  );
+                }
+              } finally {
+                setServerStoreBusy(false);
+              }
+            }}
+          >
+            <div className="server-store-image-gallery">
+              {selectedServerItem.item.imageUrls.map((image, index) => (
+                <img
+                  key={image}
+                  src={image}
+                  alt={`${selectedServerItem.item.name} preview ${index + 1}`}
+                  referrerPolicy="no-referrer"
+                />
+              ))}
+            </div>
+            <div className="sparks-purchase-dialog__copy">
+              <Badge tone="neutral">{selectedServerItem.store.server.name}</Badge>
+              <p>{selectedServerItem.item.description}</p>
+              <small>
+                Delivered to the recipient&apos;s linked Minecraft identity by the server&apos;s
+                signed Paper plugin.
+              </small>
+            </div>
+            <label className="sparks-purchase-dialog__quantity">
+              <span>
+                <strong>Quantity</strong>
+                <small>Maximum {selectedServerItem.item.maxPerPurchase} per purchase.</small>
+              </span>
+              <input
+                aria-label="Quantity"
+                type="number"
+                min={1}
+                max={Math.min(
+                  selectedServerItem.item.maxPerPurchase,
+                  selectedServerItem.item.stockQuantity ?? selectedServerItem.item.maxPerPurchase,
+                )}
+                value={serverStoreQuantity}
+                onChange={(event) => {
+                  const maximum = Math.min(
+                    selectedServerItem.item.maxPerPurchase,
+                    selectedServerItem.item.stockQuantity ??
+                      selectedServerItem.item.maxPerPurchase,
+                  );
+                  setServerStoreQuantity(
+                    Math.min(maximum, Math.max(1, Math.trunc(event.currentTarget.valueAsNumber || 1))),
+                  );
+                  setServerStoreAttemptKey(crypto.randomUUID());
+                }}
+              />
+            </label>
+            <label>
+              Gift to a Nortix user <small>Optional — leave blank to purchase for yourself.</small>
+              <input
+                value={giftRecipient}
+                onChange={(event) => {
+                  setGiftRecipient(event.target.value);
+                  setServerStoreAttemptKey(crypto.randomUUID());
+                }}
+                placeholder="Nortix username"
+                pattern="[A-Za-z0-9_]{3,32}"
+              />
+            </label>
+            <label>
+              Gift message <small>Optional and visible only to the recipient.</small>
+              <textarea
+                value={giftMessage}
+                onChange={(event) => setGiftMessage(event.target.value)}
+                maxLength={300}
+                placeholder="Enjoy your gift!"
+              />
+            </label>
+            <div className="withdraw-summary">
+              <span>
+                Unit price
+                <b>{selectedServerItem.item.sparksPrice.toLocaleString()} Sparks</b>
+              </span>
+              <span>
+                Total <strong>{selectedServerStoreTotal.toLocaleString()} Sparks</strong>
+              </span>
+              <span>
+                Remaining Sparks{" "}
+                <strong>{Math.max(0, balance - selectedServerStoreTotal).toLocaleString()}</strong>
+              </span>
+            </div>
+            <small>
+              The recipient must have a Minecraft identity linked to Nortix. Failed plugin
+              delivery automatically returns the buyer&apos;s Sparks.
+            </small>
+            {serverStoreMessage ? <p role="status">{serverStoreMessage}</p> : null}
+            <div className="modal__footer">
+              <Button variant="ghost" type="button" onClick={() => setSelectedServerItem(null)}>
+                Cancel
+              </Button>
+              <Button disabled={serverStoreBusy} type="submit">
+                {serverStoreBusy ? "Purchasing…" : giftRecipient.trim() ? "Purchase gift" : "Purchase item"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
       {selectedSponsored ? (
         <Modal
           title={`Request ${selectedSponsored.item.name}`}

@@ -1,9 +1,15 @@
 import type { ServerTeamRole } from "@nortix/shared";
 
-export type ServerPermission = "analytics" | "campaigns" | "integrations" | "settings" | "team";
+export type ServerPermission =
+  | "analytics"
+  | "campaigns"
+  | "integrations"
+  | "settings"
+  | "store"
+  | "team";
 
 export const teamPermissions: Record<ServerTeamRole, readonly ServerPermission[]> = {
-  ADMIN: ["analytics", "campaigns", "integrations", "settings", "team"],
+  ADMIN: ["analytics", "campaigns", "integrations", "settings", "store", "team"],
   MANAGER: ["analytics", "campaigns"],
   OPERATOR: ["integrations", "settings"],
   ANALYST: ["analytics"],

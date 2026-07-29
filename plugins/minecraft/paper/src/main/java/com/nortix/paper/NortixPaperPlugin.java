@@ -24,7 +24,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
 public final class NortixPaperPlugin extends JavaPlugin implements Listener {
-    static final String VERSION = "0.4.1";
+    static final String VERSION = "0.5.0";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private volatile String verificationCode = "";
     private MilestoneReporter reporter;
@@ -43,7 +43,7 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
             startStatusPoll();
         }
         getLogger().info("Nortix milestone tracking ready with " + reporter.getCapabilities().size()
-            + " capabilities. Gameplay events are sent only after a server token is configured.");
+            + " capabilities. Gameplay events are sent only after signing keys are configured.");
     }
 
     @Override
@@ -106,14 +106,16 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
             startStatusPoll();
             return true;
         }
-        if (args.length >= 3 && args[0].equalsIgnoreCase("connect")) {
+        if (args.length >= 4 && args[0].equalsIgnoreCase("connect")) {
             getConfig().set("server-id", args[1]);
-            getConfig().set("server-token", args[2]);
-            if (args.length >= 4) getConfig().set("proxy-server-name", args[3]);
+            getConfig().set("server-key-id", args[2]);
+            getConfig().set("server-private-key", args[3]);
+            getConfig().set("server-token", null);
+            if (args.length >= 5) getConfig().set("proxy-server-name", args[4]);
             saveConfig();
             reporter.reloadConnection();
-            sender.sendMessage(ChatColor.GREEN + "Nortix milestone tracking connected for this backend server.");
-            sender.sendMessage(ChatColor.GRAY + "The token is stored in config.yml and will never be printed.");
+            sender.sendMessage(ChatColor.GREEN + "Nortix signed milestone reporting connected for this backend server.");
+            sender.sendMessage(ChatColor.GRAY + "The private key is stored in config.yml and will never be printed.");
             return true;
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("capabilities")) {
@@ -124,7 +126,7 @@ public final class NortixPaperPlugin extends JavaPlugin implements Listener {
         if (args.length == 1 && args[0].equalsIgnoreCase("status")) {
             sender.sendMessage(reporter.isConnected()
                 ? ChatColor.GREEN + "Milestone tracking connected as server " + reporter.getServerId() + "."
-                : ChatColor.YELLOW + "Milestone tracking is not connected. Generate a token on the Nortix website.");
+                : ChatColor.YELLOW + "Milestone tracking is not connected. Generate signing keys on the Nortix website.");
             if (!verificationCode.isEmpty()) checkVerificationStatus(sender);
             return true;
         }

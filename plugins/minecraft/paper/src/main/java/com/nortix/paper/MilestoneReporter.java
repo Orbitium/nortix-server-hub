@@ -1,5 +1,6 @@
 package com.nortix.paper;
 
+import com.nortix.contracts.PluginRequestSigner;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -7,15 +8,21 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.bukkit.entity.EntityType;
 import org.bukkit.OfflinePlayer;
@@ -34,14 +41,16 @@ final class MilestoneReporter implements Listener {
     private final PluginAdapterRegistry adapters;
     private final ConcurrentLinkedQueue<String> queue = new ConcurrentLinkedQueue<>();
     private final Map<UUID, Integer> killStreaks = new ConcurrentHashMap<>();
+    private final Set<String> completedStoreDeliveries = ConcurrentHashMap.newKeySet();
     private final String instanceId = UUID.randomUUID().toString();
     private volatile String serverId;
-    private volatile String serverToken;
+    private volatile PluginRequestSigner requestSigner;
     private volatile String proxyServerName;
     private BukkitTask flushTask;
     private BukkitTask metricTask;
     private BukkitTask capabilityTask;
     private BukkitTask presenceTask;
+    private BukkitTask storeDeliveryTask;
 
     MilestoneReporter(NortixPaperPlugin plugin) {
         this.plugin = plugin;
@@ -64,6 +73,9 @@ final class MilestoneReporter implements Listener {
         if (plugin.getConfig().getBoolean("sync-player-history", true)) {
             plugin.getServer().getScheduler().runTaskLater(plugin, this::syncPlayerHistory, 20L * 10L);
         }
+        loadStoreDeliveryHistory();
+        storeDeliveryTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(
+            plugin, this::pollStoreDeliveries, 20L * 20L, 20L * 10L);
     }
 
     void stop() {
@@ -71,18 +83,30 @@ final class MilestoneReporter implements Listener {
         if (metricTask != null) metricTask.cancel();
         if (capabilityTask != null) capabilityTask.cancel();
         if (presenceTask != null) presenceTask.cancel();
+        if (storeDeliveryTask != null) storeDeliveryTask.cancel();
         flush();
     }
 
     void reloadConnection() {
         serverId = plugin.getConfig().getString("server-id", "").trim();
-        serverToken = plugin.getConfig().getString("server-token", "").trim();
         proxyServerName = plugin.getConfig().getString("proxy-server-name", "").trim();
+        try {
+            requestSigner = new PluginRequestSigner(
+                serverId,
+                plugin.getConfig().getString("server-key-id", "").trim(),
+                plugin.getConfig().getString("server-private-key", "").trim()
+            );
+        } catch (Exception error) {
+            requestSigner = null;
+            if (!serverId.isEmpty()) {
+                plugin.getLogger().warning("Nortix signing credentials are incomplete or invalid.");
+            }
+        }
         if (isConnected()) publishCapabilities();
     }
 
     boolean isConnected() {
-        return !serverId.isEmpty() && serverToken.startsWith("npx_");
+        return !serverId.isEmpty() && requestSigner != null;
     }
 
     String getServerId() {
@@ -268,6 +292,95 @@ final class MilestoneReporter implements Listener {
         });
     }
 
+    private void pollStoreDeliveries() {
+        if (!isConnected()) return;
+        try {
+            String response = request(
+                "GET",
+                "/plugin/store-deliveries/next?serverId=" + serverId,
+                null,
+                true
+            );
+            if (response.contains("\"delivery\":null")) return;
+            String deliveryId = jsonStringValue(response, "id");
+            List<String> commands = jsonStringArray(response, "commands");
+            if (deliveryId.isEmpty() || commands.isEmpty()) return;
+            if (completedStoreDeliveries.contains(deliveryId)) {
+                acknowledgeStoreDelivery(deliveryId, true, null);
+                return;
+            }
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                boolean success = true;
+                String failure = null;
+                for (String configured : commands) {
+                    String command = configured.startsWith("/") ? configured.substring(1) : configured;
+                    try {
+                        if (!plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command)) {
+                            success = false;
+                            failure = "A configured server command was not accepted.";
+                            break;
+                        }
+                    } catch (Exception error) {
+                        success = false;
+                        failure = "A configured server command failed.";
+                        plugin.getLogger().warning("Nortix store delivery command failed: " + error.getMessage());
+                        break;
+                    }
+                }
+                if (success) rememberStoreDelivery(deliveryId);
+                final boolean delivered = success;
+                final String deliveryError = failure;
+                plugin.getServer().getScheduler().runTaskAsynchronously(
+                    plugin,
+                    () -> acknowledgeStoreDelivery(deliveryId, delivered, deliveryError)
+                );
+            });
+        } catch (Exception error) {
+            plugin.getLogger().warning("Could not poll Nortix store deliveries: " + error.getMessage());
+        }
+    }
+
+    private void acknowledgeStoreDelivery(String deliveryId, boolean success, String error) {
+        String body = "{\"serverId\":\"" + json(serverId) + "\",\"deliveryId\":\""
+            + json(deliveryId) + "\",\"success\":" + success
+            + (error == null ? "" : ",\"error\":\"" + json(error) + "\"") + "}";
+        try {
+            request("POST", "/plugin/store-deliveries/result", body, true);
+        } catch (Exception acknowledgeError) {
+            plugin.getLogger().warning(
+                "Could not acknowledge Nortix store delivery " + deliveryId + ": "
+                    + acknowledgeError.getMessage()
+            );
+        }
+    }
+
+    private void loadStoreDeliveryHistory() {
+        Path history = plugin.getDataFolder().toPath().resolve("store-deliveries.log");
+        if (!Files.exists(history)) return;
+        try {
+            List<String> lines = Files.readAllLines(history, StandardCharsets.UTF_8);
+            int start = Math.max(0, lines.size() - 1000);
+            completedStoreDeliveries.addAll(lines.subList(start, lines.size()));
+        } catch (Exception error) {
+            plugin.getLogger().warning("Could not read Nortix store delivery history.");
+        }
+    }
+
+    private void rememberStoreDelivery(String deliveryId) {
+        completedStoreDeliveries.add(deliveryId);
+        Path history = plugin.getDataFolder().toPath().resolve("store-deliveries.log");
+        try {
+            Files.write(
+                history,
+                (deliveryId + System.lineSeparator()).getBytes(StandardCharsets.UTF_8),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND
+            );
+        } catch (Exception error) {
+            plugin.getLogger().warning("Could not persist Nortix store delivery history.");
+        }
+    }
+
     void sendVerificationHandshake(String code) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -288,7 +401,9 @@ final class MilestoneReporter implements Listener {
         connection.setConnectTimeout(5000);
         connection.setReadTimeout(7000);
         connection.setRequestProperty("Accept", "application/json");
-        if (authenticated) connection.setRequestProperty("Authorization", "Bearer " + serverToken);
+        if (authenticated) {
+            requestSigner.sign(connection, method, path, body, idempotencyKey(body));
+        }
         if (body != null) {
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json");
@@ -306,6 +421,72 @@ final class MilestoneReporter implements Listener {
         }
         if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status + ": " + response);
         return response;
+    }
+
+    private static String idempotencyKey(String body) {
+        if (body != null) {
+            Matcher matcher = Pattern.compile("\"id\":\"([A-Za-z0-9:_-]{8,160})\"").matcher(body);
+            if (matcher.find()) return matcher.group(1);
+        }
+        return UUID.randomUUID().toString();
+    }
+
+    private static String jsonStringValue(String body, String key) {
+        Matcher matcher = Pattern
+            .compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"")
+            .matcher(body);
+        return matcher.find() ? unescapeJson(matcher.group(1)) : "";
+    }
+
+    private static List<String> jsonStringArray(String body, String key) {
+        List<String> values = new ArrayList<>();
+        Matcher field = Pattern
+            .compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*\\[")
+            .matcher(body);
+        if (!field.find()) return values;
+        StringBuilder current = null;
+        boolean escaped = false;
+        for (int index = field.end(); index < body.length(); index++) {
+            char item = body.charAt(index);
+            if (current == null) {
+                if (item == ']') break;
+                if (item == '"') current = new StringBuilder();
+                continue;
+            }
+            if (escaped) {
+                current.append('\\').append(item);
+                escaped = false;
+            } else if (item == '\\') {
+                escaped = true;
+            } else if (item == '"') {
+                values.add(unescapeJson(current.toString()));
+                current = null;
+            } else {
+                current.append(item);
+            }
+        }
+        return values;
+    }
+
+    private static String unescapeJson(String value) {
+        StringBuilder result = new StringBuilder();
+        boolean escaped = false;
+        for (int index = 0; index < value.length(); index++) {
+            char item = value.charAt(index);
+            if (escaped) {
+                if (item == 'n') result.append('\n');
+                else if (item == 'r') result.append('\r');
+                else if (item == 't') result.append('\t');
+                else result.append(item);
+                escaped = false;
+            } else if (item == '\\') {
+                escaped = true;
+            } else {
+                result.append(item);
+            }
+        }
+        if (escaped) result.append('\\');
+        return result.toString();
     }
 
     static String json(String value) {

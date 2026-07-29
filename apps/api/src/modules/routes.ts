@@ -23,6 +23,10 @@ import {
   RewardedVoteSessionGrantSchema,
   RewardedVoteSessionInputSchema,
   ServerReviewInputSchema,
+  OwnerServerStoreInputSchema,
+  OwnerServerStoreItemInputSchema,
+  OwnerServerStoreItemUpdateSchema,
+  ServerStorePurchaseInputSchema,
   ServerRewardedVotingSettingSchema,
   ServerVoteInputSchema,
   SponsoredPurchaseInputSchema,
@@ -38,6 +42,8 @@ import {
   PluginVerificationStatusSchema,
   ServerPluginEventSchema,
   PluginPlayerHistorySchema,
+  PluginStoreDeliveryQuerySchema,
+  PluginStoreDeliveryResultSchema,
 } from "@nortix/plugin-sdk";
 import { MockPaymentProvider } from "@nortix/integrations";
 import type { FastifyInstance } from "fastify";
@@ -50,6 +56,10 @@ import {
   type ServerPermission,
 } from "../security/policies.js";
 import { verifyPremiumIdentityProof } from "../security/identity-proof.js";
+import {
+  authenticateSignedPluginRequest,
+  generatePluginKeyPair,
+} from "../security/plugin-request-signing.js";
 import {
   CAMPAIGN_ACTIVITY_WINDOW_DAYS,
   calculateCampaignCreditBalance,
@@ -74,6 +84,7 @@ import { VotingService } from "./voting/service.js";
 import { verifyVoteTurnstile } from "./voting/turnstile.js";
 import { GameplayService } from "./gameplay/service.js";
 import { SponsoredShopService } from "./sponsored-shop/service.js";
+import { ServerStoreService } from "./server-store/service.js";
 import { AdminEnrollmentService } from "./admin-enrollment/service.js";
 import { presentOwnerPluginState } from "./owner-servers/presenter.js";
 import { buildCampaignShareHtml } from "./campaign-sharing/html.js";
@@ -89,6 +100,7 @@ const referralService = new ReferralService();
 const votingService = new VotingService();
 const gameplayService = new GameplayService();
 const sponsoredShopService = new SponsoredShopService();
+const serverStoreService = new ServerStoreService();
 const adminEnrollmentService = new AdminEnrollmentService();
 const REWARDED_VOTE_SESSION_TTL_MS = 10 * 60_000;
 const hashRewardedVoteToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -161,32 +173,6 @@ const requireServerPermission = async (
     throw new Error("Server access not found.");
   }
   return server;
-};
-
-const hashPluginToken = (token: string) => createHash("sha256").update(token).digest("hex");
-
-const authenticateServerPlugin = async (authorization: string | undefined, serverId: string) => {
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  if (!token.startsWith("npx_")) throw new Error("A valid server plugin token is required.");
-  const credential = await prisma.integrationApiKey.findFirst({
-    where: {
-      serverId,
-      keyHash: hashPluginToken(token),
-      revokedAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-    },
-    include: { server: true },
-  });
-  if (!credential || !credential.scopes.includes("plugin:events"))
-    throw new Error("The server plugin token is invalid or revoked.");
-  if (!credential.server.claimed || credential.server.verificationStatus !== "VERIFIED") {
-    throw new Error("Server verification is required before accepting plugin evidence.");
-  }
-  await prisma.integrationApiKey.update({
-    where: { id: credential.id },
-    data: { lastUsedAt: new Date() },
-  });
-  return credential;
 };
 
 const selfUserSelect = {
@@ -1161,35 +1147,123 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
   });
 
   app.post(
-    "/v1/owner/servers/:id/plugin-token",
+    "/v1/owner/servers/:id/plugin-credentials",
     { preHandler: app.authenticate },
-    async (request) => {
+    async (request, reply) => {
       const { id } = request.params as { id: string };
       const server = await requireOwnedServer(id, request.user!.id);
       if (!server.claimed || server.verificationStatus !== "VERIFIED") {
         throw new Error("Server verification is required before connecting milestone tracking.");
       }
-      const token = `npx_${randomBytes(32).toString("base64url")}`;
-      await prisma.$transaction([
-        prisma.integrationApiKey.updateMany({
+      const previousCredentials = await prisma.integrationApiKey.findMany({
+        where: { serverId: id, scopes: { has: "plugin:events" }, revokedAt: null },
+        select: { id: true, algorithm: true, lastFour: true },
+      });
+      const keyPair = generatePluginKeyPair();
+      const credential = await prisma.$transaction(async (tx) => {
+        await tx.integrationApiKey.updateMany({
           where: { serverId: id, scopes: { has: "plugin:events" }, revokedAt: null },
           data: { revokedAt: new Date() },
-        }),
-        prisma.integrationApiKey.create({
+        });
+        const created = await tx.integrationApiKey.create({
           data: {
             serverId: id,
             name: "Nortix Minecraft integration",
-            keyHash: hashPluginToken(token),
+            algorithm: keyPair.algorithm,
+            publicKey: keyPair.publicKey,
             scopes: ["plugin:events", "plugin:capabilities"],
-            lastFour: token.slice(-4),
+            lastFour: keyPair.publicKey.slice(-4),
           },
-        }),
-        prisma.server.update({
+        });
+        await tx.server.update({
           where: { id },
           data: { pluginInstanceId: null, pluginLastSeenAt: null },
-        }),
-      ]);
-      return { serverId: id, serverName: server.name, token, shownOnce: true };
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: request.user!.id,
+            action: "server.plugin_signing_key_rotated",
+            entityType: "Server",
+            entityId: id,
+            requestId: request.id,
+            beforeSnapshot: { activeCredentials: previousCredentials },
+            afterSnapshot: {
+              keyId: created.id,
+              algorithm: keyPair.algorithm,
+              publicKeyFingerprint: keyPair.publicKey.slice(-16),
+            },
+            reason: "Owner generated a new server-bound plugin signing key.",
+          },
+        });
+        return created;
+      });
+      return reply
+        .header("Cache-Control", "no-store")
+        .header("Pragma", "no-cache")
+        .send({
+          serverId: id,
+          serverName: server.name,
+          keyId: credential.id,
+          algorithm: keyPair.algorithm,
+          privateKey: keyPair.privateKey,
+          publicKey: keyPair.publicKey,
+          shownOnce: true,
+        });
+    },
+  );
+
+  app.get(
+    "/v1/owner/servers/:id/store",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      await requireServerPermission(id, request.user!.id, "store");
+      return serverStoreService.ownerStore(id);
+    },
+  );
+
+  app.put(
+    "/v1/owner/servers/:id/store",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      await requireServerPermission(id, request.user!.id, "store");
+      const input = OwnerServerStoreInputSchema.parse(request.body);
+      return serverStoreService.upsertStore(request.user!.id, id, input, request.id);
+    },
+  );
+
+  app.post(
+    "/v1/owner/servers/:id/store/items",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      await requireServerPermission(id, request.user!.id, "store");
+      const input = OwnerServerStoreItemInputSchema.parse(request.body);
+      return reply
+        .code(201)
+        .send(await serverStoreService.createItem(request.user!.id, id, input, request.id));
+    },
+  );
+
+  app.patch(
+    "/v1/owner/servers/:id/store/items/:itemId",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id, itemId } = request.params as { id: string; itemId: string };
+      await requireServerPermission(id, request.user!.id, "store");
+      const input = OwnerServerStoreItemUpdateSchema.parse(request.body);
+      return serverStoreService.updateItem(request.user!.id, id, itemId, input, request.id);
+    },
+  );
+
+  app.get(
+    "/v1/owner/servers/:id/store/purchases",
+    { preHandler: app.authenticate },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      await requireServerPermission(id, request.user!.id, "analytics");
+      return serverStoreService.ownerPurchases(id);
     },
   );
 
@@ -1293,13 +1367,11 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
 
   app.post("/v1/plugin/capabilities", async (request) => {
     const input = PluginCapabilitiesHandshakeSchema.parse(request.body);
-    const credential = await authenticateServerPlugin(
-      request.headers.authorization,
+    await authenticateSignedPluginRequest(
+      request,
       input.serverId,
+      "plugin:capabilities",
     );
-    if (!credential.scopes.includes("plugin:capabilities")) {
-      throw new Error("The plugin token does not allow capability registration.");
-    }
     const server = await prisma.server.update({
       where: { id: input.serverId },
       data: {
@@ -1322,10 +1394,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const input = PluginPlayerHistorySchema.parse(request.body);
-      const credential = await authenticateServerPlugin(
-        request.headers.authorization,
-        input.serverId,
-      );
+      const credential = await authenticateSignedPluginRequest(request, input.serverId);
       if (credential.server.pluginInstanceId !== input.instanceId) {
         throw new Error("Plugin instance verification is required before syncing player history.");
       }
@@ -1359,10 +1428,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     { config: { rateLimit: { max: 4, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const input = PluginPresenceSnapshotSchema.parse(request.body);
-      const credential = await authenticateServerPlugin(
-        request.headers.authorization,
-        input.serverId,
-      );
+      const credential = await authenticateSignedPluginRequest(request, input.serverId);
       if (!credential.server.pluginInstanceId && input.platform === "VELOCITY") {
         await prisma.server.update({
           where: { id: input.serverId },
@@ -1441,7 +1507,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         .string()
         .min(1)
         .parse((request.query as { serverId?: string }).serverId);
-      await authenticateServerPlugin(request.headers.authorization, serverId);
+      await authenticateSignedPluginRequest(request, serverId);
       const accountSelect = {
         username: true,
         displayName: true,
@@ -1495,15 +1561,38 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     },
   );
 
+  app.get(
+    "/v1/plugin/store-deliveries/next",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    async (request) => {
+      const input = PluginStoreDeliveryQuerySchema.parse(request.query);
+      await authenticateSignedPluginRequest(request, input.serverId);
+      return { delivery: await serverStoreService.claimNextDelivery(input.serverId) };
+    },
+  );
+
+  app.post(
+    "/v1/plugin/store-deliveries/result",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (request) => {
+      const input = PluginStoreDeliveryResultSchema.parse(request.body);
+      await authenticateSignedPluginRequest(request, input.serverId);
+      return serverStoreService.completeDelivery(
+        input.serverId,
+        input.deliveryId,
+        input.success,
+        input.error,
+        request.id,
+      );
+    },
+  );
+
   app.post(
     "/v1/plugin/events",
     { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } },
     async (request, reply) => {
       const input = ServerPluginEventSchema.parse(request.body);
-      const credential = await authenticateServerPlugin(
-        request.headers.authorization,
-        input.serverId,
-      );
+      const credential = await authenticateSignedPluginRequest(request, input.serverId);
       const capabilities = Array.isArray(credential.server.pluginCapabilities)
         ? credential.server.pluginCapabilities
         : [];
@@ -2058,7 +2147,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
             ? {
                 type: "OWNER",
                 role: "OWNER",
-                permissions: ["analytics", "campaigns", "integrations", "settings", "team"],
+                permissions: ["analytics", "campaigns", "integrations", "settings", "store", "team"],
               }
             : {
                 type: "TEAM",
@@ -2111,6 +2200,25 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     async (request, reply) => {
       const input = SponsoredPurchaseInputSchema.parse(request.body);
       const purchase = await sponsoredShopService.purchase(request.user!.id, input, request.id);
+      await questService.evaluateAndAward(request.user!.id);
+      return reply.code(201).send(purchase);
+    },
+  );
+  app.get("/v1/sparks/server-stores", { preHandler: app.authenticate }, () =>
+    serverStoreService.catalog(),
+  );
+  app.get("/v1/sparks/server-store-purchases", { preHandler: app.authenticate }, (request) =>
+    serverStoreService.listMine(request.user!.id),
+  );
+  app.post(
+    "/v1/sparks/server-store-purchases",
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 20, timeWindow: "1 hour" } },
+    },
+    async (request, reply) => {
+      const input = ServerStorePurchaseInputSchema.parse(request.body);
+      const purchase = await serverStoreService.purchase(request.user!.id, input, request.id);
       await questService.evaluateAndAward(request.user!.id);
       return reply.code(201).send(purchase);
     },
@@ -2895,7 +3003,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
     (_request, reply) =>
       reply.code(410).send({
         code: "ENDPOINT_RETIRED",
-        message: "Use a server-scoped plugin token with /v1/plugin/events.",
+        message: "Use a server-scoped signed plugin key with /v1/plugin/events.",
       }),
   );
   app.post(

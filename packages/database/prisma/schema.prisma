@@ -120,7 +120,24 @@ enum SparksTransactionType {
   COSMETIC_PURCHASE
   SPONSORED_PURCHASE
   SPONSORED_PURCHASE_REFUND
+  SERVER_STORE_PURCHASE
+  SERVER_STORE_PURCHASE_REFUND
   MANUAL_ADJUSTMENT
+}
+
+enum ServerStorePurchaseStatus {
+  QUEUED
+  PROCESSING
+  DELIVERED
+  FAILED
+  REFUNDED
+}
+
+enum ServerStoreDeliveryStatus {
+  PENDING
+  CLAIMED
+  DELIVERED
+  FAILED
 }
 
 enum SponsoredPurchaseStatus {
@@ -295,6 +312,8 @@ model User {
   sponsoredPurchases        SponsoredPurchase[]          @relation("SponsoredPurchaseUser")
   handledSponsoredPurchases SponsoredPurchase[]          @relation("SponsoredPurchaseHandler")
   createdSponsoredStores    SponsoredStore[]             @relation("SponsoredStoreCreator")
+  serverStorePurchasesBought ServerStorePurchase[]        @relation("ServerStorePurchaseBuyer")
+  serverStorePurchasesReceived ServerStorePurchase[]      @relation("ServerStorePurchaseRecipient")
   equippedCosmetics         EquippedCosmetic[]
   analyticsEvents           AnalyticsEvent[]
   fraudFlags                FraudFlag[]                 @relation("FraudSubjectUser")
@@ -502,6 +521,8 @@ model Server {
   activitySamples           ServerActivitySample[]
   minecraftIdentityActivity MinecraftIdentityActivity[]
   gameplayDailyStats        PlayerGameplayDailyStat[]
+  store                     ServerStore?
+  storeDeliveries           ServerStoreDelivery[]
 
   @@index([ownerId])
   @@index([verificationParentId])
@@ -927,6 +948,8 @@ model SparksLedgerEntry {
   completion      MilestoneCompletion?  @relation("CompletionSparks")
   sponsoredPurchaseDebit  SponsoredPurchase? @relation("SponsoredPurchaseDebit")
   sponsoredPurchaseRefund SponsoredPurchase? @relation("SponsoredPurchaseRefund")
+  serverStorePurchaseDebit  ServerStorePurchase? @relation("ServerStorePurchaseDebit")
+  serverStorePurchaseRefund ServerStorePurchase? @relation("ServerStorePurchaseRefund")
 
   @@index([userId, createdAt])
 }
@@ -1059,6 +1082,89 @@ model SponsoredPurchase {
   @@index([itemId, status])
 }
 
+model ServerStore {
+  id          String            @id @default(cuid())
+  serverId    String            @unique
+  server      Server            @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  logoUrl     String?
+  available   Boolean           @default(false)
+  items       ServerStoreItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model ServerStoreItem {
+  id                 String                @id @default(cuid())
+  storeId            String
+  store              ServerStore           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  slug               String
+  name               String
+  description        String
+  sparksPrice        Int
+  imageUrls          String[]
+  stockQuantity      Int?
+  maxPerPurchase     Int                   @default(1)
+  commandTemplates   String[]
+  available          Boolean               @default(false)
+  sortOrder          Int                   @default(0)
+  purchases          ServerStorePurchase[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@unique([storeId, slug])
+  @@index([storeId, available, sortOrder])
+}
+
+model ServerStorePurchase {
+  id                        String                    @id @default(cuid())
+  buyerId                   String
+  buyer                     User                      @relation("ServerStorePurchaseBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  recipientId               String
+  recipient                 User                      @relation("ServerStorePurchaseRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+  itemId                    String
+  item                      ServerStoreItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  status                    ServerStorePurchaseStatus @default(QUEUED)
+  quantity                  Int
+  priceSparks               Int
+  recipientMinecraftUsername String
+  giftMessage               String?
+  commandSnapshot           String[]
+  idempotencyKey            String                    @unique
+  sparksDebitLedgerEntryId  String                    @unique
+  sparksDebitLedgerEntry    SparksLedgerEntry         @relation("ServerStorePurchaseDebit", fields: [sparksDebitLedgerEntryId], references: [id], onDelete: Restrict)
+  sparksRefundLedgerEntryId String?                   @unique
+  sparksRefundLedgerEntry   SparksLedgerEntry?        @relation("ServerStorePurchaseRefund", fields: [sparksRefundLedgerEntryId], references: [id], onDelete: Restrict)
+  delivery                  ServerStoreDelivery?
+  deliveredAt               DateTime?
+  failedAt                  DateTime?
+  refundedAt                DateTime?
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
+
+  @@index([buyerId, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([itemId, status])
+}
+
+model ServerStoreDelivery {
+  id           String                    @id @default(cuid())
+  purchaseId   String                    @unique
+  purchase     ServerStorePurchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  serverId     String
+  server       Server                    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  status       ServerStoreDeliveryStatus @default(PENDING)
+  attemptCount Int                       @default(0)
+  claimedAt    DateTime?
+  completedAt  DateTime?
+  lastError    String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([serverId, status, createdAt])
+}
+
 model EquippedCosmetic {
   userId     String
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1113,20 +1219,35 @@ model PlayerGameplayDailyStat {
 }
 
 model IntegrationApiKey {
-  id         String    @id @default(cuid())
-  serverId   String
-  server     Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  name       String
-  keyHash    String
-  scopes     String[]
-  lastFour   String
-  expiresAt  DateTime?
-  revokedAt  DateTime?
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id          String               @id @default(cuid())
+  serverId    String
+  server      Server               @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name        String
+  algorithm   String               @default("LEGACY_TOKEN_SHA256")
+  keyHash     String?
+  publicKey   String?
+  scopes      String[]
+  lastFour    String
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime             @default(now())
+  requestNonces PluginRequestNonce[]
 
   @@index([serverId])
   @@index([keyHash])
+}
+
+model PluginRequestNonce {
+  id           String            @id @default(cuid())
+  credentialId String
+  credential   IntegrationApiKey @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  nonce        String
+  usedAt       DateTime          @default(now())
+  expiresAt    DateTime
+
+  @@unique([credentialId, nonce])
+  @@index([expiresAt])
 }
 
 model PaymentEvent {

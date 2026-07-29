@@ -47,6 +47,10 @@ not authoritative.
 - Development signing secrets are refused in production.
 - Minecraft identities used for campaigns must be verified and owned by the
   authenticated Nortix account.
+- Third-party Paper and Velocity integrations use a separate P-256 key pair per registered server.
+  The private key is shown once and stored only by the plugin; Nortix stores the public key. Signed
+  requests bind the server ID, key ID, method, path, body digest, timestamp, nonce, and idempotency
+  key, and nonce consumption is enforced atomically in PostgreSQL.
 - Premium Minecraft ownership is established only by a one-time claim consumed
   by the Nortix-operated, fail-closed online-mode verification server. The
   verifier authenticates its request with a dedicated HMAC secret that is never

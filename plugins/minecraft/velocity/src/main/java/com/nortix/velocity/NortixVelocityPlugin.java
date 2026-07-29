@@ -1,5 +1,6 @@
 package com.nortix.velocity;
 
+import com.nortix.contracts.PluginRequestSigner;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.SimpleCommand;
@@ -35,11 +36,11 @@ import org.slf4j.Logger;
 @Plugin(
     id = "nortix-verification",
     name = "Nortix Proxy",
-    version = "0.4.1",
+    version = "0.5.0",
     description = "Verifies one public Velocity proxy; Paper backends report milestones separately"
 )
 public final class NortixVelocityPlugin {
-    private static final String VERSION = "0.4.1";
+    private static final String VERSION = "0.5.0";
     private static final Pattern CODE = Pattern.compile("^NORTIX-[A-Z0-9]{4}-[A-Z0-9]{4}$");
     private final ProxyServer proxy;
     private final Logger logger;
@@ -47,6 +48,7 @@ public final class NortixVelocityPlugin {
     private final Properties config = new Properties();
     private final String instanceId = UUID.randomUUID().toString();
     private volatile String verificationCode = "";
+    private volatile PluginRequestSigner requestSigner;
 
     @Inject
     public NortixVelocityPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -119,16 +121,19 @@ public final class NortixVelocityPlugin {
                 if (!verificationCode.isEmpty()) checkStatus(invocation);
                 return;
             }
-            if (args.length == 3 && args[0].equalsIgnoreCase("connect")) {
+            if (args.length == 4 && args[0].equalsIgnoreCase("connect")) {
                 config.setProperty("server-id", args[1]);
-                config.setProperty("server-token", args[2]);
+                config.setProperty("server-key-id", args[2]);
+                config.setProperty("server-private-key", args[3]);
+                config.remove("server-token");
                 saveConfig();
+                reloadSigningCredentials();
                 invocation.source().sendMessage(Component.text(
-                    "Nortix analytics connected. The token is stored privately and is never printed."));
+                    "Nortix signed analytics connected. The private key is stored locally and never printed."));
                 return;
             }
             invocation.source().sendMessage(Component.text(
-                "/nortixproxy verify CODE, /nortixproxy connect SERVER_ID TOKEN, /nortixproxy status, or /nortixproxy clear"));
+                "/nortixproxy verify CODE, /nortixproxy connect SERVER_ID KEY_ID PRIVATE_KEY, /nortixproxy status, or /nortixproxy clear"));
         }
     }
 
@@ -151,7 +156,7 @@ public final class NortixVelocityPlugin {
                 return;
             }
             String serverId = config.getProperty("server-id", "").trim();
-            if (serverId.isEmpty() || config.getProperty("server-token", "").trim().isEmpty()) {
+            if (serverId.isEmpty() || requestSigner == null) {
                 invocation.source().sendMessage(Component.text("Nortix profiles are not connected on this proxy."));
                 return;
             }
@@ -191,9 +196,11 @@ public final class NortixVelocityPlugin {
             config.putIfAbsent("plugin-motd", "true");
             config.putIfAbsent("base-motd", "A Minecraft Network");
             config.putIfAbsent("server-id", "");
-            config.putIfAbsent("server-token", "");
+            config.putIfAbsent("server-key-id", "");
+            config.putIfAbsent("server-private-key", "");
             config.putIfAbsent("privacy-conscious-analytics", "true");
             verificationCode = normalize(config.getProperty("verification-code"));
+            reloadSigningCredentials();
             saveConfig();
         } catch (IOException error) {
             logger.error("Could not load Nortix configuration", error);
@@ -205,6 +212,22 @@ public final class NortixVelocityPlugin {
             config.store(output, "Nortix ownership verification");
         } catch (IOException error) {
             logger.error("Could not save Nortix configuration", error);
+        }
+    }
+
+    private void reloadSigningCredentials() {
+        String serverId = config.getProperty("server-id", "").trim();
+        try {
+            requestSigner = new PluginRequestSigner(
+                serverId,
+                config.getProperty("server-key-id", "").trim(),
+                config.getProperty("server-private-key", "").trim()
+            );
+        } catch (Exception error) {
+            requestSigner = null;
+            if (!serverId.isEmpty()) {
+                logger.warn("Nortix signing credentials are incomplete or invalid.");
+            }
         }
     }
 
@@ -261,8 +284,7 @@ public final class NortixVelocityPlugin {
         if (!Boolean.parseBoolean(config.getProperty("privacy-conscious-analytics", "true"))) return;
         proxy.getScheduler().buildTask(this, () -> {
             String serverId = config.getProperty("server-id", "").trim();
-            String token = config.getProperty("server-token", "").trim();
-            if (serverId.isEmpty() || !token.startsWith("npx_")) return;
+            if (serverId.isEmpty() || requestSigner == null) return;
             String players = proxy.getAllPlayers().stream().map(player -> {
                 String backend = player.getCurrentServer()
                     .map(connection -> connection.getServerInfo().getName())
@@ -310,8 +332,7 @@ public final class NortixVelocityPlugin {
         connection.setReadTimeout(5000);
         connection.setRequestProperty("Accept", "application/json");
         if (authenticated) {
-            connection.setRequestProperty("Authorization",
-                "Bearer " + config.getProperty("server-token", "").trim());
+            requestSigner.sign(connection, method, path, body, idempotencyKey(body));
         }
         if (body != null) {
             connection.setDoOutput(true);
@@ -329,6 +350,16 @@ public final class NortixVelocityPlugin {
         }
         if (status < 200 || status >= 300) throw new IllegalStateException("HTTP " + status + ": " + response);
         return response;
+    }
+
+    private static String idempotencyKey(String body) {
+        if (body != null) {
+            java.util.regex.Matcher matcher = Pattern
+                .compile("\"id\":\"([A-Za-z0-9:_-]{8,160})\"")
+                .matcher(body);
+            if (matcher.find()) return matcher.group(1);
+        }
+        return UUID.randomUUID().toString();
     }
 
     private void clearCode() {

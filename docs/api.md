@@ -66,6 +66,9 @@ promise.
 - `GET /sparks/sponsored-stores`
 - `GET /sparks/sponsored-purchases`
 - `POST /sparks/sponsored-purchases`
+- `GET /sparks/server-stores`
+- `GET /sparks/server-store-purchases`
+- `POST /sparks/server-store-purchases`
 - `GET /profile/cosmetics`
 - `PUT /profile/cosmetics/equipped`
 - `DELETE /profile/cosmetics/equipped`
@@ -83,6 +86,11 @@ tester level. Equipped selections are constrained to one item per typed slot.
 Sponsored gift requests use a separate catalog and fulfillment domain. Prices, required delivery
 fields, availability, status, debits, and refunds are backend-controlled. Player purchase queries
 are always scoped to the authenticated account.
+Verified servers can also publish their own Sparks catalogs. A purchase may target the buyer or a
+gift recipient's Nortix username, but delivery is allowed only through that recipient's verified
+premium identity or active identity link for the exact server. Stock and Sparks debits are updated
+atomically. Commands are snapshotted at purchase time, remain private to authorized owners and the
+server's signed plugin, and a terminal delivery failure automatically restores stock and Sparks.
 
 ## Owner operations
 
@@ -91,6 +99,10 @@ are always scoped to the authenticated account.
 - `GET /owner/campaign-balance`
 - `POST /owner/campaign-balance/checkout`
 - `GET /owner/analytics`
+- `GET|PUT /owner/servers/:id/store`
+- `POST /owner/servers/:id/store/items`
+- `PATCH /owner/servers/:id/store/items/:itemId`
+- `GET /owner/servers/:id/store/purchases`
 
 The checkout endpoint returns a mock session locally. `POST /payments/webhooks/mock` verifies an
 HMAC signature, stores a unique provider event, and creates one idempotent purchased-credit entry.
@@ -131,14 +143,19 @@ reservation. Already verified player Sparks are not reversed.
 - `GET /integrations/campaigns/:campaignId/config`
 - `POST /plugin/presence`
 - `GET /plugin/public-profiles/:minecraftUsername`
+- `GET /plugin/store-deliveries/next`
+- `POST /plugin/store-deliveries/result`
+- `POST /owner/servers/:id/plugin-credentials`
 - `GET /owner/servers/:id/campaign-eligibility`
 
 See [integrations.md](integrations.md) for signatures and replay protection.
 
-Plugin presence snapshots are authenticated with a server-scoped token. Nortix stores aggregate
-counts and server-scoped one-way UUID hashes for at most 14 days. Campaign eligibility requires at
-least 10 average active players across a fresh, sufficiently-spread seven-day sample history, and
-is checked during both campaign creation and submission.
+Plugin requests are authenticated with a per-server P-256 key pair. The API stores only the public
+key and verifies a signature over the method, path, body digest, timestamp, nonce, and idempotency
+key. Nortix stores aggregate counts and server-scoped one-way UUID hashes for at most 14 days.
+Campaign eligibility requires at least 10 average active players across a fresh,
+sufficiently-spread seven-day sample history, and is checked during both campaign creation and
+submission.
 
 The plugin profile endpoint returns only an allowlisted public tester summary. It never returns
 Sparks, campaign history, identity records, internal account IDs, moderation state, or private

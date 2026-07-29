@@ -194,6 +194,12 @@ const privateRouteMetadata: Record<string, Omit<SeoProps, "path">> = {
     noIndex: true,
     image: null,
   },
+  "/owner/store": {
+    title: "Manage Server Store",
+    description: "Manage a verified Minecraft server's Sparks store and automated item delivery.",
+    noIndex: true,
+    image: null,
+  },
   "/admin": {
     title: "Nortix Administration",
     description: "Restricted Nortix administration and moderation workspace.",

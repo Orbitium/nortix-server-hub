@@ -11,6 +11,7 @@ describe("route SEO metadata", () => {
     expect(resolveRouteSeo("/sign-in")?.title).toBe("Sign in to Nortix");
     expect(resolveRouteSeo("/register")?.title).toBe("Create a Nortix Account");
     expect(resolveRouteSeo("/owner/servers/new")?.title).toBe("Register a Minecraft Server");
+    expect(resolveRouteSeo("/owner/store")?.title).toBe("Manage Server Store");
     expect(resolveRouteSeo("/admin")?.title).toBe("Nortix Administration");
     expect(resolveRouteSeo("/admin/enroll")?.title).toBe("Nortix Admin Enrollment");
   });

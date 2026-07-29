@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation project(":contracts")
     compileOnly "com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT"
 }
 
@@ -16,9 +17,12 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 8
 }
 
+tasks.withType(Jar).configureEach {
+    from project(":contracts").sourceSets.main.output
+}
+
 processResources {
     filesMatching("plugin.yml") {
         expand(version: project.version)
     }
 }
-

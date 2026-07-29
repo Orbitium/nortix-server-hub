@@ -349,6 +349,14 @@ export function App() {
             }
           />
           <Route
+            path="owner/store"
+            element={
+              <RequireSignIn>
+                <OwnerPlatform />
+              </RequireSignIn>
+            }
+          />
+          <Route
             path="owner/settings"
             element={
               <RequireSignIn>
