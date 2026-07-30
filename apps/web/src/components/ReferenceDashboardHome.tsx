@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  Award,
   BadgeCheck,
   Compass,
   Gamepad2,
@@ -10,7 +11,12 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { artIndexFor, usePublicCampaigns, usePublicServers } from "../features/api-data";
+import {
+  artIndexFor,
+  usePublicCampaigns,
+  usePublicServers,
+  useServerHighlights,
+} from "../features/api-data";
 import { useI18n } from "../lib/i18n";
 import { ServerCard } from "./ServerCard";
 import { CardGridSkeleton, ListSkeleton } from "./LoadingSkeletons";
@@ -24,6 +30,12 @@ export function ReferenceDashboardHome() {
     isError: serversError,
     refetch: refetchServers,
   } = usePublicServers();
+  const {
+    data: serverHighlights,
+    isLoading: serverHighlightsLoading,
+    isError: serverHighlightsError,
+    refetch: refetchServerHighlights,
+  } = useServerHighlights();
   const campaigns = data?.items ?? [];
   const featuredServers = serverData?.items.slice(0, 8) ?? [];
   const categories = ["__all__", ...new Set(campaigns.map((item) => item.category))];
@@ -94,16 +106,86 @@ export function ReferenceDashboardHome() {
             label="Loading featured servers"
           />
         ) : (
-        <div className="featured-servers-row">
-          {featuredServers.map((server) => (
-            <ServerCard server={server} key={server.id} />
-          ))}
-          {serversError ? (
-            <button type="button" onClick={() => void refetchServers()}>
-              {t("home.retry")}
-            </button>
-          ) : null}
+          <div className="featured-servers-row">
+            {featuredServers.map((server) => (
+              <ServerCard server={server} key={server.id} />
+            ))}
+            {serversError ? (
+              <button type="button" onClick={() => void refetchServers()}>
+                {t("home.retry")}
+              </button>
+            ) : null}
+          </div>
+        )}
+      </section>
+
+      <section className="home-section">
+        <div className="home-section__heading">
+          <div>
+            <h2>
+              <BadgeCheck /> Nortix Verified
+            </h2>
+            <p>Ownership-verified servers approved for public discovery on Nortix.</p>
+          </div>
+          <Link to="/servers">
+            {t("home.viewAll")} <ArrowRight />
+          </Link>
         </div>
+        {serverHighlightsLoading ? (
+          <CardGridSkeleton
+            cards={4}
+            className="featured-servers-row"
+            label="Loading Nortix Verified servers"
+          />
+        ) : (
+          <div className="featured-servers-row">
+            {(serverHighlights?.verified ?? []).map((server) => (
+              <ServerCard server={server} key={server.id} />
+            ))}
+            {!serverHighlightsError && serverHighlights?.verified.length === 0 ? (
+              <p>No verified servers are available right now.</p>
+            ) : null}
+            {serverHighlightsError ? (
+              <button type="button" onClick={() => void refetchServerHighlights()}>
+                {t("home.retry")}
+              </button>
+            ) : null}
+          </div>
+        )}
+      </section>
+
+      <section className="home-section">
+        <div className="home-section__heading">
+          <div>
+            <h2>
+              <Award /> Most community awards
+            </h2>
+            <p>Servers with the most community emojis and award icons given all time.</p>
+          </div>
+          <Link to="/servers">
+            {t("home.viewAll")} <ArrowRight />
+          </Link>
+        </div>
+        {serverHighlightsLoading ? (
+          <CardGridSkeleton
+            cards={4}
+            className="featured-servers-row"
+            label="Loading most-awarded servers"
+          />
+        ) : (
+          <div className="featured-servers-row">
+            {(serverHighlights?.mostAwarded ?? []).map((server) => (
+              <ServerCard server={server} key={server.id} />
+            ))}
+            {!serverHighlightsError && serverHighlights?.mostAwarded.length === 0 ? (
+              <p>No community awards have been given to servers yet.</p>
+            ) : null}
+            {serverHighlightsError ? (
+              <button type="button" onClick={() => void refetchServerHighlights()}>
+                {t("home.retry")}
+              </button>
+            ) : null}
+          </div>
         )}
       </section>
 

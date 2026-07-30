@@ -653,45 +653,51 @@ function OwnerDashboard({ server, setServer }: { server: ServerRecord; setServer
 }
 
 function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer: (server: ServerRecord) => void }) {
-  const [tab, setTab] = useState("Overview");
-  const [range, setRange] = useState("Last 30 days");
-  const days = Number.parseInt(range.replace(/\D/g, ""), 10) || 30;
-  const { data: analytics, isLoading: analyticsLoading } = useOwnerAnalytics(
-    server.id,
-    Math.min(90, Math.max(7, days)),
-  );
+  const [days, setDays] = useState(30);
+  const {
+    data: analytics,
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+  } = useOwnerAnalytics(server.id, days);
   const analyticsMaximum = Math.max(1, ...(analytics?.daily.map((day) => day.impressions) ?? [1]));
-  const trendBars = (analytics?.daily ?? []).map((day) => Math.max(4, (day.impressions / analyticsMaximum) * 100));
+  const trendBars = (analytics?.daily ?? []).map((day) => ({
+    ...day,
+    impressionHeight: (day.impressions / analyticsMaximum) * 100,
+    viewHeight: (day.views / analyticsMaximum) * 100,
+  }));
   const retentionBars = [analytics?.retention.day1, analytics?.retention.day7].filter((value): value is number => value != null);
+  const formatEventLabel = (value: string) =>
+    value
+      .toLowerCase()
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  const formatDate = (value: string) =>
+    new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(
+      new Date(`${value}T00:00:00.000Z`),
+    );
+  const axisDates = trendBars.filter(
+    (_, index) =>
+      index === 0 ||
+      index === trendBars.length - 1 ||
+      index === Math.floor((trendBars.length - 1) / 2),
+  );
   return (
     <div className="dashboard-page owner-platform">
       <OwnerHeader
         eyebrow="PLAYER INTELLIGENCE"
         title="Analytics"
-        description="Understand acquisition, activation, retention, player sentiment, and the experiences most likely to influence long-term server health."
+        description="Review observed discovery, connection, participation, and retention signals for this server."
         server={server}
         setServer={setServer}
-        action={
-          <button className="button button--secondary">
-            <Download /> Export dataset
-          </button>
-        }
       />
       <div className="owner-analytics-nav">
-        <div>
-          {["Overview", "Acquisition", "Retention", "Experience", "Feedback"].map((item) => (
-            <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>
-              {item}
-            </button>
-          ))}
-        </div>
         <label>
           <Clock3 />
-          <select value={range} onChange={(event) => setRange(event.target.value)}>
-            <option>Last 7 days</option>
-            <option>Last 30 days</option>
-            <option>Last 90 days</option>
-            <option>Season to date</option>
+          <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
           </select>
         </label>
       </div>
@@ -699,18 +705,23 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
       {analyticsLoading ? (
         <>
           <MetricGridSkeleton items={5} label="Loading analytics summary" />
-          <CardGridSkeleton cards={4} label="Loading analytics charts" />
-          <TableSkeleton rows={4} columns={8} label="Loading cohort data" />
+          <CardGridSkeleton cards={3} label="Loading analytics charts" />
+          <TableSkeleton rows={4} columns={4} label="Loading analytics activity" />
         </>
+      ) : analyticsError || !analytics ? (
+        <section className="card">
+          <h2>Analytics unavailable</h2>
+          <p>We could not load analytics for this server. Try again in a moment.</p>
+        </section>
       ) : (
         <>
       <div className="owner-kpi-grid owner-kpi-grid--analytics">
         {[
-          ["Qualified joins", (analytics?.totals.joins ?? 0).toLocaleString(), "Observed", "seeded campaign join events"],
-          ["Server connections", (analytics?.totals.connections ?? 0).toLocaleString(), "Observed", "seeded connection events"],
-          ["Unique active players", (analytics?.totals.uniquePlayers ?? 0).toLocaleString(), "Observed", "distinct event users"],
-          ["D7 retention", analytics?.retention.day7 == null ? "Insufficient data" : `${analytics.retention.day7}%`, "Backend", analytics?.retention.label ?? "Loading"],
-          ["Participation records", (analytics?.totals.participations ?? 0).toLocaleString(), "Stored", "campaign participation rows"],
+          ["Campaign impressions", analytics.totals.impressions.toLocaleString(), "Observed", `in the last ${analytics.periodDays} days`],
+          ["Campaign views", analytics.totals.views.toLocaleString(), "Observed", `in the last ${analytics.periodDays} days`],
+          ["Qualified joins", analytics.totals.joins.toLocaleString(), "Observed", `in the last ${analytics.periodDays} days`],
+          ["Server connections", analytics.totals.connections.toLocaleString(), "Observed", `in the last ${analytics.periodDays} days`],
+          ["Unique active players", analytics.totals.uniquePlayers.toLocaleString(), "Observed", "distinct authenticated event users"],
         ].map(([label, value, delta, note]) => (
           <article className="card owner-kpi" key={label}>
             <small>{label}</small>
@@ -727,60 +738,49 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
         <section className="card owner-trend-card">
           <div className="owner-card-heading">
             <div>
-              <h2>{tab} trend</h2>
-              <p>Comparable, privacy-conscious player signals across the selected period.</p>
+              <h2>Discovery trend</h2>
+              <p>Observed campaign impressions and views across the selected period.</p>
             </div>
             <span className="owner-quality-chip">
-              <ShieldCheck /> 96% data quality
+              <ShieldCheck /> {analytics.totals.events.toLocaleString()} observed events
             </span>
           </div>
           <div className="owner-dual-trend" aria-label="Primary and comparison analytics trend">
-            {trendBars.map((height, index) => (
-              <i style={{ height: `${height}%` }} key={index}>
-                <b style={{ height: `${Math.max(14, height * 0.62)}%` }} />
+            {trendBars.map((day) => (
+              <i
+                style={{ height: `${day.impressionHeight}%` }}
+                key={day.date}
+                title={`${formatDate(day.date)}: ${day.impressions} impressions, ${day.views} views`}
+              >
+                <b style={{ height: `${day.viewHeight}%` }} />
               </i>
             ))}
           </div>
           <div className="owner-chart-axis">
-            <span>Jun 21</span>
-            <span>Jun 28</span>
-            <span>Jul 5</span>
-            <span>Jul 12</span>
-            <span>Today</span>
+            {axisDates.map((day) => <span key={day.date}>{formatDate(day.date)}</span>)}
           </div>
         </section>
         <section className="card">
           <div className="owner-card-heading">
             <div>
-              <h2>Player segments</h2>
-              <p>How this period’s active audience is composed.</p>
+              <h2>Retention</h2>
+              <p>Verified return rates for players whose first session occurred in this period.</p>
             </div>
-            <Users />
+            <TrendingUp />
           </div>
-          <div className="owner-segment-donut">
-            <div>
-              <span>
-                {analytics?.totals.uniquePlayers ?? 0}<small>active players</small>
-              </span>
+          {retentionBars.length > 0 ? (
+            <div className="retention-chart">
+              {retentionBars.map((height, index) => (
+                <div key={index}>
+                  <i style={{ height: `${height}%` }} />
+                  <span>{index === 0 ? "Day 1" : "Day 7"}</span>
+                  <b>{height}%</b>
+                </div>
+              ))}
             </div>
-            <ul>
-              <li>
-                <i /> New this period <b>42%</b>
-              </li>
-              <li>
-                <i /> Returning regulars <b>31%</b>
-              </li>
-              <li>
-                <i /> Re-engaged <b>17%</b>
-              </li>
-              <li>
-                <i /> At risk <b>10%</b>
-              </li>
-            </ul>
-          </div>
-          <button className="owner-text-button">
-            Build a segment <ArrowUpRight />
-          </button>
+          ) : (
+            <p>{analytics.retention.label}</p>
+          )}
         </section>
       </div>
 
@@ -788,120 +788,62 @@ function OwnerAnalytics({ server, setServer }: { server: ServerRecord; setServer
         <section className="card">
           <div className="owner-card-heading">
             <div>
-              <h2>Retention curve</h2>
-              <p>Share of a new-player cohort returning after its first session.</p>
+              <h2>Campaign participation</h2>
+              <p>Stored participation records for campaigns on this server.</p>
             </div>
-            <TrendingUp />
+            <BarChart3 />
           </div>
-          <div className="retention-chart">
-            {retentionBars.map((height, index) => (
-              <div key={index}>
-                <i style={{ height: `${height}%` }} />
-                <span>{index === 0 ? "Day 0" : `Day ${index}`}</span>
-                <b>{height}%</b>
+          {analytics.campaigns.length > 0 ? (
+            analytics.campaigns.map((campaign) => (
+              <div className="owner-source-row" key={campaign.id}>
+                <span>
+                  <strong>{campaign.title}</strong>
+                  <small>{formatEventLabel(campaign.status)}</small>
+                </span>
+                <b>{campaign._count.participations.toLocaleString()}</b>
               </div>
-            ))}
-          </div>
-          <div className="owner-benchmark">
-            <CheckCircle2 />
-            <span>
-              <strong>Above category benchmark</strong>
-              <small>Your Day 7 retention is 6.8 points above similar Economy servers.</small>
-            </span>
-          </div>
+            ))
+          ) : (
+            <p>No campaigns have been created for this server.</p>
+          )}
         </section>
         <section className="card">
           <div className="owner-card-heading">
             <div>
-              <h2>Acquisition sources</h2>
-              <p>Qualified joins attributed to the last meaningful source.</p>
+              <h2>Recent event activity</h2>
+              <p>The latest observed analytics events in the selected period.</p>
             </div>
-            <Network />
+            <Database />
           </div>
-          {[
-            ["Nortix discovery", "1,604", "43.2%", 86],
-            ["Direct / saved server", "912", "24.6%", 62],
-            ["Friend or referral", "681", "18.3%", 47],
-            ["Campaign participation", "332", "8.9%", 29],
-            ["Other", "185", "5.0%", 18],
-          ].map(([label, value, percent, width]) => (
-            <div className="owner-source-row" key={label}>
-              <span>
-                <strong>{label}</strong>
-                <small>{value} joins</small>
-              </span>
-              <div>
-                <i style={{ width: `${width}%` }} />
+          {analytics.recentEvents.length > 0 ? (
+            analytics.recentEvents.map((event) => (
+              <div className="owner-source-row" key={event.id}>
+                <span>
+                  <strong>{formatEventLabel(event.type)}</strong>
+                  <small>{new Date(event.occurredAt).toLocaleString()}</small>
+                </span>
+                <b>{formatEventLabel(event.source)}</b>
               </div>
-              <b>{percent}</b>
-            </div>
-          ))}
-        </section>
-        <section className="card">
-          <div className="owner-card-heading">
-            <div>
-              <h2>Experience signals</h2>
-              <p>Where feedback and behavior point in the same direction.</p>
-            </div>
-            <MessageSquareText />
-          </div>
-          {[
-            ["Tutorial clarity", "Strong", "+12% activation", "positive"],
-            ["Spawn navigation", "Needs work", "18% early exits", "warning"],
-            ["Economy pacing", "Mixed", "Wide cohort variance", "neutral"],
-            ["Community welcome", "Strong", "+9% D7 retention", "positive"],
-          ].map(([label, signal, impact, tone]) => (
-            <div className="owner-experience-row" key={label}>
-              <span>
-                <strong>{label}</strong>
-                <small>{impact}</small>
-              </span>
-              <i className={tone}>{signal}</i>
-            </div>
-          ))}
+            ))
+          ) : (
+            <p>No analytics events were observed in this period.</p>
+          )}
         </section>
       </div>
 
       <section className="card">
         <div className="owner-card-heading">
           <div>
-            <h2>Cohort explorer</h2>
-            <p>Compare how audience, version, source, and first-session behavior relate to return outcomes.</p>
+            <h2>Data availability</h2>
+            <p>Analytics reports only events received and accepted by Nortix for this server.</p>
           </div>
-          <button>
-            <Filter /> Edit dimensions
-          </button>
+          <ShieldCheck />
         </div>
-        <div className="owner-table-wrap">
-          <table className="owner-table">
-            <thead>
-              <tr>
-                <th>Cohort</th>
-                <th>Players</th>
-                <th>Activated</th>
-                <th>Median session</th>
-                <th>Day 1</th>
-                <th>Day 7</th>
-                <th>Day 30</th>
-                <th>Sentiment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ["Java · Nortix discovery", "1,842", "68.2%", "52m", "56.4%", "42.8%", "24.1%", "4.7"],
-                ["Java · Search discovery", "1,104", "54.7%", "39m", "47.1%", "31.6%", "17.8%", "4.2"],
-                ["Java · Friend referral", "918", "72.1%", "58m", "61.8%", "48.3%", "29.4%", "4.8"],
-                ["Returning after 30d+", "642", "63.9%", "49m", "52.2%", "39.7%", "22.6%", "4.5"],
-              ].map((row) => (
-                <tr key={row[0]}>
-                  {row.map((cell, index) => (
-                    <td key={`${row[0]}-${index}`}>{index === 0 ? <strong>{cell}</strong> : cell}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <p>
+          {analytics.totals.events > 0
+            ? `${analytics.totals.events.toLocaleString()} events were observed in the last ${analytics.periodDays} days. Metrics not returned by the analytics service are not estimated.`
+            : `No events were observed in the last ${analytics.periodDays} days. Connect the server plugin and generate eligible activity to begin collecting analytics.`}
+        </p>
       </section>
         </>
       )}

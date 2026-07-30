@@ -12033,6 +12033,7 @@ button.economy-alert {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
   color: #b9c3cc;
   font-size: 10px;
 }

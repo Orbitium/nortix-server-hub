@@ -939,6 +939,71 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       total: ownedTotal + discoveredItems.length,
     };
   });
+  app.get("/v1/servers/highlights", async () => {
+    const highlightSelect = {
+      ...publicServerSelect,
+      hypeScore: true,
+      hypePeriodStart: true,
+      _count: {
+        select: {
+          reviews: { where: { moderationStatus: "APPROVED" as const } },
+          awardPurchases: true,
+        },
+      },
+      reviews: {
+        where: { moderationStatus: "APPROVED" as const },
+        select: { rating: true },
+      },
+    } as const;
+    const publicWhere = {
+      publicListing: true,
+      moderationStatus: "APPROVED" as const,
+      edition: "JAVA" as const,
+    };
+    const [verified, mostAwarded] = await prisma.$transaction([
+      prisma.server.findMany({
+        where: { ...publicWhere, verificationStatus: "VERIFIED" },
+        select: highlightSelect,
+        orderBy: [{ online: "desc" }, { playerCount: "desc" }, { createdAt: "desc" }],
+        take: 8,
+      }),
+      prisma.server.findMany({
+        where: { ...publicWhere, awardPurchases: { some: {} } },
+        select: highlightSelect,
+        orderBy: [
+          { awardPurchases: { _count: "desc" } },
+          { online: "desc" },
+          { playerCount: "desc" },
+        ],
+        take: 8,
+      }),
+    ]);
+    const present = (
+      server: (typeof verified)[number] | (typeof mostAwarded)[number],
+    ) => {
+      const { _count, hypeScore, hypePeriodStart, reviews, ...publicServer } = server;
+      const rating =
+        reviews.length > 0
+          ? Number(
+              (
+                reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+              ).toFixed(1),
+            )
+          : null;
+      return {
+        ...publicServer,
+        source: "NORTIX" as const,
+        rating,
+        reviewCount: _count.reviews,
+        awardCount: _count.awardPurchases,
+        hype: hypeService.present(hypeScore, hypePeriodStart),
+      };
+    };
+    return {
+      verified: verified.map(present),
+      mostAwarded: mostAwarded.map(present),
+    };
+  });
   app.get("/v1/servers/:slug", async (request, reply) => {
     const { slug } = request.params as { slug: string };
     const server = await prisma.server.findFirst({
@@ -2953,7 +3018,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
         retention: {
           day1: null,
           day7: null,
-          label: "Not enough verified return events in the seeded dataset.",
+          label: "Not enough verified return events are available for this period.",
         },
       };
     },

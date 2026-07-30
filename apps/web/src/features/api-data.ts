@@ -103,6 +103,11 @@ export type PublicServer = {
   awardCount?: number;
 };
 
+export type ServerHighlights = {
+  verified: PublicServer[];
+  mostAwarded: PublicServer[];
+};
+
 export type PublicReview = {
   id: string;
   rating: number;
@@ -843,6 +848,12 @@ export const usePublicServers = () =>
   useQuery({
     queryKey: ["public-servers"],
     queryFn: () => api<Paginated<PublicServer>>("/servers?pageSize=50"),
+  });
+
+export const useServerHighlights = () =>
+  useQuery({
+    queryKey: ["server-highlights"],
+    queryFn: () => api<ServerHighlights>("/servers/highlights"),
   });
 
 export const usePublicServer = (slug?: string) =>
