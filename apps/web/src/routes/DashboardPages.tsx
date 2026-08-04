@@ -1174,9 +1174,28 @@ export function SparksShopPage() {
         {cosmetics
           .filter((item) => category === "ALL" || item.type === category)
           .map((item) => (
-            <Card key={item.id} className="cosmetic-card">
+            <Card
+              key={item.id}
+              className="cosmetic-card sparks-shop-card"
+              role="button"
+              tabIndex={0}
+              aria-label={`View ${item.name}`}
+              onClick={() => {
+                if (sparksLoading) return;
+                setPurchaseMessage("");
+                setSelected(item);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  if (sparksLoading) return;
+                  setPurchaseMessage("");
+                  setSelected(item);
+                }
+              }}
+            >
               <div
-                className="cosmetic-preview"
+                className="cosmetic-preview cosmetic-card__banner"
                 style={{
                   backgroundColor: String(item.preview.primary ?? item.preview.color ?? "") || undefined,
                   "--cosmetic-primary": String(item.preview.primary ?? "#17382e"),
@@ -1195,22 +1214,16 @@ export function SparksShopPage() {
                 />
                 <Badge tone={item.rarity === "EPIC" ? "purple" : "neutral"}>{item.rarity}</Badge>
               </div>
-              <div>
+              <div className="cosmetic-card__body">
                 <small>{item.type.replaceAll("_", " ")}</small>
                 <h3>{item.name}</h3>
-                <button
-                  disabled={sparksLoading}
-                  onClick={() => {
-                    setPurchaseMessage("");
-                    setSelected(item);
-                  }}
-                >
+                <span className="cosmetic-card__price">
                   {item.purchased ? (
                     "View · Owned"
                   ) : (
                     <Sparks value={item.sparksPrice.toLocaleString()} />
                   )}
-                </button>
+                </span>
               </div>
             </Card>
           ))}
@@ -1273,39 +1286,58 @@ export function SparksShopPage() {
             </div>
             <div className="cosmetic-grid">
               {store.items.map((item) => (
-                <Card className="sponsored-item-card server-store-item-card" key={item.id}>
-                  {item.imageUrls[0] ? (
-                    <img
-                      src={item.imageUrls[0]}
-                      alt=""
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : <Gift />}
-                  <div>
+                <Card
+                  className="sponsored-item-card server-store-item-card sparks-shop-card"
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Purchase ${item.name}`}
+                  onClick={() => {
+                    if (sparksLoading) return;
+                    setSelectedServerItem({ store, item });
+                    setServerStoreQuantity(1);
+                    setGiftRecipient("");
+                    setGiftMessage("");
+                    setServerStoreAttemptKey(crypto.randomUUID());
+                    setServerStoreMessage("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      if (sparksLoading) return;
+                      setSelectedServerItem({ store, item });
+                      setServerStoreQuantity(1);
+                      setGiftRecipient("");
+                      setGiftMessage("");
+                      setServerStoreAttemptKey(crypto.randomUUID());
+                      setServerStoreMessage("");
+                    }
+                  }}
+                >
+                  <div className="sponsored-item-card__banner">
+                    {item.imageUrls[0] ? (
+                      <img
+                        src={item.imageUrls[0]}
+                        alt={`${item.name} banner`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : <Gift />}
+                  </div>
+                  <div className="sponsored-item-card__body">
                     <small>
                       {store.server.name} · {storeItemCategoryLabels[item.category]}
                     </small>
                     <h3>{item.name}</h3>
                     <p>{item.description}</p>
-                    <span>
+                    <span className="sponsored-item-card__meta">
                       {item.stockQuantity === null
                         ? "Available"
                         : `${item.stockQuantity.toLocaleString()} in stock`}
                     </span>
-                    <Button
-                      disabled={sparksLoading}
-                      onClick={() => {
-                        setSelectedServerItem({ store, item });
-                        setServerStoreQuantity(1);
-                        setGiftRecipient("");
-                        setGiftMessage("");
-                        setServerStoreAttemptKey(crypto.randomUUID());
-                        setServerStoreMessage("");
-                      }}
-                    >
+                    <span className="cosmetic-card__price">
                       Purchase · <Sparks value={item.sparksPrice.toLocaleString()} />
-                    </Button>
+                    </span>
                   </div>
                 </Card>
               ))}
@@ -1473,27 +1505,52 @@ export function SparksShopPage() {
             </div>
             <div className="cosmetic-grid">
               {store.items.map((item) => (
-                <Card className="sponsored-item-card" key={item.id}>
-                  {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Gift />}
-                  <div>
+                <Card
+                  className="sponsored-item-card sparks-shop-card"
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Request gift: ${item.name}`}
+                  onClick={() => {
+                    if (sparksLoading) return;
+                    setSelectedSponsored({ store, item });
+                    setSponsoredDetails({});
+                    setSponsoredQuantity(1);
+                    setSponsoredAttemptKey(crypto.randomUUID());
+                    setSponsoredMessage("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      if (sparksLoading) return;
+                      setSelectedSponsored({ store, item });
+                      setSponsoredDetails({});
+                      setSponsoredQuantity(1);
+                      setSponsoredAttemptKey(crypto.randomUUID());
+                      setSponsoredMessage("");
+                    }
+                  }}
+                >
+                  <div className="sponsored-item-card__banner">
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={`${item.name} banner`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : <Gift />}
+                  </div>
+                  <div className="sponsored-item-card__body">
                     <small>
                       {store.name} · {storeItemCategoryLabels[item.category]}
                     </small>
                     <h3>{item.name}</h3>
                     <p>{item.description}</p>
-                    <span>{item.fulfillmentSummary}</span>
-                    <Button
-                      disabled={sparksLoading}
-                      onClick={() => {
-                        setSelectedSponsored({ store, item });
-                        setSponsoredDetails({});
-                        setSponsoredQuantity(1);
-                        setSponsoredAttemptKey(crypto.randomUUID());
-                        setSponsoredMessage("");
-                      }}
-                    >
+                    <span className="sponsored-item-card__meta">{item.fulfillmentSummary}</span>
+                    <span className="cosmetic-card__price">
                       Request gift · <Sparks value={item.sparksPrice.toLocaleString()} />
-                    </Button>
+                    </span>
                   </div>
                 </Card>
               ))}
@@ -2626,6 +2683,9 @@ export function ProfilePage() {
   const [profileMessage, setProfileMessage] = useState("");
   const [cosmeticType, setCosmeticType] = useState<ProfileCosmeticType>("AVATAR");
   const [cosmeticBusy, setCosmeticBusy] = useState<string>();
+  const [selectedProfileCosmetic, setSelectedProfileCosmetic] =
+    useState<ProfileCosmeticItem | null>(null);
+  const [profileCosmeticPurchaseBusy, setProfileCosmeticPurchaseBusy] = useState(false);
   const [serverOwnerMode, setServerOwnerMode] = useState(() => readRolePreference() === "owner");
   const [profileDraft, setProfileDraft] = useState({
     username: "",
@@ -2833,13 +2893,9 @@ export function ProfilePage() {
         );
         return;
       }
-      if (
-        !window.confirm(
-          `Unlock ${item.name} for ${item.sparksPrice.toLocaleString()} Sparks? Sparks have no cash value.`,
-        )
-      ) {
-        return;
-      }
+      // Show the same item information popup used by the Sparks shop.
+      setSelectedProfileCosmetic(item);
+      return;
     }
     setCosmeticBusy(item.id);
     setProfileMessage("");
@@ -3025,7 +3081,6 @@ export function ProfilePage() {
             <Sparkles />
             <span>
               <strong>{(sparksSummary?.balance ?? 0).toLocaleString()} Sparks</strong>
-              <small>Optional, non-withdrawable points for cosmetic unlocks</small>
             </span>
             <Link to="/dashboard/sparks-shop">Open shop</Link>
           </div>
@@ -3162,9 +3217,6 @@ export function ProfilePage() {
               </button>
             ))}
           </div>
-          <p className="profile-cosmetics-note">
-            Level rewards unlock automatically. Sparks purchases are permanent and cosmetic only.
-          </p>
         </Card>
       </div>
 
@@ -3578,6 +3630,117 @@ export function ProfilePage() {
           <div className="modal__footer">
             <Button type="button" onClick={() => setClaimOpen(false)}>
               Done
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
+      {selectedProfileCosmetic ? (
+        <Modal
+          title={selectedProfileCosmetic.name}
+          className="modal--compact sparks-purchase-modal"
+          onClose={() => setSelectedProfileCosmetic(null)}
+        >
+          <div className="modal__body sparks-purchase-dialog">
+            <div
+              className="cosmetic-preview cosmetic-preview--modal"
+              style={
+                {
+                  backgroundColor:
+                    String(
+                      selectedProfileCosmetic.preview.primary ??
+                        selectedProfileCosmetic.preview.color ??
+                        "",
+                    ) || undefined,
+                  "--cosmetic-primary": String(
+                    selectedProfileCosmetic.preview.primary ?? "#17382e",
+                  ),
+                  "--cosmetic-accent": String(
+                    selectedProfileCosmetic.preview.accent ?? "#98e66e",
+                  ),
+                } as React.CSSProperties
+              }
+            >
+              <CosmeticGlyph
+                item={{
+                  preview: {
+                    primary: String(
+                      selectedProfileCosmetic.preview.primary ?? "#17382e",
+                    ),
+                    accent: String(
+                      selectedProfileCosmetic.preview.accent ?? "#98e66e",
+                    ),
+                    icon: String(selectedProfileCosmetic.preview.icon ?? "sparkles"),
+                    pattern: "plain",
+                  },
+                }}
+              />
+            </div>
+            <div className="sparks-purchase-dialog__copy">
+              <Badge
+                tone={selectedProfileCosmetic.rarity === "EPIC" ? "purple" : "neutral"}
+              >
+                {selectedProfileCosmetic.type} · {selectedProfileCosmetic.rarity}
+              </Badge>
+              <p>{selectedProfileCosmetic.description}</p>
+            </div>
+            <div className="sparks-purchase-dialog__quantity">
+              <span>
+                <strong>Quantity</strong>
+                <small>Permanent cosmetic unlocks can only be purchased once.</small>
+              </span>
+              <input aria-label="Quantity" type="number" value={1} min={1} max={1} disabled />
+            </div>
+            <div className="withdraw-summary">
+              <span>
+                Price <b>{selectedProfileCosmetic.sparksPrice.toLocaleString()} Sparks</b>
+              </span>
+              <span>
+                Remaining Sparks
+                <strong>
+                  {Math.max(
+                    0,
+                    (sparksSummary?.balance ?? 0) - selectedProfileCosmetic.sparksPrice,
+                  ).toLocaleString()}
+                </strong>
+              </span>
+            </div>
+            {profileMessage ? <p role="status">{profileMessage}</p> : null}
+          </div>
+          <div className="modal__footer">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setSelectedProfileCosmetic(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={profileCosmeticPurchaseBusy}
+              onClick={async () => {
+                setProfileCosmeticPurchaseBusy(true);
+                setProfileMessage("");
+                try {
+                  await api("/sparks/purchases", {
+                    method: "POST",
+                    body: JSON.stringify({ itemId: selectedProfileCosmetic.id }),
+                  });
+                  await api("/profile/cosmetics/equipped", {
+                    method: "PUT",
+                    body: JSON.stringify({ itemId: selectedProfileCosmetic.id }),
+                  });
+                  await Promise.all([refetchCosmetics(), refetchSparks()]);
+                  setSelectedProfileCosmetic(null);
+                  setProfileMessage(`${selectedProfileCosmetic.name} equipped.`);
+                } catch (error) {
+                  setProfileMessage(
+                    error instanceof Error ? error.message : "The cosmetic could not be unlocked.",
+                  );
+                } finally {
+                  setProfileCosmeticPurchaseBusy(false);
+                }
+              }}
+            >
+              {profileCosmeticPurchaseBusy ? "Purchasing…" : "Purchase · 1 item"}
             </Button>
           </div>
         </Modal>

@@ -3987,23 +3987,50 @@ td > small {
   gap: 12px;
 }
 
-.sponsored-item-card > img {
-  width: 100%;
-  height: 150px;
-  object-fit: cover;
+.sponsored-item-card__banner {
+  position: relative;
+  overflow: hidden;
   border-radius: 12px;
 }
 
-.sponsored-item-card > svg {
+.sponsored-item-card__banner > img {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
+
+.sponsored-item-card__banner > svg {
   width: 42px;
   height: 42px;
+  margin: 40px auto 0;
   color: var(--nortix-green);
 }
 
-.sponsored-item-card span,
+.sponsored-item-card__body {
+  display: grid;
+  gap: 6px;
+}
+
+.sponsored-item-card__body small {
+  color: var(--text-muted);
+}
+
+.sponsored-item-card__body h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.sponsored-item-card__body p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.sponsored-item-card__meta,
 .sponsored-delivery {
   display: block;
-  margin: 8px 0;
+  margin: 4px 0;
   color: var(--text-muted);
 }
 
@@ -4151,7 +4178,10 @@ td > small {
 .cosmetic--summer {
   background: radial-gradient(circle, #cc8b43, #2b1d31);
 }
-.cosmetic-card > div:last-child {
+.cosmetic-card__banner {
+  overflow: hidden;
+}
+.cosmetic-card__body {
   position: relative;
   padding: 16px;
 }
@@ -4162,15 +4192,60 @@ td > small {
   margin: 3px 0 0;
   font-size: 14px;
 }
-.cosmetic-card button {
-  position: absolute;
-  right: 14px;
-  bottom: 15px;
-  padding: 7px 9px;
+.cosmetic-card__price {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 7px 10px;
   border: 1px solid rgba(139, 92, 246, 0.25);
   border-radius: 7px;
   background: var(--sparks-purple-soft);
+  white-space: nowrap;
+}
+/* Whole sparks-shop card is clickable, with a hover focus animation. */
+.sparks-shop-card {
+  position: relative;
   cursor: pointer;
+  border-radius: 14px;
+  transform: translateZ(0);
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 180ms ease, box-shadow 180ms ease;
+  will-change: transform;
+}
+.sparks-shop-card:hover,
+.sparks-shop-card:focus-visible {
+  outline: none;
+}
+.sparks-shop-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--nortix-green);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+.sparks-shop-card:focus-visible {
+  border-color: var(--nortix-green);
+  box-shadow: 0 0 0 3px var(--nortix-green-soft);
+}
+/* Slightly focus the banner image on hover. */
+.sparks-shop-card .cosmetic-card__banner > svg,
+.sparks-shop-card .sponsored-item-card__banner > img,
+.sparks-shop-card .sponsored-item-card__banner > svg {
+  transform-origin: center;
+  transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sparks-shop-card:hover .cosmetic-card__banner > svg,
+.sparks-shop-card:hover .sponsored-item-card__banner > img,
+.sparks-shop-card:hover .sponsored-item-card__banner > svg {
+  transform: scale(1.07);
+}
+/* Nudge the content below the banner on hover. */
+.sparks-shop-card .cosmetic-card__body,
+.sparks-shop-card .sponsored-item-card__body {
+  transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sparks-shop-card:hover .cosmetic-card__body,
+.sparks-shop-card:hover .sponsored-item-card__body {
+  transform: translateY(-3px);
 }
 .cosmetic-preview--modal {
   height: 220px;
@@ -15753,13 +15828,6 @@ button.economy-alert {
   background: var(--nortix-green);
 }
 
-.profile-cosmetics-note {
-  margin: 16px 0 0;
-  color: var(--text-muted);
-  font-size: 9px;
-  line-height: 1.5;
-}
-
 .profile-edit-form .profile-owner-mode {
   margin: 4px 0 0;
 }
@@ -15867,8 +15935,7 @@ button.economy-alert {
 }
 
 .profile-experience .profile-level-card__meter-scale,
-.profile-experience .profile-gameplay-note,
-.profile-experience .profile-cosmetics-note {
+.profile-experience .profile-gameplay-note {
   font-size: 11.5px;
   line-height: 1.5;
 }
@@ -16974,7 +17041,7 @@ button.economy-alert {
   object-fit: cover;
 }
 
-.server-store-item-card > img {
+.server-store-item-card .sponsored-item-card__banner > img {
   aspect-ratio: 1.35;
   object-fit: cover;
 }

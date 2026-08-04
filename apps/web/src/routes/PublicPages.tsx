@@ -443,6 +443,7 @@ export function BrowseServersPage() {
   const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
   const [version, setVersion] = useState("ALL");
+  const [category, setCategory] = useState("ALL");
   const [serverType, setServerType] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicServers();
   const servers = data?.items ?? [];
@@ -450,9 +451,11 @@ export function BrowseServersPage() {
   const visible = useMemo(
     () =>
       sortServersByCategory(
-        filterServers(servers, { search, category: serverType, version }),
+        filterServers(servers, { search, category: serverType, version }).filter(
+          (server) => category === "ALL" || server.categories.includes(category),
+        ),
       ),
-    [servers, search, version, serverType],
+    [servers, search, version, serverType, category],
   );
   return (
     <div className="listing-page">
@@ -483,12 +486,25 @@ export function BrowseServersPage() {
             </option>
           ))}
         </select>
+        <select
+          className="filter-select"
+          value={serverType}
+          onChange={(event) => setServerType(event.target.value)}
+          aria-label="Server type"
+        >
+          <option value="ALL">All server types</option>
+          {filterOptions.categories.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
         <span>{t("listing.serverCount", { count: formatNumber(visible.length) })}</span>
       </div>
       <ServerCategoryFilter
         categories={filterOptions.categories}
-        value={serverType}
-        onChange={setServerType}
+        value={category}
+        onChange={setCategory}
       />
       {isLoading ? (
         <CardGridSkeleton cards={6} className="server-grid" label="Loading servers" />
