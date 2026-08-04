@@ -95,6 +95,9 @@ export type PublicServer = {
   port?: number;
   activeCampaignCount?: number;
   crackedAccountLinkingAvailable?: boolean;
+  nortixPlayerCount?: number;
+  monthlyJoins?: number;
+  retentionRate?: number | null;
   lastCheckedAt?: string | null;
   campaigns?: PublicCampaign[];
   reviews?: PublicReview[];

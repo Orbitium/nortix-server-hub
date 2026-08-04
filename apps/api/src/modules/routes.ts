@@ -838,7 +838,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
                 activityDate: { gte: previousStart },
                 OR: [{ joins: { gt: 0 } }, { playtimeSeconds: { gt: 0 } }],
               },
-              select: { serverId: true, userId: true, activityDate: true },
+              select: { serverId: true, userId: true, activityDate: true, joins: true },
             }),
           ]);
     const voteWeightsByServer = new Map(
@@ -857,6 +857,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       campaignRates.set(campaign.serverId, current);
     }
     const activitySets = new Map<string, { previous: Set<string>; recent: Set<string> }>();
+    const joinsByServer = new Map<string, number>();
     for (const activity of gameplaySignals) {
       const current = activitySets.get(activity.serverId) ?? {
         previous: new Set<string>(),
@@ -864,6 +865,10 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       };
       (activity.activityDate >= recentStart ? current.recent : current.previous).add(activity.userId);
       activitySets.set(activity.serverId, current);
+      joinsByServer.set(
+        activity.serverId,
+        (joinsByServer.get(activity.serverId) ?? 0) + (activity.joins ?? 0),
+      );
     }
     const ownedItems = items.map(
       ({
@@ -916,6 +921,10 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
           activeCampaignCount: _count.campaigns,
           awardCount: _count.awardPurchases,
           crackedAccountLinkingAvailable: Boolean(playerHistorySyncedAt),
+          nortixPlayerCount: activity?.recent.size ?? 0,
+          monthlyJoins: joinsByServer.get(server.id) ?? 0,
+          retentionRate:
+            retained == null ? null : Math.round(retained * 100) / 100,
           hype,
           discoveryScore: Math.round(score * 100) / 100,
         };

@@ -28,7 +28,6 @@ import { Badge, Button, Card, Sparks, VerifiedBadge } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
 import { ServerCard } from "../components/ServerCard";
-import { ServerCategoryFilter } from "../components/ServerCategoryFilter";
 import {
   CardGridSkeleton,
   DetailPageSkeleton,
@@ -443,19 +442,21 @@ export function BrowseServersPage() {
   const { t, formatNumber } = useI18n();
   const [search, setSearch] = useState("");
   const [version, setVersion] = useState("ALL");
-  const [category, setCategory] = useState("ALL");
   const [serverType, setServerType] = useState("ALL");
+  const [serverCategory, setServerCategory] = useState("ALL");
   const { data, isLoading, isError, refetch } = usePublicServers();
   const servers = data?.items ?? [];
   const filterOptions = useMemo(() => getServerFilterOptions(servers), [servers]);
   const visible = useMemo(
     () =>
       sortServersByCategory(
-        filterServers(servers, { search, category: serverType, version }).filter(
-          (server) => category === "ALL" || server.categories.includes(category),
+        filterServers(servers, { search, category: serverCategory, version }).filter(
+          (server) =>
+            serverType === "ALL" ||
+            (serverType === "VERIFIED" && server.verificationStatus === "VERIFIED"),
         ),
       ),
-    [servers, search, version, serverType, category],
+    [servers, search, version, serverType, serverCategory],
   );
   return (
     <div className="listing-page">
@@ -486,26 +487,53 @@ export function BrowseServersPage() {
             </option>
           ))}
         </select>
-        <select
-          className="filter-select"
-          value={serverType}
-          onChange={(event) => setServerType(event.target.value)}
-          aria-label="Server type"
-        >
-          <option value="ALL">All server types</option>
-          {filterOptions.categories.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
         <span>{t("listing.serverCount", { count: formatNumber(visible.length) })}</span>
       </div>
-      <ServerCategoryFilter
-        categories={filterOptions.categories}
-        value={category}
-        onChange={setCategory}
-      />
+      <nav className="server-category-filter" aria-label="Filter servers by type">
+        <span>Server Type</span>
+        <div>
+          <button
+            type="button"
+            className={serverType === "ALL" ? "active" : ""}
+            aria-pressed={serverType === "ALL"}
+            onClick={() => setServerType("ALL")}
+          >
+            All servers
+          </button>
+          <button
+            type="button"
+            className={serverType === "VERIFIED" ? "active" : ""}
+            aria-pressed={serverType === "VERIFIED"}
+            onClick={() => setServerType("VERIFIED")}
+          >
+            Nortix Verified Servers
+          </button>
+        </div>
+      </nav>
+      <nav className="server-category-filter" aria-label="Filter servers by category">
+        <span>Server Category</span>
+        <div>
+          <button
+            type="button"
+            className={serverCategory === "ALL" ? "active" : ""}
+            aria-pressed={serverCategory === "ALL"}
+            onClick={() => setServerCategory("ALL")}
+          >
+            All categories
+          </button>
+          {filterOptions.categories.map((item) => (
+            <button
+              type="button"
+              key={item}
+              className={serverCategory === item ? "active" : ""}
+              aria-pressed={serverCategory === item}
+              onClick={() => setServerCategory(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </nav>
       {isLoading ? (
         <CardGridSkeleton cards={6} className="server-grid" label="Loading servers" />
       ) : (
@@ -1174,6 +1202,9 @@ export function ServerDetailPage() {
             <i /> {server.online ? "Online" : "Offline"} ·{" "}
             {(server.playerCount ?? 0).toLocaleString()} players
           </span>
+          <span>
+            <b>All Time Votes</b> {(server.voteCount ?? 0).toLocaleString()}
+          </span>
           {serverAddress ? (
             <div className="server-connect__address">
               <small>SERVER ADDRESS</small>
@@ -1197,6 +1228,18 @@ export function ServerDetailPage() {
           ) : null}
         </div>
       </div>
+      <section className="server-vote-section">
+        <div>
+          <h2>Vote Server</h2>
+          <p>Support this server and help it climb the directory by casting your vote.</p>
+        </div>
+        <Link
+          className="button button--primary"
+          to={`/dashboard/vote?server=${encodeURIComponent(server.id)}`}
+        >
+          Vote Server
+        </Link>
+      </section>
       <div className="detail-columns">
         <div className="detail-content">
           <Card>

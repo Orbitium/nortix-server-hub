@@ -50,6 +50,9 @@ const toPublicServer = (server: {
   campaignCountAllTime: 0,
   activeCampaignCount: 0,
   crackedAccountLinkingAvailable: false,
+  nortixPlayerCount: 0,
+  monthlyJoins: 0,
+  retentionRate: null,
   lastCheckedAt: server.lastCheckedAt?.toISOString() ?? null,
 });
 
