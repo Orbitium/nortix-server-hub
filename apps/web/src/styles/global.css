@@ -1930,22 +1930,38 @@ textarea:focus-visible {
 }
 .server-vote-section {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 22px;
-  padding: 22px 26px;
+  justify-content: center;
+  gap: 12px;
+  aspect-ratio: 1;
+  padding: 20px;
   border: 1px solid var(--border-light);
   border-radius: 16px;
   background: var(--surface-2);
+  text-align: center;
 }
-.server-vote-section h2 {
+.server-vote-section h3 {
   margin: 0 0 4px;
-  font-size: 20px;
+  font-size: 17px;
 }
 .server-vote-section p {
   margin: 0;
   color: var(--text-muted);
+}
+.server-vote-section .button--block {
+  width: 100%;
+}
+.server-vote-section__unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 .detail-content {
   display: flex;
@@ -2096,6 +2112,44 @@ textarea:focus-visible {
   max-width: 690px;
   margin: 0;
 }
+.hype-summary-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding: 18px 20px;
+}
+.hype-summary-card > div {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+}
+.hype-summary-card small {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.hype-summary-card strong {
+  font-size: 22px;
+}
+.hype-summary-card > div > span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.hype-summary-card .button--block {
+  justify-self: stretch;
+}
+.section-heading--sub {
+  margin-bottom: 14px;
+}
+.section-heading--sub h3 {
+  margin: 0 0 2px;
+}
+.section-heading--sub p {
+  margin: 0;
+}
 .server-awards-section__total {
   display: grid;
   grid-template-columns: auto auto;
@@ -2240,6 +2294,12 @@ textarea:focus-visible {
   }
   .hype-bundle {
     gap: 8px;
+  }
+  .hype-summary-card {
+    grid-template-columns: auto 1fr;
+  }
+  .hype-summary-card .button--block {
+    grid-column: 1 / -1;
   }
   .server-award-grid {
     grid-template-columns: 1fr;

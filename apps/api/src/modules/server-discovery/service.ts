@@ -84,6 +84,7 @@ export class ServerDiscoveryService {
       where: {
         enabled: true,
         edition: "JAVA",
+        online: true,
         ...(search
           ? {
               OR: [

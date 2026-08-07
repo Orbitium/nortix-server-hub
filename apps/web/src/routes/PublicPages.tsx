@@ -11,6 +11,7 @@ import {
   Gamepad2,
   Globe2,
   HeartHandshake,
+  Lock,
   MessageSquareText,
   Radio,
   Search,
@@ -51,11 +52,7 @@ import { useI18n } from "../lib/i18n";
 import { api } from "../lib/api";
 import { minecraftMajorVersions, normalizeMinecraftVersions, serverTypes } from "@nortix/shared";
 import { accountCreationUrl, useAuthSession } from "../lib/auth-session";
-import {
-  filterServers,
-  getServerFilterOptions,
-  sortServersByCategory,
-} from "../lib/server-filtering";
+import { filterServers, getServerFilterOptions } from "../lib/server-filtering";
 
 const profileBackgrounds = new Set(["slate", "violet", "ocean", "moss", "ember"]);
 
@@ -449,12 +446,10 @@ export function BrowseServersPage() {
   const filterOptions = useMemo(() => getServerFilterOptions(servers), [servers]);
   const visible = useMemo(
     () =>
-      sortServersByCategory(
-        filterServers(servers, { search, category: serverCategory, version }).filter(
-          (server) =>
-            serverType === "ALL" ||
-            (serverType === "VERIFIED" && server.verificationStatus === "VERIFIED"),
-        ),
+      filterServers(servers, { search, category: serverCategory, version }).filter(
+        (server) =>
+          serverType === "ALL" ||
+          (serverType === "VERIFIED" && server.verificationStatus === "VERIFIED"),
       ),
     [servers, search, version, serverType, serverCategory],
   );
@@ -734,6 +729,7 @@ export function ServerDetailPage() {
   );
   const isDiscovered = server.source === "DISCOVERED";
   const isVerified = server.verificationStatus === "VERIFIED";
+  const canVote = server.source === "NORTIX";
   const defaultPort = server.edition === "BEDROCK" ? 19132 : 25565;
   const serverAddress = server.hostname
     ? `${server.hostname}${server.port && server.port !== defaultPort ? `:${server.port}` : ""}`
@@ -1202,9 +1198,6 @@ export function ServerDetailPage() {
             <i /> {server.online ? "Online" : "Offline"} ·{" "}
             {(server.playerCount ?? 0).toLocaleString()} players
           </span>
-          <span>
-            <b>All Time Votes</b> {(server.voteCount ?? 0).toLocaleString()}
-          </span>
           {serverAddress ? (
             <div className="server-connect__address">
               <small>SERVER ADDRESS</small>
@@ -1228,18 +1221,6 @@ export function ServerDetailPage() {
           ) : null}
         </div>
       </div>
-      <section className="server-vote-section">
-        <div>
-          <h2>Vote Server</h2>
-          <p>Support this server and help it climb the directory by casting your vote.</p>
-        </div>
-        <Link
-          className="button button--primary"
-          to={`/dashboard/vote?server=${encodeURIComponent(server.id)}`}
-        >
-          Vote Server
-        </Link>
-      </section>
       <div className="detail-columns">
         <div className="detail-content">
           <Card>
@@ -1286,17 +1267,45 @@ export function ServerDetailPage() {
             <section className="server-awards-section" id="server-awards">
               <div className="section-heading">
                 <div>
-                  <span className="eyebrow">PERMANENT COMMUNITY REACTIONS</span>
-                  <h2>Awards</h2>
+                  <span className="eyebrow">COMMUNITY HYPE &amp; REACTIONS</span>
+                  <h2>Community and responses</h2>
                   <p>
-                    Celebrate, recognize, or humorously react to this server. Awards never expire
-                    and do not influence discovery ranking.
+                    See how the community supports this server and add your own Hype or a
+                    permanent reaction using Sparks.
                   </p>
                 </div>
                 <div className="server-awards-section__total">
                   <Award aria-hidden="true" />
                   <strong>{awards.total.toLocaleString()}</strong>
-                  <span>Total awards</span>
+                  <span>Total reactions</span>
+                </div>
+              </div>
+              <Card className="hype-summary-card">
+                <span className="hype-flame"><Flame aria-hidden="true" /></span>
+                <div>
+                  <small>CURRENT COMMUNITY HYPE</small>
+                  <strong>{hype.total.toLocaleString()} Hype</strong>
+                  <span>
+                    {hype.milestone
+                      ? `${hype.milestone.name} milestone unlocked`
+                      : `${hype.nextMilestone?.minimum ?? 25} Hype unlocks Bronze`}
+                  </span>
+                </div>
+                <button
+                  className="button button--secondary button--block"
+                  type="button"
+                  onClick={() => {
+                    setHypeMessage("");
+                    setHypeOpen(true);
+                  }}
+                >
+                  <Flame aria-hidden="true" /> Add Hype
+                </button>
+              </Card>
+              <div className="section-heading section-heading--sub">
+                <div>
+                  <h3>Reactions submitted</h3>
+                  <p>Tap a reaction to give it using Sparks.</p>
                 </div>
               </div>
               <div className="server-award-grid">
@@ -1436,6 +1445,10 @@ export function ServerDetailPage() {
                 <dt>{t("ui.playersOnline")}</dt>
                 <dd>{(server.playerCount ?? 0).toLocaleString()}</dd>
               </div>
+              <div>
+                <dt>All Time Votes</dt>
+                <dd>{(server.voteCount ?? 0).toLocaleString()}</dd>
+              </div>
               {isVerified ? (
                 <div>
                   <dt>{t("ui.communityRating")}</dt>
@@ -1449,6 +1462,28 @@ export function ServerDetailPage() {
                 </div>
               ) : null}
             </dl>
+          </Card>
+          <Card className="server-vote-section">
+            <div>
+              <h3>Vote Server</h3>
+              <p>
+                {canVote
+                  ? "Help this server climb the directory by casting your vote."
+                  : "Voting is unavailable for this listing."}
+              </p>
+            </div>
+            {canVote ? (
+              <Link
+                className="button button--primary button--block"
+                to={`/dashboard/vote?server=${encodeURIComponent(server.id)}`}
+              >
+                Vote Server
+              </Link>
+            ) : (
+              <span className="server-vote-section__unavailable">
+                <Lock aria-hidden="true" /> Voting Unavailable
+              </span>
+            )}
           </Card>
           <Card className="report-card">
             <ShieldCheck />

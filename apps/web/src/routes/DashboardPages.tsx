@@ -15,6 +15,7 @@ import {
   History,
   Link2,
   Lock,
+  LogOut,
   Mountain,
   MessageSquareText,
   MoreHorizontal,
@@ -35,7 +36,9 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { signOut } from "firebase/auth";
+import { auth } from "../lib/firebase";
 import { Badge, Button, Card, ProgressBar, Sparks, StatusChip } from "@nortix/ui";
 import { CampaignCard } from "../components/CampaignCard";
 import { Modal } from "../components/Modal";
@@ -2708,6 +2711,7 @@ export function ProfilePage() {
     refetch: refetchSparks,
   } = useSparksSummary();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { t } = useI18n();
   const { data: participations = [], isLoading: participationsLoading } = useParticipations();
   const approvedMilestones = participations.reduce(
@@ -2837,6 +2841,18 @@ export function ProfilePage() {
     setProfileEditOpen(true);
   };
 
+  const logout = async () => {
+    if (auth) {
+      try {
+        await signOut(auth);
+      } catch {
+        // Continue clearing local session even if Firebase sign-out fails.
+      }
+    }
+    queryClient.clear();
+    navigate("/");
+  };
+
   const saveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setProfileBusy(true);
@@ -2953,6 +2969,12 @@ export function ProfilePage() {
           <div className="profile-identity-card__actions">
             <button className="button button--secondary button--small" onClick={openProfileEditor}>
               <Settings /> Edit profile
+            </button>
+            <button
+              className="button button--ghost button--small"
+              onClick={() => void logout()}
+            >
+              <LogOut /> Logout
             </button>
             <button
               className="button button--ghost button--small"

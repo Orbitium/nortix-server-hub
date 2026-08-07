@@ -759,6 +759,7 @@ export const registerRoutes = async (app: FastifyInstance, env: Env) => {
       publicListing: true,
       moderationStatus: "APPROVED" as const,
       edition: "JAVA" as const,
+      online: true,
       ...(search
         ? {
             OR: [
